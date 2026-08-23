@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>APIForge - DSL Compiler for REST API Generation</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <!-- ═══════════════════════════════════════════════════════
+         HEADER
+         ═══════════════════════════════════════════════════════ -->
+    <header class="header">
+        <div class="header-content">
+            <h1 class="header-title">⚙ APIForge</h1>
+            <p class="header-subtitle">Domain-Specific Language for REST API Generation</p>
+        </div>
+    </header>
+
+    <!-- ═══════════════════════════════════════════════════════
+         MAIN CONTAINER: Editor (left) + Output (right)
+         ═══════════════════════════════════════════════════════ -->
+    <div class="main-container">
+
+        <!-- LEFT: DSL Code Editor -->
+        <div class="editor-panel">
+            <div class="panel-header">
+                <span class="panel-label">DSL Editor</span>
+            </div>
+            <div class="editor-wrapper">
+                <div id="line-numbers" class="line-numbers"><div>1</div></div>
+                <div class="editor-container">
+                    <div id="editor-backdrop" class="editor-backdrop">
+                        <div id="editor-highlights" class="editor-highlights"></div>
+                    </div>
+                    <textarea id="dsl-editor" spellcheck="false" placeholder="Enter your APIForge DSL code here..."></textarea>
+                </div>
+            </div>
+            <div class="editor-actions">
+                <button id="compile-btn" class="btn btn-compile">▶ Compile</button>
+                <button id="clear-btn" class="btn">Clear</button>
+                <button id="example-btn" class="btn">Load Example</button>
+            </div>
+            <div class="download-section" id="download-section">
+                <button id="download-btn" class="btn btn-download">⬇ Download Generated Project</button>
+            </div>
+        </div>
+
+        <!-- RIGHT: Tabbed Output -->
+        <div class="output-panel">
+            <div class="tab-bar">
+                <button id="tab-tokens" class="tab-btn active" data-tab="tokens">TOKENS</button>
+                <button id="tab-ast" class="tab-btn" data-tab="ast">AST</button>
+                <button id="tab-symboltable" class="tab-btn" data-tab="symboltable">SYMBOL TABLE</button>
+                <button id="tab-ir" class="tab-btn" data-tab="ir">IR</button>
+                <button id="tab-optimized-ir" class="tab-btn" data-tab="optimized-ir">OPTIMIZED IR</button>
+                <button id="tab-sql" class="tab-btn" data-tab="sql">SQL</button>
+                <button id="tab-api" class="tab-btn" data-tab="api">API</button>
+                <button id="tab-swagger" class="tab-btn" data-tab="swagger">SWAGGER</button>
+            </div>
+
+            <div class="output-content">
+                <!-- Compilation summary banner -->
+                <div id="compilation-summary" class="compilation-summary"></div>
+
+                <!-- Error panel (hidden by default) -->
+                <div id="error-panel" class="error-panel"></div>
+
+                <!-- Output Panes -->
+                <div id="output-tokens" class="output-pane active"></div>
+                <div id="output-ast" class="output-pane"></div>
+                <div id="output-symboltable" class="output-pane"></div>
+                <div id="output-ir" class="output-pane"></div>
+                <div id="output-optimized-ir" class="output-pane"></div>
+                <div id="output-sql" class="output-pane"></div>
+                <div id="output-api" class="output-pane"></div>
+                <div id="output-swagger" class="output-pane"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════
+         BOTTOM: Compiler Status Bar (Clickable Phases)
+         ═══════════════════════════════════════════════════════ -->
+    <div class="status-bar">
+        <div id="status-lexer" class="status-item" data-phase="lexer" title="Phase 1: Lexical Analysis → Click to view Tokens">
+            <span class="status-icon pending">○</span>
+            <span class="status-label">Lexer</span>
+        </div>
+        <div id="status-parser" class="status-item" data-phase="parser" title="Phase 2: Syntax Analysis → Click to view AST">
+            <span class="status-icon pending">○</span>
+            <span class="status-label">Parser</span>
+        </div>
+        <div id="status-semantic" class="status-item" data-phase="semantic" title="Phase 3: Semantic Analysis → Click to view Symbol Table">
+            <span class="status-icon pending">○</span>
+            <span class="status-label">Semantic</span>
+        </div>
+        <div id="status-ir" class="status-item" data-phase="ir" title="Phase 4: IR Generation → Click to view IR Instructions">
+            <span class="status-icon pending">○</span>
+            <span class="status-label">IR</span>
+        </div>
+        <div id="status-optimizer" class="status-item" data-phase="optimizer" title="Phase 5: Code Optimization → Click to view Optimized IR">
+            <span class="status-icon pending">○</span>
+            <span class="status-label">Optimizer</span>
+        </div>
+        <div id="status-codegen" class="status-item" data-phase="codegen" title="Phase 6: Code Generation → Click to view SQL & API Code">
+            <span class="status-icon pending">○</span>
+            <span class="status-label">CodeGen</span>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

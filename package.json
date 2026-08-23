@@ -1,0 +1,27 @@
+{
+  "name": "apiforge",
+  "version": "1.0.0",
+  "description": "APIForge - A Domain-Specific Language Compiler for Automatic REST API Generation",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "compile": "node index.js samples/student.apiforge",
+    "dev": "node server.js",
+    "test": "node tests/test.js"
+  },
+  "keywords": [
+    "compiler",
+    "dsl",
+    "rest-api",
+    "code-generation",
+    "lexer",
+    "parser"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "mysql2": "^3.23.4"
+  }
+}

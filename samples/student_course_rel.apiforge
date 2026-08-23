@@ -1,0 +1,14 @@
+// APIForge DSL Sample with Relationship
+// Demonstrates entities and relationship declaration
+
+ENTITY Student
+
+id INT PRIMARY KEY
+name STRING REQUIRED
+
+ENTITY Course
+
+id INT PRIMARY KEY
+title STRING REQUIRED
+
+RELATION Student ENROLLS_IN Course MANY_TO_MANY

@@ -1,0 +1,17 @@
+// ============================================
+// APIForge DSL - Sample Entity Definition
+// File: student.apiforge
+// ============================================
+// This file defines a "Student" entity using
+// the APIForge domain-specific language.
+// The compiler will parse this and eventually
+// generate MySQL schema + REST API code.
+// ============================================
+
+ENTITY Student
+
+    id      INT     PRIMARY KEY
+    name    STRING  REQUIRED
+    email   STRING  UNIQUE
+    age     INT
+    cgpa    FLOAT
