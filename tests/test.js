@@ -2991,6 +2991,121 @@ assertTrue('Parser failure: semantic is false', apiTest2.phases.semantic === fal
 assertTrue('Parser failure: codegen is false', apiTest2.phases.codegen === false);
 
 
+// ═════════════════════════════════════════════════════════════
+// USER-FACING PARSER ERROR TESTS
+// ═════════════════════════════════════════════════════════════
+
+currentPhase = 'parser';
+console.log('');
+console.log('╔══════════════════════════════════════════════╗');
+console.log('║       User-Facing Parser Error Tests         ║');
+console.log('╚══════════════════════════════════════════════╝');
+
+// ── User-Facing Test 1: Missing datatype at EOF ──────────────
+console.log('');
+console.log('── User-Facing: Missing field datatype at EOF ──');
+
+let errMissingType = null;
+try {
+    lexAndParse('ENTITY Student\n\nid INT PRIMARY KEY\nname');
+} catch (e) {
+    errMissingType = e;
+}
+
+assertTrue('Missing datatype throws error', !!errMissingType);
+assertEqual('Missing datatype error code', errMissingType.code, 'MISSING_DATATYPE');
+assertEqual('Missing datatype line is 4', errMissingType.line, 4);
+assertEqual('Missing datatype column is 5', errMissingType.column, 5);
+assertEqual('Missing datatype userMessage', errMissingType.userMessage, "Missing data type for field 'name'.\nExpected one of: INT, STRING, FLOAT, BOOLEAN.");
+assertTrue('Missing datatype contains Expected DATATYPE for compatibility', errMissingType.message.includes('Expected DATATYPE'));
+
+// ── User-Facing Test 2: Missing KEY after PRIMARY at EOF ─────
+console.log('');
+console.log('── User-Facing: Missing KEY after PRIMARY at EOF ──');
+
+let errMissingKey = null;
+try {
+    lexAndParse('ENTITY Student\nid INT PRIMARY');
+} catch (e) {
+    errMissingKey = e;
+}
+
+assertTrue('Missing KEY throws error', !!errMissingKey);
+assertEqual('Missing KEY error code', errMissingKey.code, 'MISSING_KEY_AFTER_PRIMARY');
+assertEqual('Missing KEY line is 2', errMissingKey.line, 2);
+assertEqual('Missing KEY column is 15', errMissingKey.column, 15);
+assertEqual('Missing KEY userMessage', errMissingKey.userMessage, "Missing KEY after PRIMARY.\nExpected: KEY.");
+assertTrue('Missing KEY contains Expected "KEY" after "PRIMARY"', errMissingKey.message.includes('Expected "KEY" after "PRIMARY"'));
+
+// ── User-Facing Test 3: Missing relationship type at EOF ─────
+console.log('');
+console.log('── User-Facing: Missing relationship type at EOF ──');
+
+let errMissingRelType = null;
+try {
+    lexAndParse('ENTITY Student\nid INT PRIMARY KEY\n\nENTITY Course\nid INT PRIMARY KEY\n\nRELATION Student ENROLLS_IN Course');
+} catch (e) {
+    errMissingRelType = e;
+}
+
+assertTrue('Missing relation type throws error', !!errMissingRelType);
+assertEqual('Missing relation type error code', errMissingRelType.code, 'MISSING_RELATION_TYPE');
+assertEqual('Missing relation type line is 7', errMissingRelType.line, 7);
+assertEqual('Missing relation type column is 35', errMissingRelType.column, 35);
+assertEqual('Missing relation type userMessage', errMissingRelType.userMessage, "Missing relationship type.\nExpected one of: ONE_TO_ONE, ONE_TO_MANY, MANY_TO_ONE, MANY_TO_MANY.");
+assertTrue('Missing relation type contains Expected RELATION_TYPE', errMissingRelType.message.includes('Expected RELATION_TYPE'));
+
+// ── User-Facing Test 4: Missing entity name at EOF ───────────
+console.log('');
+console.log('── User-Facing: Missing entity name at EOF ──');
+
+let errMissingEntName = null;
+try {
+    lexAndParse('ENTITY');
+} catch (e) {
+    errMissingEntName = e;
+}
+
+assertTrue('Missing entity name throws error', !!errMissingEntName);
+assertEqual('Missing entity name error code', errMissingEntName.code, 'MISSING_ENTITY_NAME');
+assertEqual('Missing entity name line is 1', errMissingEntName.line, 1);
+assertEqual('Missing entity name column is 7', errMissingEntName.column, 7);
+assertEqual('Missing entity name userMessage', errMissingEntName.userMessage, "Missing entity name.\nExpected an identifier after ENTITY.");
+assertTrue('Missing entity name contains Expected IDENTIFIER', errMissingEntName.message.includes('Expected IDENTIFIER'));
+
+// ── User-Facing Test 5: Lexer EOF token preserved ────────────
+console.log('');
+console.log('── User-Facing: Lexer EOF token preserved ──');
+
+const tokensWithEof = Lexer.tokenize('ENTITY Student\nname');
+const lastTok = tokensWithEof[tokensWithEof.length - 1];
+assertEqual('Last token type is EOF', lastTok.type, 'EOF');
+assertEqual('Last token value is EOF', lastTok.value, 'EOF');
+
+// ── User-Facing Test 6: formatUserFacingError helper ─────────
+console.log('');
+console.log('── User-Facing: formatUserFacingError helper ──');
+
+const { formatUserFacingError } = require('../src/utils/errors');
+assertEqual('formatUserFacingError uses userMessage', formatUserFacingError(errMissingType), "Missing data type for field 'name'.\nExpected one of: INT, STRING, FLOAT, BOOLEAN.");
+assertEqual('formatUserFacingError cleans raw prefix', formatUserFacingError({ message: 'Syntax Error at line 1, column 2: Some error' }), 'Some error');
+
+// ── User-Facing Test 7: API /compile returns userMessage and code ──
+console.log('');
+console.log('── User-Facing: API /compile returns userMessage and code ──');
+
+const apiUserFacingTest = await simulatePost('/compile', {
+    source: 'ENTITY Student\n\nid INT PRIMARY KEY\nname'
+});
+
+assertTrue('API returns success false for missing type', apiUserFacingTest.success === false);
+assertEqual('API error phase is parser', apiUserFacingTest.phase, 'parser');
+assertEqual('API error code is MISSING_DATATYPE', apiUserFacingTest.errors[0].code, 'MISSING_DATATYPE');
+assertEqual('API error line is 4', apiUserFacingTest.errors[0].line, 4);
+assertEqual('API error column is 5', apiUserFacingTest.errors[0].column, 5);
+assertEqual('API error userMessage matches', apiUserFacingTest.errors[0].userMessage, "Missing data type for field 'name'.\nExpected one of: INT, STRING, FLOAT, BOOLEAN.");
+
+
 
 // ═════════════════════════════════════════════════════════════
 // SUMMARY (inside async IIFE so API test counts are included)

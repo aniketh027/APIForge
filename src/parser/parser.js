@@ -22,34 +22,17 @@
  * 
  * ── Grammar (EBNF) ──
  * 
- * Program     → EntityDecl*
+ * Program     → (EntityDecl | RelationDecl)*
  * EntityDecl  → 'ENTITY' IDENTIFIER FieldDecl+
  * FieldDecl   → IDENTIFIER DataType Constraint*
  * DataType    → 'INT' | 'STRING' | 'FLOAT' | 'BOOLEAN'
  * Constraint  → 'PRIMARY' 'KEY' | 'REQUIRED' | 'UNIQUE'
  * 
- * ── How the cursor works ──
- * 
- * The parser maintains a cursor (this.pos) that points to the
- * current token in the token array. Helper methods:
- * 
- *   current()  → returns the token at this.pos
- *   peek()     → returns the NEXT token (this.pos + 1)
- *   advance()  → returns current token and moves cursor forward
- *   expect()   → like advance(), but throws if the token doesn't
- *                 match the expected type/value
- * 
- * ── Example ──
- * 
- * Tokens:  ENTITY  Student  id  INT  PRIMARY  KEY  name  STRING  REQUIRED  EOF
- *          ^
- *          cursor starts here
- * 
- * parseProgram() sees KEYWORD "ENTITY" → calls parseEntity()
- * parseEntity()  consumes ENTITY, Student → calls parseField() in a loop
- * parseField()   consumes id, INT → calls parseConstraints()
- * parseConstraints() consumes PRIMARY, KEY → returns ["PRIMARY_KEY"]
- * ...and so on until we reach EOF.
+ * ── User-Facing Error Messages ──
+ * When unexpected tokens or EOF are encountered, the parser attaches
+ * structured error metadata (`code`, `line`, `column`, `userMessage`)
+ * to the thrown Error, providing human-friendly guidance while
+ * preserving internal token diagnostics for test compatibility.
  * 
  * ============================================================
  */
@@ -87,7 +70,6 @@ class Parser {
         if (this.pos < this.tokens.length) {
             return this.tokens[this.pos];
         }
-        // Safety: return the last token (should be EOF)
         return this.tokens[this.tokens.length - 1];
     }
 
@@ -105,9 +87,6 @@ class Parser {
     /**
      * advance() - Returns the current token AND moves the
      * cursor forward by one position.
-     * 
-     * Think of it like reading: you read the current word,
-     * then your eye moves to the next word.
      */
     advance() {
         const token = this.current();
@@ -116,34 +95,59 @@ class Parser {
     }
 
     /**
-     * expect(type, value) - Asserts that the current token
+     * expect(type, value, context) - Asserts that the current token
      * matches the expected type (and optionally value).
      * If it matches, advances and returns the token.
-     * If not, throws a syntax error with a helpful message.
+     * If not, throws a syntax error with helpful user and internal messages.
      * 
      * @param {string} type  - Expected token type (e.g., 'IDENTIFIER')
      * @param {string} [value] - Expected token value (optional)
+     * @param {Object} [context={}] - Context metadata (e.g. { after: 'ENTITY' })
      * @returns {Object} - The matched token
      * @throws {Error}  - Syntax error if expectation fails
      */
-    expect(type, value) {
+    expect(type, value, context = {}) {
         const token = this.current();
 
-        // Check type match
-        if (token.type !== type) {
-            const expected = value ? `${type} "${value}"` : type;
-            throw new Error(
-                `Syntax Error at line ${token.line}, column ${token.column}: ` +
-                `Expected ${expected} but found ${token.type} "${token.value}".`
-            );
-        }
+        const typeMismatch = token.type !== type;
+        const valueMismatch = value !== undefined && token.value !== value;
 
-        // Check value match (if a specific value was required)
-        if (value !== undefined && token.value !== value) {
-            throw new Error(
-                `Syntax Error at line ${token.line}, column ${token.column}: ` +
-                `Expected ${type} "${value}" but found ${type} "${token.value}".`
+        if (typeMismatch || valueMismatch) {
+            const expected = value ? `${type} "${value}"` : type;
+            let userMessage = null;
+            let code = null;
+
+            if (token.type === 'EOF') {
+                if (type === 'IDENTIFIER' && context.after === 'ENTITY') {
+                    code = 'MISSING_ENTITY_NAME';
+                    userMessage = `Missing entity name.\nExpected an identifier after ENTITY.`;
+                } else if (type === 'IDENTIFIER' && context.after === 'RELATION') {
+                    code = 'MISSING_SOURCE_ENTITY';
+                    userMessage = `Missing source entity name.\nExpected an identifier after RELATION.`;
+                } else if (type === 'IDENTIFIER' && context.after === 'RELATION_SOURCE') {
+                    code = 'MISSING_RELATION_NAME';
+                    userMessage = `Missing relationship name.\nExpected an identifier.`;
+                } else if (type === 'IDENTIFIER' && context.after === 'RELATION_NAME') {
+                    code = 'MISSING_TARGET_ENTITY';
+                    userMessage = `Missing target entity name.\nExpected an identifier.`;
+                } else if (type === 'IDENTIFIER') {
+                    code = 'MISSING_IDENTIFIER';
+                    userMessage = `Missing identifier.\nExpected: IDENTIFIER.`;
+                }
+            }
+
+            const prefix = userMessage
+                ? `${userMessage.replace(/\n/g, ' ')} (Expected ${expected} but found ${token.type} "${token.value}").`
+                : `Expected ${expected} but found ${token.type} "${token.value}".`;
+
+            const err = new Error(
+                `Syntax Error at line ${token.line}, column ${token.column}: ${prefix}`
             );
+            err.line = token.line;
+            err.column = token.column;
+            err.code = code;
+            err.userMessage = userMessage || `Expected ${expected} but found ${token.type} "${token.value}".`;
+            throw err;
         }
 
         return this.advance();
@@ -159,9 +163,6 @@ class Parser {
      * The top-level rule. A program is zero or more entity
      * and relationship declarations followed by EOF.
      * 
-     * An empty program (just EOF) is valid — it simply has
-     * no entities or relations.
-     * 
      * @returns {ProgramNode} - The root AST node
      */
     parseProgram() {
@@ -175,10 +176,15 @@ class Parser {
                 program.relations.push(this.parseRelation());
             } else {
                 const token = this.current();
-                throw new Error(
+                const err = new Error(
                     `Syntax Error at line ${token.line}, column ${token.column}: ` +
                     `Expected ENTITY declaration but found ${token.type} "${token.value}".`
                 );
+                err.line = token.line;
+                err.column = token.column;
+                err.code = 'EXPECTED_ENTITY_DECLARATION';
+                err.userMessage = `Expected ENTITY or RELATION declaration, but found ${token.type} "${token.value}".`;
+                throw err;
             }
         }
 
@@ -196,14 +202,6 @@ class Parser {
      *   ENTITY Student
      *       id INT PRIMARY KEY
      *       name STRING REQUIRED
-     *       ...
-     * 
-     * An entity MUST have:
-     *   1. The ENTITY keyword
-     *   2. An IDENTIFIER (the entity name)
-     *   3. At least one field declaration
-     * 
-     * Fields continue until we see another ENTITY or RELATION keyword or EOF.
      * 
      * @returns {EntityNode}
      */
@@ -212,27 +210,36 @@ class Parser {
         const entityKeyword = this.expect('KEYWORD', 'ENTITY');
 
         // Step 2: Expect an entity name (IDENTIFIER)
-        const nameToken = this.expect('IDENTIFIER');
+        const nameToken = this.expect('IDENTIFIER', undefined, { after: 'ENTITY' });
 
         // Create the entity AST node
         const entity = new EntityNode(nameToken.value, entityKeyword.line, nameToken.column);
 
         // Step 3: Parse fields until we hit another ENTITY, RELATION, or EOF.
-        // A field always starts with an IDENTIFIER (the field name).
         while (
             this.current().type !== 'EOF' &&
             !(this.current().type === 'KEYWORD' && (this.current().value === 'ENTITY' || this.current().value === 'RELATION'))
         ) {
-            // A field must start with an IDENTIFIER (field name).
-            // If we see something else, it's a syntax error.
             if (this.current().type === 'IDENTIFIER') {
                 entity.fields.push(this.parseField());
             } else {
                 const token = this.current();
-                throw new Error(
-                    `Syntax Error at line ${token.line}, column ${token.column}: ` +
-                    `Expected field name (IDENTIFIER) but found ${token.type} "${token.value}".`
+                const isEof = token.type === 'EOF';
+                const userMessage = isEof
+                    ? `Missing field name.\nExpected an identifier.`
+                    : `Expected field name (IDENTIFIER) but found ${token.type} "${token.value}".`;
+                const messageDesc = isEof
+                    ? `Missing field name. Expected field name (IDENTIFIER) but found EOF "EOF".`
+                    : `Expected field name (IDENTIFIER) but found ${token.type} "${token.value}".`;
+
+                const err = new Error(
+                    `Syntax Error at line ${token.line}, column ${token.column}: ${messageDesc}`
                 );
+                err.line = token.line;
+                err.column = token.column;
+                err.code = isEof ? 'MISSING_FIELD_NAME' : 'INVALID_FIELD_TOKEN';
+                err.userMessage = userMessage;
+                throw err;
             }
         }
 
@@ -249,14 +256,6 @@ class Parser {
      * Parses a relationship declaration:
      *   RELATION Student ENROLLS_IN Course MANY_TO_MANY
      * 
-     * Grammar:
-     *   RELATION IDENTIFIER IDENTIFIER IDENTIFIER RELATION_TYPE
-     * 
-     * - The 1st IDENTIFIER is the source entity name.
-     * - The 2nd IDENTIFIER is the relationship name.
-     * - The 3rd IDENTIFIER is the target entity name.
-     * - The RELATION_TYPE is ONE_TO_ONE, ONE_TO_MANY, MANY_TO_ONE, or MANY_TO_MANY.
-     * 
      * @returns {RelationNode}
      */
     parseRelation() {
@@ -264,24 +263,34 @@ class Parser {
         const relationKeyword = this.expect('KEYWORD', 'RELATION');
 
         // Step 2: Expect source entity name (IDENTIFIER)
-        const sourceEntityToken = this.expect('IDENTIFIER');
+        const sourceEntityToken = this.expect('IDENTIFIER', undefined, { after: 'RELATION' });
 
         // Step 3: Expect relationship name (IDENTIFIER)
-        const nameToken = this.expect('IDENTIFIER');
+        const nameToken = this.expect('IDENTIFIER', undefined, { after: 'RELATION_SOURCE' });
 
         // Step 4: Expect target entity name (IDENTIFIER)
-        const targetEntityToken = this.expect('IDENTIFIER');
+        const targetEntityToken = this.expect('IDENTIFIER', undefined, { after: 'RELATION_NAME' });
 
         // Step 5: Expect relationship type (RELATION_TYPE)
-        // As with data types, keep the canonical "Expected RELATION_TYPE"
-        // phrasing and append a suggestion on a near-miss.
         const relationTypeTok = this.current();
         if (relationTypeTok.type !== 'RELATION_TYPE') {
-            const suffix = didYouMeanSuffix(relationTypeTok.value, RELATION_TYPES);
-            throw new Error(
-                `Syntax Error at line ${relationTypeTok.line}, column ${relationTypeTok.column}: ` +
-                `Expected RELATION_TYPE but found ${relationTypeTok.type} "${relationTypeTok.value}".` + suffix
+            const isEof = relationTypeTok.type === 'EOF';
+            const suffix = isEof ? '' : didYouMeanSuffix(relationTypeTok.value, RELATION_TYPES);
+            const userMessage = isEof
+                ? `Missing relationship type.\nExpected one of: ONE_TO_ONE, ONE_TO_MANY, MANY_TO_ONE, MANY_TO_MANY.`
+                : `Expected RELATION_TYPE but found ${relationTypeTok.type} "${relationTypeTok.value}".${suffix}`;
+            const messageDesc = isEof
+                ? `Missing relationship type. Expected RELATION_TYPE (one of: ONE_TO_ONE, ONE_TO_MANY, MANY_TO_ONE, MANY_TO_MANY) but found EOF "EOF".`
+                : `Expected RELATION_TYPE but found ${relationTypeTok.type} "${relationTypeTok.value}".${suffix}`;
+
+            const err = new Error(
+                `Syntax Error at line ${relationTypeTok.line}, column ${relationTypeTok.column}: ${messageDesc}`
             );
+            err.line = relationTypeTok.line;
+            err.column = relationTypeTok.column;
+            err.code = isEof ? 'MISSING_RELATION_TYPE' : 'INVALID_RELATION_TYPE';
+            err.userMessage = userMessage;
+            throw err;
         }
         const relationTypeToken = this.advance();
 
@@ -308,12 +317,6 @@ class Parser {
      * Parses a single field declaration:
      *   name STRING REQUIRED
      *   id   INT    PRIMARY KEY
-     *   age  INT
-     * 
-     * A field MUST have:
-     *   1. An IDENTIFIER (field name)
-     *   2. A DATATYPE (INT, STRING, FLOAT, BOOLEAN)
-     *   3. Zero or more constraints (optional)
      * 
      * @returns {FieldNode}
      */
@@ -322,16 +325,25 @@ class Parser {
         const nameToken = this.advance(); // We already checked it's IDENTIFIER
 
         // Step 2: Expect a data type (DATATYPE token)
-        // If the next token is not a DATATYPE, it's an error. We keep the
-        // canonical "Expected DATATYPE" phrasing but append a "did you mean?"
-        // hint when the offending word is a near-miss of a real type.
         const typeToken = this.current();
         if (typeToken.type !== 'DATATYPE') {
-            const suffix = didYouMeanSuffix(typeToken.value, DATA_TYPES);
-            throw new Error(
-                `Syntax Error at line ${typeToken.line}, column ${typeToken.column}: ` +
-                `Expected DATATYPE but found ${typeToken.type} "${typeToken.value}".` + suffix
+            const isEof = typeToken.type === 'EOF';
+            const suffix = isEof ? '' : didYouMeanSuffix(typeToken.value, DATA_TYPES);
+            const userMessage = isEof
+                ? `Missing data type for field '${nameToken.value}'.\nExpected one of: INT, STRING, FLOAT, BOOLEAN.`
+                : `Expected DATATYPE but found ${typeToken.type} "${typeToken.value}".${suffix}`;
+            const messageDesc = isEof
+                ? `Missing data type for field '${nameToken.value}'. Expected DATATYPE (one of: INT, STRING, FLOAT, BOOLEAN) but found EOF "EOF".`
+                : `Expected DATATYPE but found ${typeToken.type} "${typeToken.value}".${suffix}`;
+
+            const err = new Error(
+                `Syntax Error at line ${typeToken.line}, column ${typeToken.column}: ${messageDesc}`
             );
+            err.line = typeToken.line;
+            err.column = typeToken.column;
+            err.code = isEof ? 'MISSING_DATATYPE' : 'INVALID_DATATYPE';
+            err.userMessage = userMessage;
+            throw err;
         }
         const dataTypeToken = this.advance();
 
@@ -355,17 +367,7 @@ class Parser {
     /**
      * parseConstraints()
      * 
-     * Parses zero or more field constraints. Called after the
-     * data type in a field declaration.
-     * 
-     * Important logic:
-     *   - PRIMARY must be immediately followed by KEY.
-     *     Together they form the single constraint "PRIMARY_KEY".
-     *   - KEY appearing without a preceding PRIMARY is an error.
-     *   - REQUIRED and UNIQUE are standalone constraints.
-     * 
-     * We keep consuming MODIFIER tokens until we see something
-     * that isn't a MODIFIER (which means the field is done).
+     * Parses zero or more field constraints.
      * 
      * @returns {Array<string>} - e.g., ["PRIMARY_KEY"], ["REQUIRED"], []
      */
@@ -388,19 +390,36 @@ class Parser {
                     } else {
                         // PRIMARY without KEY — syntax error
                         const next = this.current();
-                        throw new Error(
-                            `Syntax Error at line ${next.line}, column ${next.column}: ` +
-                            `Expected "KEY" after "PRIMARY" but found ${next.type} "${next.value}".`
+                        const isEof = next.type === 'EOF';
+                        const userMessage = isEof
+                            ? `Missing KEY after PRIMARY.\nExpected: KEY.`
+                            : `Expected "KEY" after "PRIMARY" but found ${next.type} "${next.value}".`;
+                        const messageDesc = isEof
+                            ? `Missing KEY after PRIMARY. Expected "KEY" after "PRIMARY" but found ${next.type} "${next.value}".`
+                            : `Expected "KEY" after "PRIMARY" but found ${next.type} "${next.value}".`;
+
+                        const err = new Error(
+                            `Syntax Error at line ${next.line}, column ${next.column}: ${messageDesc}`
                         );
+                        err.line = next.line;
+                        err.column = next.column;
+                        err.code = 'MISSING_KEY_AFTER_PRIMARY';
+                        err.userMessage = userMessage;
+                        throw err;
                     }
                     break;
 
                 case 'KEY':
                     // KEY without a preceding PRIMARY — syntax error
-                    throw new Error(
+                    const errKey = new Error(
                         `Syntax Error at line ${token.line}, column ${token.column}: ` +
                         `"KEY" must be preceded by "PRIMARY". Found standalone "KEY".`
                     );
+                    errKey.line = token.line;
+                    errKey.column = token.column;
+                    errKey.code = 'STANDALONE_KEY';
+                    errKey.userMessage = `"KEY" must be preceded by "PRIMARY". Found standalone "KEY".`;
+                    throw errKey;
 
                 case 'REQUIRED':
                     this.advance();
@@ -413,12 +432,15 @@ class Parser {
                     break;
 
                 default:
-                    // Unknown modifier — shouldn't happen if the lexer
-                    // is correct, but we handle it defensively.
-                    throw new Error(
+                    const errMod = new Error(
                         `Syntax Error at line ${token.line}, column ${token.column}: ` +
                         `Unknown modifier "${token.value}".`
                     );
+                    errMod.line = token.line;
+                    errMod.column = token.column;
+                    errMod.code = 'UNKNOWN_MODIFIER';
+                    errMod.userMessage = `Unknown modifier "${token.value}".`;
+                    throw errMod;
             }
         }
 

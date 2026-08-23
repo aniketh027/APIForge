@@ -6,10 +6,11 @@
  * Small, target-independent helpers used across the compiler
  * phases to produce friendlier diagnostics:
  *
- *   levenshtein(a, b)          → edit distance between two strings
- *   suggestClosest(word, ...)  → nearest candidate within a threshold
+ *   levenshtein(a, b)           → edit distance between two strings
+ *   suggestClosest(word, ...)   → nearest candidate within a threshold
  *   didYouMeanSuffix(word, ...) → " Did you mean 'X'?" (or "")
- *   formatCodeFrame(src, ...)  → a source excerpt with a caret marker
+ *   formatCodeFrame(src, ...)   → a source excerpt with a caret marker
+ *   formatUserFacingError(err)  → human-friendly user error message
  *
  * These have NO dependencies on the lexer/parser/AST so they can
  * be unit-tested in isolation and reused by any phase or the CLI.
@@ -163,9 +164,29 @@ function formatCodeFrame(source, line, column, length = 1) {
     return `${gutter}${srcLine}\n${caretLine}`;
 }
 
+/**
+ * formatUserFacingError(err)
+ *
+ * Extracts a human-friendly user-facing message from an error object,
+ * favoring custom userMessage properties while cleanly falling back.
+ *
+ * @param {Object|string} err
+ * @returns {string}
+ */
+function formatUserFacingError(err) {
+    if (!err) return '';
+    if (typeof err === 'string') return err;
+    if (err.userMessage) return err.userMessage;
+    let msg = err.message || String(err);
+    msg = msg.replace(/^Syntax Error at line \d+, column \d+:\s*/i, '');
+    msg = msg.replace(/^Semantic Error:\s*/i, '');
+    return msg;
+}
+
 module.exports = {
     levenshtein,
     suggestClosest,
     didYouMeanSuffix,
-    formatCodeFrame
+    formatCodeFrame,
+    formatUserFacingError
 };

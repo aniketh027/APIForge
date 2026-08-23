@@ -95,10 +95,12 @@ console.log('');
 // caret, mirroring the semantic-error output further below.
 function reportFatalError(err) {
     console.log('');
-    console.log(`[✗] ${err.message}`);
-    const match = /line (\d+), column (\d+)/i.exec(err.message);
-    if (match) {
-        const frame = formatCodeFrame(sourceCode, parseInt(match[1], 10), parseInt(match[2], 10));
+    const displayMsg = err.userMessage ? `Syntax Error: ${err.userMessage}` : err.message;
+    console.log(`[✗] ${displayMsg}`);
+    const line = err.line || (err.message && /line (\d+)/i.exec(err.message) ? parseInt(/line (\d+)/i.exec(err.message)[1], 10) : null);
+    const column = err.column || (err.message && /column (\d+)/i.exec(err.message) ? parseInt(/column (\d+)/i.exec(err.message)[1], 10) : null);
+    if (line) {
+        const frame = formatCodeFrame(sourceCode, line, column);
         if (frame) {
             frame.split('\n').forEach(frameLine => console.log(`       ${frameLine}`));
         }

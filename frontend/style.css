@@ -502,6 +502,7 @@ html, body {
     line-height: 1.5;
     margin-top: 0.4rem;
     font-size: 0.85rem;
+    white-space: pre-line;
 }
 
 /* ── Token Table ─────────────────────────────────────────── */

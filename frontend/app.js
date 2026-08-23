@@ -253,7 +253,7 @@ function showError(phase, errors) {
     const formattedErrors = (errors || []).map(err => {
         let line = err.line || null;
         let column = err.column || null;
-        let message = err.message || String(err);
+        let message = err.userMessage || err.message || String(err);
 
         // Extract line/column from message if not directly set
         if (!line) {

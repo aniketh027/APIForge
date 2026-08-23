@@ -117,7 +117,13 @@ router.post('/compile', (req, res) => {
             phase: 'parser',
             phases,
             tokens,
-            errors: [{ message: err.message, line, column }]
+            errors: [{
+                message: err.message,
+                userMessage: err.userMessage || null,
+                code: err.code || null,
+                line,
+                column
+            }]
         });
     }
 
