@@ -39,16 +39,18 @@ class ProgramNode {
 /**
  * EntityNode - Represents a single ENTITY declaration.
  * e.g., ENTITY Student
- * 
+ *
  * @param {string} name - The entity name (e.g., "Student")
  * @param {number} line - Source line where the ENTITY keyword appeared
+ * @param {number} [nameColumn] - Source column of the entity name token
  */
 class EntityNode {
-    constructor(name, line) {
+    constructor(name, line, nameColumn) {
         this.type = 'Entity';
-        this.name = name;      // e.g., "Student"
-        this.fields = [];      // Array of FieldNode
-        this.line = line;      // Source line number for error reporting
+        this.name = name;          // e.g., "Student"
+        this.fields = [];          // Array of FieldNode
+        this.line = line;          // Source line number for error reporting
+        this.nameColumn = nameColumn; // Column of the name token (for carets)
     }
 }
 
@@ -63,14 +65,18 @@ class EntityNode {
  * @param {string} dataType    - Data type (e.g., "STRING")
  * @param {Array}  constraints - Parsed constraints (e.g., ["REQUIRED"])
  * @param {number} line        - Source line number
+ * @param {number} [nameColumn] - Source column of the field name token
+ * @param {number} [typeColumn] - Source column of the data type token
  */
 class FieldNode {
-    constructor(name, dataType, constraints, line) {
+    constructor(name, dataType, constraints, line, nameColumn, typeColumn) {
         this.type = 'Field';
         this.name = name;                    // e.g., "name"
         this.dataType = dataType;            // e.g., "STRING"
         this.constraints = constraints || []; // e.g., ["REQUIRED"]
         this.line = line;                    // Source line number
+        this.nameColumn = nameColumn;        // Column of the field name token
+        this.typeColumn = typeColumn;        // Column of the data type token
     }
 }
 
@@ -83,15 +89,23 @@ class FieldNode {
  * @param {string} targetEntity - Name of the target entity (e.g., "Course")
  * @param {string} relationType - Cardinality ("ONE_TO_ONE", "ONE_TO_MANY", "MANY_TO_ONE", "MANY_TO_MANY")
  * @param {number} line         - Source line number where the RELATION keyword appeared
+ * @param {number} [sourceColumn] - Column of the source entity token
+ * @param {number} [nameColumn]   - Column of the relationship name token
+ * @param {number} [targetColumn] - Column of the target entity token
+ * @param {number} [typeColumn]   - Column of the relation type token
  */
 class RelationNode {
-    constructor(sourceEntity, name, targetEntity, relationType, line) {
+    constructor(sourceEntity, name, targetEntity, relationType, line, sourceColumn, nameColumn, targetColumn, typeColumn) {
         this.type = 'Relation';
         this.sourceEntity = sourceEntity;    // e.g., "Student"
         this.name = name;                    // e.g., "ENROLLS_IN"
         this.targetEntity = targetEntity;    // e.g., "Course"
         this.relationType = relationType;    // e.g., "MANY_TO_MANY"
         this.line = line;                    // Source line number
+        this.sourceColumn = sourceColumn;    // Column of the source entity token
+        this.nameColumn = nameColumn;        // Column of the relationship name token
+        this.targetColumn = targetColumn;    // Column of the target entity token
+        this.typeColumn = typeColumn;        // Column of the relation type token
     }
 }
 

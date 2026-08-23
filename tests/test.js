@@ -7,14 +7,21 @@
  * We use a simple custom test runner (no external libraries)
  * to keep things lightweight and educational.
  * 
- * Tests are organized by compiler phase:
- *   1. Lexer tests      (59 tests)
- *   2. Parser tests     (new)
- *   3. Semantic analyzer tests (placeholder)
- *   4. IR generator tests (placeholder)
+ * Tests are organized by compiler phase, each with its own
+ * pass/fail tally:
+ *   1. Lexer tests
+ *   2. Parser tests               (incl. "did you mean?" suggestions)
+ *   3. Semantic analyzer tests    (incl. column info + suggestions)
+ *   4. IR generator tests
  *   5. Optimizer tests
- *   6. Code generator tests (placeholder)
- * 
+ *   6. Code generator tests
+ *
+ * Plus cross-cutting coverage tallied under "other":
+ *   - Error-utility unit tests (src/utils/errors.js)
+ *   - End-to-end pipeline tests (source string → generated SQL)
+ *   - Sample-file coverage      (samples/*.apiforge)
+ *   - REST API integration tests
+ *
  * Run with:  npm test  (or  node tests/test.js)
  * 
  * ============================================================
@@ -2573,6 +2580,263 @@ function simulatePost(routePath, body) {
         handler(req, res);
     });
 }
+
+// ═════════════════════════════════════════════════════════════
+// ERROR-UTILITIES, SUGGESTIONS, POSITION INFO & END-TO-END TESTS
+// (added when hardening the compiler — error messages + coverage)
+// ═════════════════════════════════════════════════════════════
+
+const ErrUtil = require('../src/utils/errors');
+const nodeFs = require('fs');
+const nodePath = require('path');
+
+const DT_CANDIDATES = ['INT', 'STRING', 'FLOAT', 'BOOLEAN'];
+const RT_CANDIDATES = ['ONE_TO_ONE', 'ONE_TO_MANY', 'MANY_TO_ONE', 'MANY_TO_MANY'];
+
+/** Run the full 6-phase pipeline in-process (no disk writes). */
+function e2eCompile(src) {
+    const ast = lexAndParse(src);
+    const sem = SemanticAnalyzer.analyze(ast);
+    if (!sem.valid) {
+        return { valid: false, errors: sem.errors, schema: '', files: [] };
+    }
+    const ir = IRGenerator.generate(ast, sem);
+    const opt = Optimizer.optimize(ir);
+    const gen = CodeGenerator.generate(opt.ir, false);
+    const schemaFile = gen.files.find(f => f.path === 'database/schema.sql');
+    return { valid: true, errors: [], schema: schemaFile ? schemaFile.content : '', files: gen.files };
+}
+
+/** Capture a thrown error message (or '' if nothing thrown). */
+function captureThrow(fn) {
+    try { fn(); return ''; } catch (e) { return e.message; }
+}
+
+// ── errors.js: levenshtein ──────────────────────────────────
+currentPhase = 'other';
+console.log('');
+console.log('╔══════════════════════════════════════════════╗');
+console.log('║       Error-Utilities Tests (errors.js)      ║');
+console.log('╚══════════════════════════════════════════════╝');
+console.log('');
+console.log('── errors.js: levenshtein ──');
+
+assertEqual('levenshtein identical is 0',        ErrUtil.levenshtein('STRING', 'STRING'), 0);
+assertEqual('levenshtein one substitution is 1', ErrUtil.levenshtein('STRING', 'STRIMG'), 1);
+assertEqual('levenshtein rel-type typo is 1',    ErrUtil.levenshtein('MANY_TO_MANY', 'MANY_TO_MANU'), 1);
+assertEqual('levenshtein empty vs abc is 3',     ErrUtil.levenshtein('', 'abc'), 3);
+assertEqual('levenshtein kitten/sitting is 3',   ErrUtil.levenshtein('kitten', 'sitting'), 3);
+assertTrue('levenshtein VARCHAR vs STRING > 2',  ErrUtil.levenshtein('VARCHAR', 'STRING') > 2);
+
+// ── errors.js: suggestClosest ───────────────────────────────
+console.log('');
+console.log('── errors.js: suggestClosest ──');
+
+assertEqual('suggestClosest STRIMG -> STRING',       ErrUtil.suggestClosest('STRIMG', DT_CANDIDATES), 'STRING');
+assertEqual('suggestClosest MANY_TO_MANU -> MANY_TO_MANY', ErrUtil.suggestClosest('MANY_TO_MANU', RT_CANDIDATES), 'MANY_TO_MANY');
+assertEqual('suggestClosest VARCHAR -> null (far)',  ErrUtil.suggestClosest('VARCHAR', DT_CANDIDATES), null);
+assertEqual('suggestClosest INVALID -> null (far)',  ErrUtil.suggestClosest('INVALID', RT_CANDIDATES), null);
+assertEqual('suggestClosest Studet -> Student',      ErrUtil.suggestClosest('Studet', ['Student', 'Course']), 'Student');
+assertEqual('suggestClosest empty candidates -> null', ErrUtil.suggestClosest('anything', []), null);
+
+// ── errors.js: didYouMeanSuffix ─────────────────────────────
+console.log('');
+console.log('── errors.js: didYouMeanSuffix ──');
+
+assertEqual('didYouMeanSuffix near-miss phrase', ErrUtil.didYouMeanSuffix('STRIMG', DT_CANDIDATES), " Did you mean 'STRING'?");
+assertEqual('didYouMeanSuffix far -> empty',     ErrUtil.didYouMeanSuffix('VARCHAR', DT_CANDIDATES), '');
+assertEqual('didYouMeanSuffix exact -> empty',   ErrUtil.didYouMeanSuffix('STRING', DT_CANDIDATES), '');
+
+// ── errors.js: formatCodeFrame ──────────────────────────────
+console.log('');
+console.log('── errors.js: formatCodeFrame ──');
+
+const feFrame = ErrUtil.formatCodeFrame('a\nname INT\nb', 2, 1);
+assertTrue('formatCodeFrame shows the source line', feFrame.includes('name INT'));
+assertTrue('formatCodeFrame draws a caret',         feFrame.includes('^'));
+assertEqual('formatCodeFrame out-of-range -> empty', ErrUtil.formatCodeFrame('one line', 5, 1), '');
+assertEqual('formatCodeFrame line 0 -> empty',       ErrUtil.formatCodeFrame('one line', 0, 1), '');
+const feCol = ErrUtil.formatCodeFrame('name INT', 1, 6, 1);
+assertTrue('formatCodeFrame positions caret at column', feCol.includes('name INT') && feCol.includes('^'));
+assertEqual('formatCodeFrame without column shows line only', ErrUtil.formatCodeFrame('name INT', 1), '1 | name INT');
+
+// ── Parser: "did you mean?" suggestions ─────────────────────
+currentPhase = 'parser';
+console.log('');
+console.log('╔══════════════════════════════════════════════╗');
+console.log('║       Parser Suggestion Tests                ║');
+console.log('╚══════════════════════════════════════════════╝');
+console.log('');
+console.log('── Parser: datatype typo suggestion ──');
+
+assertThrows('Datatype typo still says Expected DATATYPE',
+    () => lexAndParse('ENTITY Student\nname STRIMG'),
+    'Expected DATATYPE');
+assertThrows('Datatype typo suggests STRING',
+    () => lexAndParse('ENTITY Student\nname STRIMG'),
+    "Did you mean 'STRING'?");
+
+console.log('');
+console.log('── Parser: relation-type typo suggestion ──');
+
+const relTypoSrc = 'ENTITY A\nid INT PRIMARY KEY\n\nENTITY B\nid INT PRIMARY KEY\n\nRELATION A CONNECTS B MANY_TO_MANU';
+assertThrows('Relation-type typo still says Expected RELATION_TYPE',
+    () => lexAndParse(relTypoSrc),
+    'Expected RELATION_TYPE');
+assertThrows('Relation-type typo suggests MANY_TO_MANY',
+    () => lexAndParse(relTypoSrc),
+    "Did you mean 'MANY_TO_MANY'?");
+
+console.log('');
+console.log('── Parser: no suggestion for far-off tokens ──');
+
+const varcharMsg = captureThrow(() => lexAndParse('ENTITY Student\nname VARCHAR'));
+assertTrue('VARCHAR reports Expected DATATYPE', varcharMsg.includes('Expected DATATYPE'));
+assertTrue('VARCHAR offers no suggestion',      !varcharMsg.includes('Did you mean'));
+
+const charMsg = captureThrow(() => lexAndParse('ENTITY Student\nname CHAR'));
+assertTrue('CHAR offers no suggestion', !charMsg.includes('Did you mean'));
+
+const relInvalidSrc = 'ENTITY A\nid INT PRIMARY KEY\n\nENTITY B\nid INT PRIMARY KEY\n\nRELATION A CONNECTS B INVALID';
+const relInvalidMsg = captureThrow(() => lexAndParse(relInvalidSrc));
+assertTrue('INVALID rel-type reports Expected RELATION_TYPE', relInvalidMsg.includes('Expected RELATION_TYPE'));
+assertTrue('INVALID rel-type offers no suggestion',           !relInvalidMsg.includes('Did you mean'));
+
+// ── Semantic: column info + entity-name suggestions ─────────
+currentPhase = 'semantic';
+console.log('');
+console.log('╔══════════════════════════════════════════════╗');
+console.log('║       Semantic Position & Suggestion Tests   ║');
+console.log('╚══════════════════════════════════════════════╝');
+console.log('');
+console.log('── Semantic: errors carry a column ──');
+
+const dupFieldRes = lexParseAnalyze('ENTITY Student\nid INT PRIMARY KEY\nname STRING REQUIRED\nname INT');
+const dupFieldErr = dupFieldRes.errors.find(e => e.message.includes("Duplicate field 'name'"));
+assertTrue('Duplicate-field error exists',            !!dupFieldErr);
+assertTrue('Duplicate-field error carries numeric column', dupFieldErr && typeof dupFieldErr.column === 'number' && dupFieldErr.column >= 1);
+
+const missingTargetRes = lexParseAnalyze('ENTITY Student\nid INT PRIMARY KEY\nname STRING REQUIRED\n\nRELATION Student ENROLLS_IN Course MANY_TO_MANY');
+const missingTargetErr = missingTargetRes.errors.find(e => e.message.includes("Target entity 'Course'"));
+assertTrue('Missing-target error exists',             !!missingTargetErr);
+assertTrue('Missing-target error carries numeric column', missingTargetErr && typeof missingTargetErr.column === 'number' && missingTargetErr.column >= 1);
+
+const pkTypeRes = lexParseAnalyze('ENTITY Item\nid FLOAT PRIMARY KEY');
+const pkTypeErr = pkTypeRes.errors.find(e => e.message.includes('requires INT or STRING'));
+assertTrue('PK-type error exists',                    !!pkTypeErr);
+assertTrue('PK-type error carries numeric column',    pkTypeErr && typeof pkTypeErr.column === 'number' && pkTypeErr.column >= 1);
+
+const selfRelRes = lexParseAnalyze('ENTITY Student\nid INT PRIMARY KEY\nname STRING REQUIRED\n\nRELATION Student LIKES Student ONE_TO_ONE');
+const selfRelErr = selfRelRes.errors.find(e => e.message.includes('Self-referential'));
+assertTrue('Self-referential error exists',           !!selfRelErr);
+assertTrue('Self-referential error carries numeric column', selfRelErr && typeof selfRelErr.column === 'number' && selfRelErr.column >= 1);
+
+// Defensive invalid-type path (parser blocks bad types, so build AST directly)
+const badTypeProg = new ProgramNode();
+const badTypeEnt = new EntityNode('Widget', 1, 8);
+badTypeEnt.fields.push(new FieldNode('label', 'VARCHAR', [], 2, 1, 7));
+badTypeProg.entities.push(badTypeEnt);
+const badTypeSem = SemanticAnalyzer.analyze(badTypeProg);
+const badTypeErr = badTypeSem.errors.find(e => e.message.includes("Invalid data type 'VARCHAR'"));
+assertTrue('Invalid-type error exists',               !!badTypeErr);
+assertEqual('Invalid-type error uses the type column', badTypeErr && badTypeErr.column, 7);
+assertTrue('Invalid-type error offers no suggestion (VARCHAR far)', badTypeErr && !badTypeErr.message.includes('Did you mean'));
+
+console.log('');
+console.log('── Semantic: entity-name "did you mean?" ──');
+
+const srcTypoRes = lexParseAnalyze('ENTITY Student\nid INT PRIMARY KEY\nname STRING REQUIRED\n\nRELATION Studet ENROLLS_IN Student ONE_TO_MANY');
+assertTrue('Undeclared source near-miss suggests Student',
+    srcTypoRes.errors.some(e => e.message.includes("Source entity 'Studet'") && e.message.includes("Did you mean 'Student'?")));
+
+const tgtTypoRes = lexParseAnalyze('ENTITY Student\nid INT PRIMARY KEY\n\nENTITY Course\nid INT PRIMARY KEY\n\nRELATION Course LINKS Studet MANY_TO_MANY');
+assertTrue('Undeclared target near-miss suggests Student',
+    tgtTypoRes.errors.some(e => e.message.includes("Target entity 'Studet'") && e.message.includes("Did you mean 'Student'?")));
+
+const farMissRes = lexParseAnalyze('ENTITY Student\nid INT PRIMARY KEY\nname STRING REQUIRED\n\nRELATION Student ENROLLS_IN GhostCourse MANY_TO_MANY');
+assertTrue('Far-off target reports does-not-exist',
+    farMissRes.errors.some(e => e.message.includes("Target entity 'GhostCourse'") && e.message.includes('does not exist')));
+assertTrue('Far-off target offers no suggestion',
+    farMissRes.errors.every(e => !e.message.includes('Did you mean')));
+
+// ── End-to-end: full pipeline SQL generation ────────────────
+currentPhase = 'codegen';
+console.log('');
+console.log('╔══════════════════════════════════════════════╗');
+console.log('║       End-to-End Pipeline Tests              ║');
+console.log('╚══════════════════════════════════════════════╝');
+console.log('');
+console.log('── E2E: MANY_TO_MANY junction table ──');
+
+const mnRes = e2eCompile('ENTITY Student\nid INT PRIMARY KEY\nname STRING REQUIRED\n\nENTITY Course\nid INT PRIMARY KEY\ntitle STRING REQUIRED\n\nRELATION Student ENROLLS_IN Course MANY_TO_MANY');
+assertTrue('E2E M:N pipeline is valid',           mnRes.valid);
+assertTrue('E2E M:N has Student table',           mnRes.schema.includes('CREATE TABLE Student ('));
+assertTrue('E2E M:N has AUTO_INCREMENT PK',       mnRes.schema.includes('id INT PRIMARY KEY AUTO_INCREMENT'));
+assertTrue('E2E M:N maps STRING to VARCHAR(255)', mnRes.schema.includes('name VARCHAR(255) NOT NULL'));
+assertTrue('E2E M:N creates junction table',      mnRes.schema.includes('CREATE TABLE Student_Course ('));
+assertTrue('E2E M:N junction composite PK',       mnRes.schema.includes('PRIMARY KEY (student_id, course_id)'));
+assertTrue('E2E M:N junction FK source CASCADE',  mnRes.schema.includes('FOREIGN KEY (student_id) REFERENCES Student(id) ON DELETE CASCADE'));
+assertTrue('E2E M:N junction FK target CASCADE',  mnRes.schema.includes('FOREIGN KEY (course_id) REFERENCES Course(id) ON DELETE CASCADE'));
+assertEqual('E2E M:N generates 11 files',         mnRes.files.length, 11);
+
+console.log('');
+console.log('── E2E: ONE_TO_MANY foreign key ──');
+
+const onRes = e2eCompile('ENTITY Department\nid INT PRIMARY KEY\nname STRING REQUIRED\n\nENTITY Employee\nid INT PRIMARY KEY\nname STRING REQUIRED\n\nRELATION Department HAS Employee ONE_TO_MANY');
+assertTrue('E2E 1:N pipeline is valid',       onRes.valid);
+assertTrue('E2E 1:N adds FK column on many side', onRes.schema.includes('ALTER TABLE Employee ADD COLUMN department_id INT;'));
+assertTrue('E2E 1:N FK references source',     onRes.schema.includes('REFERENCES Department(id)'));
+assertTrue('E2E 1:N uses ON DELETE SET NULL',  onRes.schema.includes('ON DELETE SET NULL'));
+assertTrue('E2E 1:N names the FK constraint',  onRes.schema.includes('fk_employee_department'));
+
+console.log('');
+console.log('── E2E: BOOLEAN data type mapping ──');
+
+const boolRes = e2eCompile('ENTITY Flag\nid INT PRIMARY KEY\nactive BOOLEAN');
+assertTrue('E2E BOOLEAN pipeline is valid', boolRes.valid);
+assertTrue('E2E BOOLEAN maps to BOOLEAN',   boolRes.schema.includes('active BOOLEAN'));
+
+console.log('');
+console.log('── E2E: single-entity file count ──');
+
+const singleRes = e2eCompile('ENTITY Student\nid INT PRIMARY KEY\nname STRING REQUIRED');
+assertTrue('E2E single-entity pipeline is valid', singleRes.valid);
+assertEqual('E2E single entity generates 8 files', singleRes.files.length, 8);
+
+// ── Sample-file coverage ────────────────────────────────────
+currentPhase = 'other';
+console.log('');
+console.log('╔══════════════════════════════════════════════╗');
+console.log('║       Sample File Coverage Tests             ║');
+console.log('╚══════════════════════════════════════════════╝');
+console.log('');
+console.log('── Samples: documented behavior ──');
+
+function readSample(name) {
+    return nodeFs.readFileSync(nodePath.join(__dirname, '..', 'samples', name), 'utf-8');
+}
+
+const studentSampleRes = e2eCompile(readSample('student.apiforge'));
+assertTrue('sample student.apiforge compiles clean', studentSampleRes.valid);
+assertTrue('sample student.apiforge builds Student table', studentSampleRes.schema.includes('CREATE TABLE Student ('));
+assertEqual('sample student.apiforge generates 8 files', studentSampleRes.files.length, 8);
+
+const relSampleRes = e2eCompile(readSample('student_course_rel.apiforge'));
+assertTrue('sample student_course_rel.apiforge compiles clean', relSampleRes.valid);
+assertTrue('sample student_course_rel.apiforge builds junction table', relSampleRes.schema.includes('CREATE TABLE Student_Course ('));
+
+const dupSampleSem = lexParseAnalyze(readSample('dup_rel.apiforge'));
+assertTrue('sample dup_rel.apiforge fails semantics', !dupSampleSem.valid);
+assertTrue('sample dup_rel.apiforge reports duplicate relationship',
+    dupSampleSem.errors.some(e => e.message.includes("Duplicate relationship 'ENROLLS_IN'")));
+
+const invalidSampleSem = lexParseAnalyze(readSample('invalid_rel.apiforge'));
+assertTrue('sample invalid_rel.apiforge fails semantics', !invalidSampleSem.valid);
+assertTrue('sample invalid_rel.apiforge reports missing target entity',
+    invalidSampleSem.errors.some(e => e.message.includes("Target entity 'Course'") && e.message.includes('does not exist')));
+
+// Reset phase for the API tests that follow.
+currentPhase = 'other';
 
 // Wrap async tests in an IIFE so they work in CommonJS
 (async () => {

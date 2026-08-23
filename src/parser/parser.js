@@ -55,6 +55,11 @@
  */
 
 const { ProgramNode, EntityNode, FieldNode, RelationNode } = require('../ast/ast');
+const { didYouMeanSuffix } = require('../utils/errors');
+
+// ── Candidate lists for "did you mean?" suggestions ─────────
+const DATA_TYPES = ['INT', 'STRING', 'FLOAT', 'BOOLEAN'];
+const RELATION_TYPES = ['ONE_TO_ONE', 'ONE_TO_MANY', 'MANY_TO_ONE', 'MANY_TO_MANY'];
 
 // ── Parser Class ────────────────────────────────────────────
 
@@ -210,7 +215,7 @@ class Parser {
         const nameToken = this.expect('IDENTIFIER');
 
         // Create the entity AST node
-        const entity = new EntityNode(nameToken.value, entityKeyword.line);
+        const entity = new EntityNode(nameToken.value, entityKeyword.line, nameToken.column);
 
         // Step 3: Parse fields until we hit another ENTITY, RELATION, or EOF.
         // A field always starts with an IDENTIFIER (the field name).
@@ -268,14 +273,28 @@ class Parser {
         const targetEntityToken = this.expect('IDENTIFIER');
 
         // Step 5: Expect relationship type (RELATION_TYPE)
-        const relationTypeToken = this.expect('RELATION_TYPE');
+        // As with data types, keep the canonical "Expected RELATION_TYPE"
+        // phrasing and append a suggestion on a near-miss.
+        const relationTypeTok = this.current();
+        if (relationTypeTok.type !== 'RELATION_TYPE') {
+            const suffix = didYouMeanSuffix(relationTypeTok.value, RELATION_TYPES);
+            throw new Error(
+                `Syntax Error at line ${relationTypeTok.line}, column ${relationTypeTok.column}: ` +
+                `Expected RELATION_TYPE but found ${relationTypeTok.type} "${relationTypeTok.value}".` + suffix
+            );
+        }
+        const relationTypeToken = this.advance();
 
         return new RelationNode(
             sourceEntityToken.value,
             nameToken.value,
             targetEntityToken.value,
             relationTypeToken.value,
-            relationKeyword.line
+            relationKeyword.line,
+            sourceEntityToken.column,
+            nameToken.column,
+            targetEntityToken.column,
+            relationTypeToken.column
         );
     }
 
@@ -303,8 +322,18 @@ class Parser {
         const nameToken = this.advance(); // We already checked it's IDENTIFIER
 
         // Step 2: Expect a data type (DATATYPE token)
-        // If the next token is not a DATATYPE, it's an error.
-        const dataTypeToken = this.expect('DATATYPE');
+        // If the next token is not a DATATYPE, it's an error. We keep the
+        // canonical "Expected DATATYPE" phrasing but append a "did you mean?"
+        // hint when the offending word is a near-miss of a real type.
+        const typeToken = this.current();
+        if (typeToken.type !== 'DATATYPE') {
+            const suffix = didYouMeanSuffix(typeToken.value, DATA_TYPES);
+            throw new Error(
+                `Syntax Error at line ${typeToken.line}, column ${typeToken.column}: ` +
+                `Expected DATATYPE but found ${typeToken.type} "${typeToken.value}".` + suffix
+            );
+        }
+        const dataTypeToken = this.advance();
 
         // Step 3: Parse zero or more constraints
         const constraints = this.parseConstraints();
@@ -313,7 +342,9 @@ class Parser {
             nameToken.value,
             dataTypeToken.value,
             constraints,
-            nameToken.line
+            nameToken.line,
+            nameToken.column,
+            dataTypeToken.column
         );
     }
 

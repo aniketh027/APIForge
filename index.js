@@ -30,7 +30,7 @@
  *   └────────┬─────────┘
  *            ▼
  *   ┌─────────────────┐
- *   │  5. OPTIMIZER    │  Optimizes the IR (future phase)
+ *   │  5. OPTIMIZER    │  Runs 4 IR optimization passes
  *   └────────┬─────────┘
  *            ▼
  *   ┌─────────────────┐
@@ -54,6 +54,7 @@ const SemanticAnalyzer = require('./src/semantic/analyzer');
 const IRGenerator = require('./src/ir/generator');
 const Optimizer = require('./src/optimizer/optimizer');
 const CodeGenerator = require('./src/codegen/codegen');
+const { formatCodeFrame } = require('./src/utils/errors');
 
 // ── Read the source .apiforge file ──────────────────────────
 
@@ -86,13 +87,39 @@ console.log('');
 console.log(`[INFO] Compiling: ${filePath}`);
 console.log('');
 
+// ── Fatal-error reporter (lexer / parser throws) ────────────
+// The lexer and parser fail fast by throwing on the first error.
+// Rather than let Node dump a raw stack trace, we catch the
+// error, print its message, and — when the message carries a
+// "line X, column Y" position — render a source frame with a
+// caret, mirroring the semantic-error output further below.
+function reportFatalError(err) {
+    console.log('');
+    console.log(`[✗] ${err.message}`);
+    const match = /line (\d+), column (\d+)/i.exec(err.message);
+    if (match) {
+        const frame = formatCodeFrame(sourceCode, parseInt(match[1], 10), parseInt(match[2], 10));
+        if (frame) {
+            frame.split('\n').forEach(frameLine => console.log(`       ${frameLine}`));
+        }
+    }
+    console.log('');
+    console.log('[ABORT] Compilation stopped due to a syntax error.');
+    process.exit(1);
+}
+
 // ── PHASE 1: Lexical Analysis ───────────────────────────────
 // The lexer (tokenizer) reads the raw source code character by
 // character and groups them into meaningful tokens like
 // KEYWORD, IDENTIFIER, DATATYPE, MODIFIER, etc.
 
 console.log('─── Phase 1: Lexical Analysis ───');
-const tokens = Lexer.tokenize(sourceCode);
+let tokens;
+try {
+    tokens = Lexer.tokenize(sourceCode);
+} catch (err) {
+    reportFatalError(err);
+}
 console.log(`[✓] Lexer produced ${tokens.length} tokens`);
 console.log('');
 
@@ -118,7 +145,12 @@ console.log('');
 // the structure of the DSL program.
 
 console.log('─── Phase 2: Syntax Analysis ───');
-const ast = Parser.parse(tokens);
+let ast;
+try {
+    ast = Parser.parse(tokens);
+} catch (err) {
+    reportFatalError(err);
+}
 const relCount = ast.relations ? ast.relations.length : 0;
 const relStr = relCount > 0 ? `, ${relCount} relation/relations` : '';
 console.log(`[✓] Parser built the AST (${ast.entities.length} entity/entities${relStr})`);
@@ -176,7 +208,14 @@ if (semanticResult.valid) {
 } else {
     console.log(`[✗] Semantic analysis failed — ${semanticResult.errors.length} error(s):`);
     semanticResult.errors.forEach((err, i) => {
-        console.log(`    ${i + 1}. Line ${err.line}: ${err.message}`);
+        const pos = err.column ? `Line ${err.line}, Column ${err.column}` : `Line ${err.line}`;
+        console.log(`    ${i + 1}. ${pos}: ${err.message}`);
+
+        // Show a source excerpt with a caret under the offending token.
+        const frame = formatCodeFrame(sourceCode, err.line, err.column);
+        if (frame) {
+            frame.split('\n').forEach(frameLine => console.log(`       ${frameLine}`));
+        }
     });
     console.log('');
     console.log('[ABORT] Compilation stopped due to semantic errors.');

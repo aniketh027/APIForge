@@ -70,6 +70,8 @@
 // ── Reserved Words ──────────────────────────────────────────
 // Entity names, field names, and relation names must NOT use any of these.
 
+const { didYouMeanSuffix } = require('../utils/errors');
+
 const RESERVED_WORDS = new Set([
     // Keywords
     'ENTITY', 'RELATION',
@@ -128,11 +130,13 @@ class SemanticAnalyzer {
     // ── Error Helper ────────────────────────────────────────
 
     /**
-     * addError(message, line)
+     * addError(message, line, column)
      * Records a semantic error. We don't throw — we collect.
+     * `column` is optional; when present it lets the CLI and the
+     * web UI render a caret under the offending token.
      */
-    addError(message, line) {
-        this.errors.push({ message, line });
+    addError(message, line, column) {
+        this.errors.push({ message, line, column });
     }
 
     // ════════════════════════════════════════════════════════
@@ -212,7 +216,8 @@ class SemanticAnalyzer {
             if (seen.has(entity.name)) {
                 this.addError(
                     `Duplicate entity '${entity.name}'. Entity names must be unique.`,
-                    entity.line
+                    entity.line,
+                    entity.nameColumn
                 );
             } else {
                 seen.add(entity.name);
@@ -242,7 +247,8 @@ class SemanticAnalyzer {
         if (RESERVED_WORDS.has(entity.name)) {
             this.addError(
                 `Entity name '${entity.name}' is a reserved word and cannot be used as an identifier.`,
-                entity.line
+                entity.line,
+                entity.nameColumn
             );
         }
 
@@ -250,7 +256,8 @@ class SemanticAnalyzer {
         if (entity.fields.length === 0) {
             this.addError(
                 `Entity '${entity.name}' must contain at least one field.`,
-                entity.line
+                entity.line,
+                entity.nameColumn
             );
         }
 
@@ -265,7 +272,8 @@ class SemanticAnalyzer {
             if (seenFieldNames.has(field.name)) {
                 this.addError(
                     `Duplicate field '${field.name}' in entity '${entity.name}'.`,
-                    field.line
+                    field.line,
+                    field.nameColumn
                 );
             } else {
                 seenFieldNames.add(field.name);
@@ -275,15 +283,18 @@ class SemanticAnalyzer {
             if (RESERVED_WORDS.has(field.name)) {
                 this.addError(
                     `Field name '${field.name}' in entity '${entity.name}' is a reserved word and cannot be used as an identifier.`,
-                    field.line
+                    field.line,
+                    field.nameColumn
                 );
             }
 
             // ── Rule: Valid data type ───────────────────────
             if (!VALID_DATA_TYPES.has(field.dataType)) {
                 this.addError(
-                    `Invalid data type '${field.dataType}' for field '${field.name}' in entity '${entity.name}'. Allowed types: INT, STRING, FLOAT, BOOLEAN.`,
-                    field.line
+                    `Invalid data type '${field.dataType}' for field '${field.name}' in entity '${entity.name}'. Allowed types: INT, STRING, FLOAT, BOOLEAN.` +
+                        didYouMeanSuffix(field.dataType, Array.from(VALID_DATA_TYPES)),
+                    field.line,
+                    field.typeColumn
                 );
             }
 
@@ -295,7 +306,8 @@ class SemanticAnalyzer {
                 if (primaryKeyCount > 1) {
                     this.addError(
                         `Entity '${entity.name}' cannot have multiple primary keys. Field '${field.name}' is an extra primary key.`,
-                        field.line
+                        field.line,
+                        field.nameColumn
                     );
                 }
 
@@ -303,7 +315,8 @@ class SemanticAnalyzer {
                 if (!PRIMARY_KEY_ALLOWED_TYPES.has(field.dataType)) {
                     this.addError(
                         `PRIMARY KEY on field '${field.name}' in entity '${entity.name}' requires INT or STRING, but found '${field.dataType}'.`,
-                        field.line
+                        field.line,
+                        field.typeColumn
                     );
                 }
             }
@@ -343,6 +356,7 @@ class SemanticAnalyzer {
      */
     checkRelations(relations, entities) {
         const declaredEntityNames = new Set(entities.map(e => e.name));
+        const entityNameList = Array.from(declaredEntityNames); // for "did you mean?" suggestions
         const seenRelNames = new Set();
 
         for (const rel of relations) {
@@ -351,7 +365,8 @@ class SemanticAnalyzer {
             if (seenRelNames.has(rel.name)) {
                 this.addError(
                     `Duplicate relationship '${rel.name}'. Relationship names must be unique.`,
-                    rel.line
+                    rel.line,
+                    rel.nameColumn
                 );
             } else {
                 seenRelNames.add(rel.name);
@@ -361,7 +376,8 @@ class SemanticAnalyzer {
             if (RESERVED_WORDS.has(rel.name)) {
                 this.addError(
                     `Relationship name '${rel.name}' is a reserved word and cannot be used as an identifier.`,
-                    rel.line
+                    rel.line,
+                    rel.nameColumn
                 );
             }
 
@@ -369,7 +385,8 @@ class SemanticAnalyzer {
             if (!VALID_RELATION_TYPES.has(rel.relationType)) {
                 this.addError(
                     `Invalid relationship type '${rel.relationType}' in relationship '${rel.name}'. Allowed types: ONE_TO_ONE, ONE_TO_MANY, MANY_TO_ONE, MANY_TO_MANY.`,
-                    rel.line
+                    rel.line,
+                    rel.typeColumn
                 );
             }
 
@@ -377,23 +394,28 @@ class SemanticAnalyzer {
             if (rel.sourceEntity === rel.targetEntity) {
                 this.addError(
                     `Self-referential relationships are not supported: '${rel.sourceEntity}' cannot relate to itself in relationship '${rel.name}'.`,
-                    rel.line
+                    rel.line,
+                    rel.sourceColumn
                 );
             }
 
             // ── Check: Source entity existence ──────────────
             if (!declaredEntityNames.has(rel.sourceEntity)) {
                 this.addError(
-                    `Source entity '${rel.sourceEntity}' in relationship '${rel.name}' does not exist.`,
-                    rel.line
+                    `Source entity '${rel.sourceEntity}' in relationship '${rel.name}' does not exist.` +
+                        didYouMeanSuffix(rel.sourceEntity, entityNameList),
+                    rel.line,
+                    rel.sourceColumn
                 );
             }
 
             // ── Check: Target entity existence ──────────────
             if (!declaredEntityNames.has(rel.targetEntity)) {
                 this.addError(
-                    `Target entity '${rel.targetEntity}' in relationship '${rel.name}' does not exist.`,
-                    rel.line
+                    `Target entity '${rel.targetEntity}' in relationship '${rel.name}' does not exist.` +
+                        didYouMeanSuffix(rel.targetEntity, entityNameList),
+                    rel.line,
+                    rel.targetColumn
                 );
             }
 
