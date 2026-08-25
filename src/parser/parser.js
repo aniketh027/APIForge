@@ -18,15 +18,21 @@
  *   Program               →  parseProgram()
  *   EntityDeclaration     →  parseEntity()
  *   FieldDeclaration      →  parseField()
- *   Constraints           →  parseConstraints()
+ *   FieldModifiers        →  parseFieldModifiers()
  * 
  * ── Grammar (EBNF) ──
  * 
- * Program     → (EntityDecl | RelationDecl)*
- * EntityDecl  → 'ENTITY' IDENTIFIER FieldDecl+
- * FieldDecl   → IDENTIFIER DataType Constraint*
- * DataType    → 'INT' | 'STRING' | 'FLOAT' | 'BOOLEAN'
- * Constraint  → 'PRIMARY' 'KEY' | 'REQUIRED' | 'UNIQUE'
+ * Program       → (EntityDecl | RelationDecl)*
+ * EntityDecl    → 'ENTITY' IDENTIFIER FieldDecl+
+ * FieldDecl     → IDENTIFIER DataType FieldModifier*
+ * DataType      → 'INT' | 'STRING' | 'FLOAT' | 'BOOLEAN'
+ * FieldModifier → 'PRIMARY' 'KEY'
+ *               | 'REQUIRED'
+ *               | 'UNIQUE'
+ *               | 'MIN' NUMBER
+ *               | 'MAX' NUMBER
+ *               | 'DEFAULT' Value
+ * Value         → NUMBER | STRING_LITERAL | BOOLEAN_LITERAL
  * 
  * ── User-Facing Error Messages ──
  * When unexpected tokens or EOF are encountered, the parser attaches
@@ -43,6 +49,9 @@ const { didYouMeanSuffix } = require('../utils/errors');
 // ── Candidate lists for "did you mean?" suggestions ─────────
 const DATA_TYPES = ['INT', 'STRING', 'FLOAT', 'BOOLEAN'];
 const RELATION_TYPES = ['ONE_TO_ONE', 'ONE_TO_MANY', 'MANY_TO_ONE', 'MANY_TO_MANY'];
+
+// ── Value token types that can follow MIN, MAX, DEFAULT ─────
+const VALUE_TYPES = new Set(['NUMBER', 'STRING_LITERAL', 'BOOLEAN_LITERAL']);
 
 // ── Parser Class ────────────────────────────────────────────
 
@@ -308,7 +317,7 @@ class Parser {
     }
 
     // ════════════════════════════════════════════════════════
-    // GRAMMAR RULE: FieldDecl → IDENTIFIER DataType Constraint*
+    // GRAMMAR RULE: FieldDecl → IDENTIFIER DataType FieldModifier*
     // ════════════════════════════════════════════════════════
     
     /**
@@ -317,6 +326,8 @@ class Parser {
      * Parses a single field declaration:
      *   name STRING REQUIRED
      *   id   INT    PRIMARY KEY
+     *   age  INT    MIN 17 MAX 60
+     *   status STRING DEFAULT "active"
      * 
      * @returns {FieldNode}
      */
@@ -347,8 +358,8 @@ class Parser {
         }
         const dataTypeToken = this.advance();
 
-        // Step 3: Parse zero or more constraints
-        const constraints = this.parseConstraints();
+        // Step 3: Parse zero or more field modifiers (constraints, validations, defaults)
+        const { constraints, validations, defaultValue } = this.parseFieldModifiers();
 
         return new FieldNode(
             nameToken.value,
@@ -356,23 +367,33 @@ class Parser {
             constraints,
             nameToken.line,
             nameToken.column,
-            dataTypeToken.column
+            dataTypeToken.column,
+            validations,
+            defaultValue
         );
     }
 
     // ════════════════════════════════════════════════════════
-    // GRAMMAR RULE: Constraint → 'PRIMARY' 'KEY' | 'REQUIRED' | 'UNIQUE'
+    // GRAMMAR RULE: FieldModifier* → (Constraint | Validation | Default)*
+    //
+    // Constraint  → 'PRIMARY' 'KEY' | 'REQUIRED' | 'UNIQUE'
+    // Validation  → 'MIN' NUMBER | 'MAX' NUMBER
+    // Default     → 'DEFAULT' Value
+    // Value       → NUMBER | STRING_LITERAL | BOOLEAN_LITERAL
     // ════════════════════════════════════════════════════════
     
     /**
-     * parseConstraints()
+     * parseFieldModifiers()
      * 
-     * Parses zero or more field constraints.
+     * Parses zero or more field modifiers after the data type.
+     * Returns an object with constraints, validations, and defaultValue.
      * 
-     * @returns {Array<string>} - e.g., ["PRIMARY_KEY"], ["REQUIRED"], []
+     * @returns {{ constraints: string[], validations: Array, defaultValue: Object|null }}
      */
-    parseConstraints() {
+    parseFieldModifiers() {
         const constraints = [];
+        const validations = [];
+        let defaultValue = null;
 
         // Keep reading while the current token is a MODIFIER
         while (this.current().type === 'MODIFIER') {
@@ -431,6 +452,90 @@ class Parser {
                     constraints.push('UNIQUE');
                     break;
 
+                case 'MIN': {
+                    const minKeyword = this.advance(); // consume MIN
+                    const valToken = this.current();
+
+                    if (valToken.type === 'NUMBER') {
+                        this.advance();
+                        validations.push({ type: 'MIN', value: parseFloat(valToken.value) });
+                    } else {
+                        const isEof = valToken.type === 'EOF';
+                        const userMessage = isEof
+                            ? `Missing value after MIN.\nExpected a number.`
+                            : `Missing value after MIN.\nExpected a number but found ${valToken.type} "${valToken.value}".`;
+                        const messageDesc = `Expected NUMBER after MIN but found ${valToken.type} "${valToken.value}".`;
+
+                        const err = new Error(
+                            `Syntax Error at line ${valToken.line}, column ${valToken.column}: ${messageDesc}`
+                        );
+                        err.line = valToken.line;
+                        err.column = valToken.column;
+                        err.code = 'MISSING_MIN_VALUE';
+                        err.userMessage = userMessage;
+                        throw err;
+                    }
+                    break;
+                }
+
+                case 'MAX': {
+                    const maxKeyword = this.advance(); // consume MAX
+                    const valToken = this.current();
+
+                    if (valToken.type === 'NUMBER') {
+                        this.advance();
+                        validations.push({ type: 'MAX', value: parseFloat(valToken.value) });
+                    } else {
+                        const isEof = valToken.type === 'EOF';
+                        const userMessage = isEof
+                            ? `Missing value after MAX.\nExpected a number.`
+                            : `Missing value after MAX.\nExpected a number but found ${valToken.type} "${valToken.value}".`;
+                        const messageDesc = `Expected NUMBER after MAX but found ${valToken.type} "${valToken.value}".`;
+
+                        const err = new Error(
+                            `Syntax Error at line ${valToken.line}, column ${valToken.column}: ${messageDesc}`
+                        );
+                        err.line = valToken.line;
+                        err.column = valToken.column;
+                        err.code = 'MISSING_MAX_VALUE';
+                        err.userMessage = userMessage;
+                        throw err;
+                    }
+                    break;
+                }
+
+                case 'DEFAULT': {
+                    const defKeyword = this.advance(); // consume DEFAULT
+                    const valToken = this.current();
+
+                    if (valToken.type === 'NUMBER') {
+                        this.advance();
+                        defaultValue = { type: 'NUMBER', value: parseFloat(valToken.value) };
+                    } else if (valToken.type === 'STRING_LITERAL') {
+                        this.advance();
+                        defaultValue = { type: 'STRING', value: valToken.value };
+                    } else if (valToken.type === 'BOOLEAN_LITERAL') {
+                        this.advance();
+                        defaultValue = { type: 'BOOLEAN', value: valToken.value === 'TRUE' };
+                    } else {
+                        const isEof = valToken.type === 'EOF';
+                        const userMessage = isEof
+                            ? `Missing default value.\nExpected a number, string, or boolean.`
+                            : `Missing default value.\nExpected a number, string, or boolean but found ${valToken.type} "${valToken.value}".`;
+                        const messageDesc = `Expected value after DEFAULT but found ${valToken.type} "${valToken.value}".`;
+
+                        const err = new Error(
+                            `Syntax Error at line ${valToken.line}, column ${valToken.column}: ${messageDesc}`
+                        );
+                        err.line = valToken.line;
+                        err.column = valToken.column;
+                        err.code = 'MISSING_DEFAULT_VALUE';
+                        err.userMessage = userMessage;
+                        throw err;
+                    }
+                    break;
+                }
+
                 default:
                     const errMod = new Error(
                         `Syntax Error at line ${token.line}, column ${token.column}: ` +
@@ -444,7 +549,7 @@ class Parser {
             }
         }
 
-        return constraints;
+        return { constraints, validations, defaultValue };
     }
 }
 

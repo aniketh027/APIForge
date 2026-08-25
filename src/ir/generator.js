@@ -26,7 +26,16 @@
  *   type: "PROGRAM",
  *   instructions: [
  *     { op: "CREATE_ENTITY", entity: "Student", line: 11 },
- *     { op: "ADD_FIELD", entity: "Student", field: "id", dataType: "INT", constraints: ["PRIMARY_KEY"], line: 13 },
+ *     {
+ *       op: "ADD_FIELD",
+ *       entity: "Student",
+ *       field: "age",
+ *       dataType: "INT",
+ *       constraints: [],
+ *       validations: [{ type: "MIN", value: 18 }, { type: "MAX", value: 60 }],
+ *       defaultValue: { type: "NUMBER", value: 25 },
+ *       line: 13
+ *     },
  *     { op: "CREATE_RELATION", sourceEntity: "Student", relationName: "ENROLLS_IN", targetEntity: "Course", relationType: "MANY_TO_MANY", line: 15 },
  *     ...
  *   ]
@@ -40,6 +49,17 @@ const VALID_RELATION_TYPES = new Set([
     'ONE_TO_MANY',
     'MANY_TO_ONE',
     'MANY_TO_MANY'
+]);
+
+const VALID_VALIDATION_TYPES = new Set([
+    'MIN',
+    'MAX'
+]);
+
+const VALID_DEFAULT_TYPES = new Set([
+    'NUMBER',
+    'STRING',
+    'BOOLEAN'
 ]);
 
 /**
@@ -94,6 +114,46 @@ function validate(ir) {
                 }
                 if (!Array.isArray(inst.constraints)) {
                     errors.push(`ADD_FIELD instruction at index ${index} must have a 'constraints' array.`);
+                }
+
+                // Validation of 'validations' array if present
+                if (inst.validations !== undefined) {
+                    if (!Array.isArray(inst.validations)) {
+                        errors.push(`ADD_FIELD instruction at index ${index} must have a 'validations' array.`);
+                    } else {
+                        inst.validations.forEach((v, vIdx) => {
+                            if (!v || typeof v !== 'object') {
+                                errors.push(`Validation at index ${vIdx} in ADD_FIELD instruction at index ${index} must be an object.`);
+                                return;
+                            }
+                            if (!v.type || !VALID_VALIDATION_TYPES.has(v.type)) {
+                                errors.push(`Validation at index ${vIdx} in ADD_FIELD instruction at index ${index} has invalid type '${v.type}'. Expected 'MIN' or 'MAX'.`);
+                            }
+                            if (typeof v.value !== 'number' || Number.isNaN(v.value)) {
+                                errors.push(`Validation at index ${vIdx} in ADD_FIELD instruction at index ${index} must have a numeric 'value'.`);
+                            }
+                        });
+                    }
+                }
+
+                // Validation of 'defaultValue' if present
+                if (inst.defaultValue !== undefined && inst.defaultValue !== null) {
+                    if (typeof inst.defaultValue !== 'object' || Array.isArray(inst.defaultValue)) {
+                        errors.push(`Default value in ADD_FIELD instruction at index ${index} must be an object or null.`);
+                    } else {
+                        if (!inst.defaultValue.type || !VALID_DEFAULT_TYPES.has(inst.defaultValue.type)) {
+                            errors.push(`Default value in ADD_FIELD instruction at index ${index} has invalid type '${inst.defaultValue.type}'. Expected 'NUMBER', 'STRING', or 'BOOLEAN'.`);
+                        }
+                        if (inst.defaultValue.type === 'NUMBER' && (typeof inst.defaultValue.value !== 'number' || Number.isNaN(inst.defaultValue.value))) {
+                            errors.push(`Default value in ADD_FIELD instruction at index ${index} with type 'NUMBER' must have a numeric value.`);
+                        }
+                        if (inst.defaultValue.type === 'STRING' && typeof inst.defaultValue.value !== 'string') {
+                            errors.push(`Default value in ADD_FIELD instruction at index ${index} with type 'STRING' must have a string value.`);
+                        }
+                        if (inst.defaultValue.type === 'BOOLEAN' && typeof inst.defaultValue.value !== 'boolean') {
+                            errors.push(`Default value in ADD_FIELD instruction at index ${index} with type 'BOOLEAN' must have a boolean value.`);
+                        }
+                    }
                 }
                 break;
 
@@ -157,6 +217,16 @@ function generate(ast, semanticResult = null) {
 
         // Traverse entity fields
         for (const field of entity.fields) {
+            // Format validations
+            const validations = Array.isArray(field.validations)
+                ? field.validations.map(v => ({ type: v.type, value: v.value }))
+                : [];
+
+            // Format defaultValue
+            const defaultValue = (field.defaultValue && typeof field.defaultValue === 'object')
+                ? { type: field.defaultValue.type, value: field.defaultValue.value }
+                : null;
+
             // Instruction: ADD_FIELD
             instructions.push({
                 op: 'ADD_FIELD',
@@ -164,6 +234,8 @@ function generate(ast, semanticResult = null) {
                 field: field.name,
                 dataType: field.dataType,
                 constraints: [...(field.constraints || [])],
+                validations,
+                defaultValue,
                 line: field.line
             });
         }

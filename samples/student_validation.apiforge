@@ -1,0 +1,13 @@
+// ============================================
+// APIForge DSL - Validation & Default Sample
+// File: student_validation.apiforge
+// ============================================
+
+ENTITY Student
+
+    id      INT     PRIMARY KEY
+    name    STRING  REQUIRED
+    age     INT     MIN 18 MAX 60 DEFAULT 25
+    status  STRING  DEFAULT "active"
+    cgpa    FLOAT   MIN 0.0 MAX 10.0 DEFAULT 8.5
+    active  BOOLEAN DEFAULT TRUE

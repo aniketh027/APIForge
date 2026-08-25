@@ -24,18 +24,24 @@
  *      - Is it a data type? → DATATYPE token
  *      - Is it a modifier?  → MODIFIER token
  *      - Otherwise          → IDENTIFIER token
- * 4. If we encounter a digit at the start of a word, that's
- *    an error (identifiers can't start with digits).
- * 5. Any other unexpected character is a lexical error.
- * 6. At the end, we append an EOF token.
+ * 4. When we find a digit, we read a number literal (integer
+ *    or decimal) and produce a NUMBER token.
+ * 5. When we find a double-quote, we read a string literal
+ *    (up to the closing quote) and produce a STRING_LITERAL.
+ * 6. Any other unexpected character is a lexical error.
+ * 7. At the end, we append an EOF token.
  * 
  * ── Token Types ──
  * 
- * KEYWORD      → ENTITY
- * DATATYPE     → INT, STRING, FLOAT, BOOLEAN
- * MODIFIER     → PRIMARY, KEY, REQUIRED, UNIQUE
- * IDENTIFIER   → any user-defined name (e.g., Student, age)
- * EOF          → marks the end of input
+ * KEYWORD         → ENTITY, RELATION
+ * DATATYPE        → INT, STRING, FLOAT, BOOLEAN
+ * MODIFIER        → PRIMARY, KEY, REQUIRED, UNIQUE, MIN, MAX, DEFAULT
+ * RELATION_TYPE   → ONE_TO_ONE, ONE_TO_MANY, MANY_TO_ONE, MANY_TO_MANY
+ * IDENTIFIER      → any user-defined name (e.g., Student, age)
+ * NUMBER          → numeric literals (e.g., 17, 8.5)
+ * STRING_LITERAL  → quoted strings (e.g., "active")
+ * BOOLEAN_LITERAL → TRUE, FALSE
+ * EOF             → marks the end of input
  * 
  * ── Token Shape ──
  * 
@@ -98,12 +104,26 @@ const DATA_TYPES = new Set([
  * Field modifiers / constraints.
  * PRIMARY and KEY are separate tokens — the parser
  * will later combine them into a single PRIMARY KEY constraint.
+ * MIN, MAX, and DEFAULT are validation/default modifiers —
+ * the parser reads a following value token for each.
  */
 const MODIFIERS = new Set([
     'PRIMARY',
     'KEY',
     'REQUIRED',
-    'UNIQUE'
+    'UNIQUE',
+    'MIN',
+    'MAX',
+    'DEFAULT'
+]);
+
+/**
+ * Boolean literal values.
+ * TRUE and FALSE are recognized as BOOLEAN_LITERAL tokens.
+ */
+const BOOLEAN_LITERALS = new Set([
+    'TRUE',
+    'FALSE'
 ]);
 
 
@@ -182,8 +202,9 @@ function createToken(type, value, line, column) {
  *      b. If whitespace → skip, increment column, continue.
  *      c. If "//" → skip the rest of the line (comment).
  *      d. If letter/underscore → read full word, classify it.
- *      e. If digit → error (identifiers can't start with digits).
- *      f. Anything else → error (unexpected character).
+ *      e. If digit → read number literal (integer or decimal).
+ *      f. If double-quote → read string literal.
+ *      g. Anything else → error (unexpected character).
  *   3. Append an EOF token at the end.
  *   4. Return the token array.
  * 
@@ -253,8 +274,9 @@ function tokenize(sourceCode) {
             //   1. Check if it's a keyword  (e.g., ENTITY, RELATION)
             //   2. Check if it's a relation type (e.g., ONE_TO_ONE, MANY_TO_MANY)
             //   3. Check if it's a data type (e.g., INT, STRING)
-            //   4. Check if it's a modifier  (e.g., PRIMARY, REQUIRED)
-            //   5. Otherwise, it's an identifier (e.g., Student, ENROLLS_IN)
+            //   4. Check if it's a boolean literal (TRUE, FALSE)
+            //   5. Check if it's a modifier  (e.g., PRIMARY, REQUIRED, MIN, MAX, DEFAULT)
+            //   6. Otherwise, it's an identifier (e.g., Student, ENROLLS_IN)
 
             let type;
 
@@ -264,6 +286,8 @@ function tokenize(sourceCode) {
                 type = 'RELATION_TYPE';
             } else if (DATA_TYPES.has(word)) {
                 type = 'DATATYPE';
+            } else if (BOOLEAN_LITERALS.has(word)) {
+                type = 'BOOLEAN_LITERAL';
             } else if (MODIFIERS.has(word)) {
                 type = 'MODIFIER';
             } else {
@@ -274,30 +298,85 @@ function tokenize(sourceCode) {
             continue;
         }
 
-        // ── Case 5: Digit at start of word ──────────────────
-        // In our DSL, identifiers cannot start with a digit.
-        // e.g., "3name" is invalid. We report a clear error.
+        // ── Case 5: Number literal ──────────────────────────
+        // Read an integer or decimal number (e.g., 17, 8.5).
+        // Used as values for MIN, MAX, and DEFAULT modifiers.
         if (isDigit(ch)) {
-            // Read the full invalid token so we can show it
-            // in the error message (more helpful than just "3").
-            let badToken = '';
             const startColumn = column;
+            let numStr = '';
 
-            while (pos < sourceCode.length && isAlphaNumeric(sourceCode[pos])) {
-                badToken += sourceCode[pos];
+            // Read integer part
+            while (pos < sourceCode.length && isDigit(sourceCode[pos])) {
+                numStr += sourceCode[pos];
                 pos++;
                 column++;
             }
 
-            throw new Error(
-                `Lexical Error at line ${line}, column ${startColumn}: ` +
-                `Identifier "${badToken}" cannot start with a digit.`
-            );
+            // Check for decimal point
+            if (pos < sourceCode.length && sourceCode[pos] === '.' &&
+                pos + 1 < sourceCode.length && isDigit(sourceCode[pos + 1])) {
+                numStr += sourceCode[pos]; // consume '.'
+                pos++;
+                column++;
+
+                // Read fractional part
+                while (pos < sourceCode.length && isDigit(sourceCode[pos])) {
+                    numStr += sourceCode[pos];
+                    pos++;
+                    column++;
+                }
+            }
+
+            // If followed by a letter/underscore, it's an invalid identifier
+            if (pos < sourceCode.length && isAlpha(sourceCode[pos])) {
+                let badToken = numStr;
+                while (pos < sourceCode.length && isAlphaNumeric(sourceCode[pos])) {
+                    badToken += sourceCode[pos];
+                    pos++;
+                    column++;
+                }
+                throw new Error(
+                    `Lexical Error at line ${line}, column ${startColumn}: ` +
+                    `Identifier "${badToken}" cannot start with a digit.`
+                );
+            }
+
+            tokens.push(createToken('NUMBER', numStr, line, startColumn));
+            continue;
         }
 
-        // ── Case 6: Unexpected character ────────────────────
+        // ── Case 6: String literal ("...") ──────────────────
+        // Read a double-quoted string. The token value contains
+        // only the content (without the quotes).
+        if (ch === '"') {
+            const startColumn = column;
+            pos++;      // skip opening quote
+            column++;
+            let str = '';
+
+            while (pos < sourceCode.length && sourceCode[pos] !== '"' && sourceCode[pos] !== '\n') {
+                str += sourceCode[pos];
+                pos++;
+                column++;
+            }
+
+            if (pos >= sourceCode.length || sourceCode[pos] === '\n') {
+                throw new Error(
+                    `Lexical Error at line ${line}, column ${startColumn}: ` +
+                    `Unterminated string literal.`
+                );
+            }
+
+            pos++;      // skip closing quote
+            column++;
+
+            tokens.push(createToken('STRING_LITERAL', str, line, startColumn));
+            continue;
+        }
+
+        // ── Case 7: Unexpected character ────────────────────
         // If we reach here, the character is not a letter,
-        // digit, whitespace, newline, or comment starter.
+        // digit, whitespace, newline, quote, or comment starter.
         // It's something our DSL doesn't understand (e.g., @, #, $).
         throw new Error(
             `Lexical Error at line ${line}, column ${column}: ` +

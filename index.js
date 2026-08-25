@@ -245,11 +245,21 @@ entityNames.forEach((entityName, eIdx) => {
         const field = entity.fields[fieldName];
         const isLastField = fIdx === fieldNames.length - 1;
         const fBranch = isLastField ? '└── ' : '├── ';
-        const cStr = field.constraints.length > 0
+        const cStr = field.constraints && field.constraints.length > 0
             ? `  [${field.constraints.join(', ')}]`
             : '';
+        const vStr = field.validations && field.validations.length > 0
+            ? `  Validations: ${field.validations.map(v => `${v.type} ${v.value}`).join(', ')}`
+            : '';
+        let dStr = '';
+        if (field.defaultValue !== null && field.defaultValue !== undefined) {
+            const defVal = field.defaultValue.type === 'STRING'
+                ? `"${field.defaultValue.value}"`
+                : (field.defaultValue.type === 'BOOLEAN' ? (field.defaultValue.value ? 'TRUE' : 'FALSE') : field.defaultValue.value);
+            dStr = `  Default: ${defVal}`;
+        }
         const typeStr = field.dataType.padEnd(7);
-        console.log(`${child}${fBranch}${fieldName.padEnd(10)} ${typeStr}${cStr}`);
+        console.log(`${child}${fBranch}${fieldName.padEnd(10)} ${typeStr}${cStr}${vStr}${dStr}`);
     });
 });
 console.log('');
@@ -284,8 +294,16 @@ ir.instructions.forEach((inst, index) => {
     if (inst.op === 'CREATE_ENTITY') {
         console.log(`  ${num} CREATE_ENTITY ${inst.entity}`);
     } else if (inst.op === 'ADD_FIELD') {
-        const cStr = inst.constraints.length > 0 ? ` [${inst.constraints.join(', ')}]` : '';
-        console.log(`  ${num} ADD_FIELD ${inst.entity}.${inst.field} ${inst.dataType}${cStr}`);
+        const cStr = inst.constraints && inst.constraints.length > 0 ? ` [${inst.constraints.join(', ')}]` : '';
+        const vStr = inst.validations && inst.validations.length > 0 ? `  Validations: ${inst.validations.map(v => `${v.type} ${v.value}`).join(', ')}` : '';
+        let dStr = '';
+        if (inst.defaultValue !== null && inst.defaultValue !== undefined) {
+            const defVal = inst.defaultValue.type === 'STRING'
+                ? `"${inst.defaultValue.value}"`
+                : (inst.defaultValue.type === 'BOOLEAN' ? (inst.defaultValue.value ? 'TRUE' : 'FALSE') : inst.defaultValue.value);
+            dStr = `  Default: ${defVal}`;
+        }
+        console.log(`  ${num} ADD_FIELD ${inst.entity}.${inst.field} ${inst.dataType}${cStr}${vStr}${dStr}`);
     } else if (inst.op === 'CREATE_RELATION') {
         console.log(`  ${num} CREATE_RELATION ${inst.sourceEntity} --${inst.relationName}--> ${inst.targetEntity} [${inst.relationType}]`);
     }
@@ -309,7 +327,10 @@ if (optResult.optimizations.length === 0) {
     console.log('[✓] Optimization complete — No optimizations required');
     console.log(`    Instructions count: ${countBefore} (unchanged)`);
 } else {
-    console.log(`[✓] Optimization complete (${countBefore} -> ${countAfter} instruction(s))`);
+    const changeStr = countBefore !== countAfter
+        ? `(${countBefore} -> ${countAfter} instruction(s))`
+        : `(${countAfter} instruction(s) - metadata optimized)`;
+    console.log(`[✓] Optimization complete ${changeStr}`);
     console.log('  Passes Applied:');
     optResult.optimizations.forEach(opt => {
         console.log(`    • ${opt.pass}: ${opt.description}`);
@@ -331,8 +352,16 @@ optimizedIR.instructions.forEach((inst, index) => {
     if (inst.op === 'CREATE_ENTITY') {
         console.log(`  ${num} CREATE_ENTITY ${inst.entity}`);
     } else if (inst.op === 'ADD_FIELD') {
-        const cStr = inst.constraints.length > 0 ? ` [${inst.constraints.join(', ')}]` : '';
-        console.log(`  ${num} ADD_FIELD ${inst.entity}.${inst.field} ${inst.dataType}${cStr}`);
+        const cStr = inst.constraints && inst.constraints.length > 0 ? ` [${inst.constraints.join(', ')}]` : '';
+        const vStr = inst.validations && inst.validations.length > 0 ? `  Validations: ${inst.validations.map(v => `${v.type} ${v.value}`).join(', ')}` : '';
+        let dStr = '';
+        if (inst.defaultValue !== null && inst.defaultValue !== undefined) {
+            const defVal = inst.defaultValue.type === 'STRING'
+                ? `"${inst.defaultValue.value}"`
+                : (inst.defaultValue.type === 'BOOLEAN' ? (inst.defaultValue.value ? 'TRUE' : 'FALSE') : inst.defaultValue.value);
+            dStr = `  Default: ${defVal}`;
+        }
+        console.log(`  ${num} ADD_FIELD ${inst.entity}.${inst.field} ${inst.dataType}${cStr}${vStr}${dStr}`);
     } else if (inst.op === 'CREATE_RELATION') {
         console.log(`  ${num} CREATE_RELATION ${inst.sourceEntity} --${inst.relationName}--> ${inst.targetEntity} [${inst.relationType}]`);
     }
@@ -358,6 +387,22 @@ if (entitiesInIR.length > 0) {
     console.log('  Generated Entities:');
     entitiesInIR.forEach(e => {
         console.log(`  ✓ ${e.name}`);
+        e.fields.forEach(f => {
+            const hasVal = f.validations && f.validations.length > 0;
+            const hasDef = f.defaultValue !== null && f.defaultValue !== undefined;
+            if (hasVal || hasDef) {
+                const vStr = hasVal ? `Validations: ${f.validations.map(v => `${v.type} ${v.value}`).join(', ')}` : '';
+                let dStr = '';
+                if (hasDef) {
+                    const defVal = f.defaultValue.type === 'STRING'
+                        ? `"${f.defaultValue.value}"`
+                        : (f.defaultValue.type === 'BOOLEAN' ? (f.defaultValue.value ? 'TRUE' : 'FALSE') : f.defaultValue.value);
+                    dStr = `Default: ${defVal}`;
+                }
+                const parts = [vStr, dStr].filter(Boolean).join('  ');
+                console.log(`      • ${f.name} (${f.dataType}): ${parts}`);
+            }
+        });
     });
     console.log('');
 }

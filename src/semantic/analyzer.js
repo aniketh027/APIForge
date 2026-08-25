@@ -32,17 +32,24 @@
  * 9. Relationship names must be unique across the program.
  * 10. Relationship types must be valid (ONE_TO_ONE, ONE_TO_MANY, MANY_TO_ONE, MANY_TO_MANY).
  * 11. Self-referential relationships are rejected.
+ * 12. MIN / MAX validations are only allowed on numeric types (INT, FLOAT).
+ * 13. Validation values (MIN, MAX) must be numeric.
+ * 14. If both MIN and MAX exist, MIN must be <= MAX.
+ * 15. Default value type must be compatible with field data type.
+ * 16. If default value exists on numeric field with MIN/MAX, it must fall within range.
+ * 17. Duplicate MIN, MAX, or DEFAULT declarations on the same field are rejected.
  * 
  * ── Symbol Table ──
  * 
  * During analysis, we build a "symbol table" — a lookup
- * structure that records every entity, its fields, and relations.
+ * structure that records every entity, its fields, validations,
+ * default values, and relations.
  * 
  * Structure:
  *   {
  *     EntityName: {
  *       fields: {
- *         fieldName: { dataType, constraints, line }
+ *         fieldName: { dataType, constraints, validations, defaultValue, line }
  *       },
  *       line: <source line>
  *     },
@@ -78,7 +85,9 @@ const RESERVED_WORDS = new Set([
     // Data types
     'INT', 'STRING', 'FLOAT', 'BOOLEAN',
     // Modifiers
-    'PRIMARY', 'KEY', 'REQUIRED', 'UNIQUE',
+    'PRIMARY', 'KEY', 'REQUIRED', 'UNIQUE', 'MIN', 'MAX', 'DEFAULT',
+    // Boolean literals
+    'TRUE', 'FALSE',
     // Relation types
     'ONE_TO_ONE', 'ONE_TO_MANY', 'MANY_TO_ONE', 'MANY_TO_MANY'
 ]);
@@ -112,7 +121,7 @@ class SemanticAnalyzer {
         /**
          * errors - Collects all semantic errors found during
          * analysis. Each error is an object:
-         *   { message: string, line: number }
+         *   { message: string, line: number, column?: number }
          */
         this.errors = [];
 
@@ -150,7 +159,7 @@ class SemanticAnalyzer {
      * Returns a result object:
      *   {
      *     valid: boolean,
-     *     errors: Array<{ message, line }>,
+     *     errors: Array<{ message, line, column }>,
      *     symbolTable: Object,
      *     entities: Object,
      *     relations: Object
@@ -236,8 +245,8 @@ class SemanticAnalyzer {
      *   - Reserved name check
      *   - At least one field
      *   - Duplicate field names
-     *   - Primary key count
-     *   - Per-field checks (type, reserved name, PK type)
+     *   - Primary key count & type restriction
+     *   - Per-field checks (type, reserved name, validations, default values)
      * 
      * Also registers the entity in the symbol table.
      */
@@ -299,7 +308,8 @@ class SemanticAnalyzer {
             }
 
             // ── Rule: Primary key checks ───────────────────
-            if (field.constraints.includes('PRIMARY_KEY')) {
+            const constraints = field.constraints || [];
+            if (constraints.includes('PRIMARY_KEY')) {
                 primaryKeyCount++;
 
                 // At most one primary key
@@ -321,10 +331,175 @@ class SemanticAnalyzer {
                 }
             }
 
+            // ── Rule: Validations (MIN / MAX) ───────────────
+            const validations = field.validations || [];
+            const minList = validations.filter(v => v.type === 'MIN');
+            const maxList = validations.filter(v => v.type === 'MAX');
+
+            // 1. Duplicate MIN validations
+            if (minList.length > 1) {
+                this.addError(
+                    `Duplicate MIN validation for field '${field.name}'.`,
+                    field.line,
+                    field.nameColumn
+                );
+            }
+
+            // 2. Duplicate MAX validations
+            if (maxList.length > 1) {
+                this.addError(
+                    `Duplicate MAX validation for field '${field.name}'.`,
+                    field.line,
+                    field.nameColumn
+                );
+            }
+
+            // 3. Validation value sanity (numeric check)
+            for (const val of validations) {
+                if (val.type === 'MIN' || val.type === 'MAX') {
+                    if (typeof val.value !== 'number' || Number.isNaN(val.value)) {
+                        this.addError(
+                            `Validation '${val.type}' value on field '${field.name}' must be a number.`,
+                            field.line,
+                            field.nameColumn
+                        );
+                    }
+                }
+            }
+
+            // 4. MIN / MAX only allowed for INT or FLOAT fields
+            if (minList.length > 0) {
+                if (field.dataType !== 'INT' && field.dataType !== 'FLOAT') {
+                    this.addError(
+                        `Validation 'MIN' is only allowed for INT or FLOAT fields.`,
+                        field.line,
+                        field.typeColumn || field.nameColumn
+                    );
+                }
+            }
+
+            if (maxList.length > 0) {
+                if (field.dataType !== 'INT' && field.dataType !== 'FLOAT') {
+                    this.addError(
+                        `Validation 'MAX' is only allowed for INT or FLOAT fields.`,
+                        field.line,
+                        field.typeColumn || field.nameColumn
+                    );
+                }
+            }
+
+            // 5. Range consistency (MIN <= MAX)
+            if (minList.length >= 1 && maxList.length >= 1) {
+                const minVal = minList[0].value;
+                const maxVal = maxList[0].value;
+                if (typeof minVal === 'number' && typeof maxVal === 'number' && !Number.isNaN(minVal) && !Number.isNaN(maxVal)) {
+                    if (minVal > maxVal) {
+                        this.addError(
+                            `MIN value ${minVal} cannot be greater than MAX value ${maxVal}.`,
+                            field.line,
+                            field.nameColumn
+                        );
+                    }
+                }
+            }
+
+            // ── Rule: Default Value Compatibility & Range ───
+            if (Array.isArray(field.defaultValue) && field.defaultValue.length > 1) {
+                this.addError(
+                    `Duplicate DEFAULT value for field '${field.name}'.`,
+                    field.line,
+                    field.nameColumn
+                );
+            }
+            if (field.defaultValues && field.defaultValues.length > 1) {
+                this.addError(
+                    `Duplicate DEFAULT value for field '${field.name}'.`,
+                    field.line,
+                    field.nameColumn
+                );
+            }
+
+            const def = Array.isArray(field.defaultValue) ? field.defaultValue[0] : field.defaultValue;
+
+            if (def !== null && def !== undefined) {
+                // Type compatibility checks
+                if (field.dataType === 'INT') {
+                    if (def.type !== 'NUMBER') {
+                        this.addError(
+                            `Default value for INT field '${field.name}' must be an integer.`,
+                            field.line,
+                            field.nameColumn
+                        );
+                    } else if (!Number.isInteger(def.value)) {
+                        this.addError(
+                            `Default value for INT field '${field.name}' must be an integer, but found ${def.value}.`,
+                            field.line,
+                            field.nameColumn
+                        );
+                    }
+                } else if (field.dataType === 'FLOAT') {
+                    if (def.type !== 'NUMBER' || typeof def.value !== 'number' || Number.isNaN(def.value)) {
+                        this.addError(
+                            `Default value for FLOAT field '${field.name}' must be a number.`,
+                            field.line,
+                            field.nameColumn
+                        );
+                    }
+                } else if (field.dataType === 'STRING') {
+                    if (def.type !== 'STRING') {
+                        this.addError(
+                            `Default value for STRING field '${field.name}' must be a string.`,
+                            field.line,
+                            field.nameColumn
+                        );
+                    }
+                } else if (field.dataType === 'BOOLEAN') {
+                    if (def.type !== 'BOOLEAN') {
+                        this.addError(
+                            `Default value for BOOLEAN field '${field.name}' must be a boolean (TRUE or FALSE).`,
+                            field.line,
+                            field.nameColumn
+                        );
+                    }
+                }
+
+                // Range validation check for numeric default values
+                if (def.type === 'NUMBER' && typeof def.value === 'number' && !Number.isNaN(def.value)) {
+                    const hasMin = minList.length === 1 && typeof minList[0].value === 'number';
+                    const hasMax = maxList.length === 1 && typeof maxList[0].value === 'number';
+                    const minVal = hasMin ? minList[0].value : null;
+                    const maxVal = hasMax ? maxList[0].value : null;
+
+                    if ((hasMin && def.value < minVal) || (hasMax && def.value > maxVal)) {
+                        if (hasMin && hasMax) {
+                            this.addError(
+                                `Default value ${def.value} is outside the allowed range [${minVal}, ${maxVal}].`,
+                                field.line,
+                                field.nameColumn
+                            );
+                        } else if (hasMin) {
+                            this.addError(
+                                `Default value ${def.value} is less than MIN value ${minVal}.`,
+                                field.line,
+                                field.nameColumn
+                            );
+                        } else if (hasMax) {
+                            this.addError(
+                                `Default value ${def.value} is greater than MAX value ${maxVal}.`,
+                                field.line,
+                                field.nameColumn
+                            );
+                        }
+                    }
+                }
+            }
+
             // Register the field in the field table
             fieldTable[field.name] = {
                 dataType: field.dataType,
-                constraints: field.constraints,
+                constraints: field.constraints || [],
+                validations: field.validations || [],
+                defaultValue: field.defaultValue || null,
                 line: field.line
             };
         }

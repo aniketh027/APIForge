@@ -11,39 +11,20 @@
  * 2. Database Connection → output/config/db.js
  * 3. Env Config Template → output/.env.example
  * 4. Express Models      → output/models/<Entity>.js (with mysql2 queries & relation helpers)
- * 5. Express Controllers → output/controllers/<entity>Controller.js
+ * 5. Express Controllers → output/controllers/<entity>Controller.js (with input validation)
  * 6. Express Routes      → output/routes/<entity>Routes.js
  * 7. Express Server      → output/server.js
- * 8. OpenAPI / Swagger   → output/swagger.json
+ * 8. OpenAPI / Swagger   → output/swagger.json (with min/max/default schema metadata)
  * 
  * ── Architectural Rule ──
  * This module ONLY consumes the validated IR. It does NOT parse
  * raw DSL, inspect lexer tokens, or rebuild AST nodes.
  * 
- * ── Relational Database Mapping Guide (Academic Reference) ──
- * 
- * 1. ONE_TO_ONE (1:1)
- *    - Conceptual Meaning: One record in Entity A relates to at most one record in Entity B.
- *    - Relational Mapping: A foreign key column is placed on Entity B referencing Entity A,
- *      with a UNIQUE constraint (e.g., Profile.user_id UNIQUE REFERENCES User(id)).
- *      This guarantees that no two profiles can reference the same user.
- * 
- * 2. ONE_TO_MANY (1:N)
- *    - Conceptual Meaning: One record in Entity A owns/contains multiple records in Entity B.
- *    - Relational Mapping: The foreign key MUST reside on the "Many" side (Entity B),
- *      pointing back to Entity A (e.g., Employee.department_id REFERENCES Department(id)).
- * 
- * 3. MANY_TO_ONE (N:1)
- *    - Conceptual Meaning: Multiple records in Entity A belong to one record in Entity B.
- *    - Relational Mapping: Symmetrical to 1:N — the foreign key is placed on Entity A
- *      referencing Entity B (e.g., Employee.department_id REFERENCES Department(id)).
- * 
- * 4. MANY_TO_MANY (M:N)
- *    - Conceptual Meaning: Multiple records in Entity A relate to multiple records in Entity B.
- *    - Why a Junction Table is Required: Relational databases cannot store multi-valued arrays
- *      in a single atomic column (First Normal Form - 1NF). Therefore, an intermediate
- *      "junction" or "associative" table (e.g., Student_Course) is created containing two
- *      foreign keys (student_id, course_id) that together form a composite primary key.
+ * ── Primary Key + Default Policy (MySQL Compatibility) ──
+ * In MySQL, AUTO_INCREMENT columns cannot declare a DEFAULT clause
+ * (MySQL Error 1067: Invalid default value). Therefore:
+ * - If PRIMARY KEY is specified without DEFAULT: generate PRIMARY KEY AUTO_INCREMENT (for INT)
+ * - If PRIMARY KEY is specified with DEFAULT: generate PRIMARY KEY DEFAULT <val> (omitting AUTO_INCREMENT)
  * 
  * ============================================================
  */
@@ -85,6 +66,30 @@ function lowerFirst(str) {
 function upperFirst(str) {
     if (!str) return '';
     return str.charAt(0).toUpperCase() + str.slice(1);
+}
+
+/**
+ * Safely formats a literal value as a SQL literal string.
+ * - STRING: escapes single quotes by doubling them (' -> '') and encloses in single quotes.
+ * - NUMBER: converts to numeric string.
+ * - BOOLEAN: TRUE or FALSE.
+ * 
+ * @param {Object} defaultValue - { type: 'NUMBER'|'STRING'|'BOOLEAN', value: any }
+ * @returns {string} - SQL literal representation
+ */
+function formatSQLLiteral(defaultValue) {
+    if (!defaultValue) return '';
+    if (defaultValue.type === 'STRING') {
+        const escaped = String(defaultValue.value).replace(/'/g, "''");
+        return `'${escaped}'`;
+    }
+    if (defaultValue.type === 'NUMBER') {
+        return String(defaultValue.value);
+    }
+    if (defaultValue.type === 'BOOLEAN') {
+        return defaultValue.value ? 'TRUE' : 'FALSE';
+    }
+    return '';
 }
 
 /**
@@ -135,6 +140,8 @@ function extractEntitiesFromIR(ir) {
                 name: inst.field,
                 dataType: inst.dataType,
                 constraints: inst.constraints || [],
+                validations: inst.validations || [],
+                defaultValue: inst.defaultValue || null,
                 line: inst.line
             });
         }
@@ -191,8 +198,9 @@ function getPrimaryKeyField(entity) {
 
 /**
  * PART 1: MySQL Schema Generation
- * Generates CREATE TABLE statements for entities, followed by relationship
- * junction tables and ALTER TABLE foreign key constraints.
+ * Generates CREATE TABLE statements for entities with column constraints,
+ * defaults, and CHECK expressions, followed by relationship junction tables
+ * and ALTER TABLE foreign key constraints.
  * 
  * @param {Object} ir - The IR object
  * @returns {string} - Complete SQL DDL file content
@@ -206,19 +214,56 @@ function generateSQL(ir) {
     const tableStatements = entities.map(entity => {
         const columnDefs = entity.fields.map(field => {
             const mysqlType = MYSQL_TYPE_MAP[field.dataType] || field.dataType;
-            const constraintParts = [];
+            const isPk = field.constraints.includes('PRIMARY_KEY');
+            const isRequired = field.constraints.includes('REQUIRED');
+            const isUnique = field.constraints.includes('UNIQUE');
+            const hasDefault = field.defaultValue !== null && field.defaultValue !== undefined;
 
-            if (field.constraints.includes('PRIMARY_KEY')) {
-                constraintParts.push('PRIMARY KEY AUTO_INCREMENT');
-            }
-            if (field.constraints.includes('REQUIRED')) {
-                constraintParts.push('NOT NULL');
-            }
-            if (field.constraints.includes('UNIQUE')) {
-                constraintParts.push('UNIQUE');
+            const parts = [];
+
+            // Primary Key & Auto Increment handling:
+            // If primary key has an explicit default value, omit AUTO_INCREMENT to prevent MySQL Error 1067.
+            if (isPk) {
+                if (hasDefault) {
+                    parts.push('PRIMARY KEY');
+                } else if (field.dataType === 'INT') {
+                    parts.push('PRIMARY KEY AUTO_INCREMENT');
+                } else {
+                    parts.push('PRIMARY KEY');
+                }
             }
 
-            const constraintsStr = constraintParts.length > 0 ? ' ' + constraintParts.join(' ') : '';
+            // REQUIRED constraint
+            if (isRequired) {
+                parts.push('NOT NULL');
+            }
+
+            // DEFAULT clause
+            if (hasDefault) {
+                const sqlVal = formatSQLLiteral(field.defaultValue);
+                parts.push(`DEFAULT ${sqlVal}`);
+            }
+
+            // UNIQUE constraint
+            if (isUnique) {
+                parts.push('UNIQUE');
+            }
+
+            // CHECK constraint for MIN / MAX validations
+            if (Array.isArray(field.validations) && field.validations.length > 0) {
+                const minV = field.validations.find(v => v.type === 'MIN');
+                const maxV = field.validations.find(v => v.type === 'MAX');
+
+                if (minV && maxV) {
+                    parts.push(`CHECK (${field.name} >= ${minV.value} AND ${field.name} <= ${maxV.value})`);
+                } else if (minV) {
+                    parts.push(`CHECK (${field.name} >= ${minV.value})`);
+                } else if (maxV) {
+                    parts.push(`CHECK (${field.name} <= ${maxV.value})`);
+                }
+            }
+
+            const constraintsStr = parts.length > 0 ? ' ' + parts.join(' ') : '';
             return `    ${field.name} ${mysqlType}${constraintsStr}`;
         });
 
@@ -468,21 +513,65 @@ function generateModel(entityName, fields, relations = [], entities = []) {
 
 /**
  * PART 5: Functional Controller Generation
- * Generates controller functions calling model methods with 404 & 500 error handling.
+ * Generates controller functions calling model methods with 400 validation, 404 & 500 error handling.
  * Includes relationship controller handlers if the entity participates in relationships.
  * 
  * @param {string} entityName - Entity name (e.g. "Student")
- * @param {Array} [relations=[]] - List of relationship objects
+ * @param {Array} [fieldsOrRelations=[]] - List of field objects OR list of relationship objects
+ * @param {Array} [maybeRelations=[]] - List of relationship objects (if 2nd arg was fields)
  * @returns {string} - JS controller module content
  */
-function generateController(entityName, relations = []) {
+function generateController(entityName, fieldsOrRelations = [], maybeRelations = []) {
+    let fields = [];
+    let relations = [];
+
+    if (Array.isArray(fieldsOrRelations) && fieldsOrRelations.length > 0) {
+        if (fieldsOrRelations[0].relationType || fieldsOrRelations[0].sourceEntity) {
+            relations = fieldsOrRelations;
+            fields = [];
+        } else {
+            fields = fieldsOrRelations;
+            relations = Array.isArray(maybeRelations) ? maybeRelations : [];
+        }
+    } else {
+        relations = Array.isArray(maybeRelations) ? maybeRelations : [];
+    }
     const lowerName = lowerFirst(entityName);
     const pluralName = pluralize(entityName);
     const modelVar = `${entityName}Model`;
     const getPluralFn = `get${pluralName.charAt(0).toUpperCase() + pluralName.slice(1)}`;
 
+    // Build validation checks for fields with MIN and/or MAX
+    const validationCheckLines = [];
+    (fields || []).forEach(f => {
+        if (Array.isArray(f.validations) && f.validations.length > 0) {
+            const minV = f.validations.find(v => v.type === 'MIN');
+            const maxV = f.validations.find(v => v.type === 'MAX');
+
+            if (minV) {
+                validationCheckLines.push(
+                    `    if (data.${f.name} !== undefined && data.${f.name} !== null && data.${f.name} < ${minV.value}) {\n` +
+                    `        return "Field '${f.name}' must be >= ${minV.value}.";\n` +
+                    `    }`
+                );
+            }
+            if (maxV) {
+                validationCheckLines.push(
+                    `    if (data.${f.name} !== undefined && data.${f.name} !== null && data.${f.name} > ${maxV.value}) {\n` +
+                    `        return "Field '${f.name}' must be <= ${maxV.value}.";\n` +
+                    `    }`
+                );
+            }
+        }
+    });
+
+    const validationBody = validationCheckLines.length > 0
+        ? '\n' + validationCheckLines.join('\n') + '\n    return null;'
+        : '    return null;';
+
     const extraFunctions = [];
     const exportedFunctions = [
+        `validate${entityName}`,
         `create${entityName}`,
         getPluralFn,
         `get${entityName}ById`,
@@ -569,8 +658,21 @@ function generateController(entityName, relations = []) {
            ` * Generated automatically by APIForge Compiler\n` +
            ` */\n\n` +
            `const ${modelVar} = require('../models/${entityName}');\n\n` +
+           `/**\n` +
+           ` * Validates input data for ${entityName}\n` +
+           ` * @param {Object} data - Input payload\n` +
+           ` * @returns {string|null} - Error message if invalid, null if valid\n` +
+           ` */\n` +
+           `function validate${entityName}(data) {\n` +
+           `    if (!data || typeof data !== 'object') return null;\n` +
+           `${validationBody}\n` +
+           `}\n\n` +
            `async function create${entityName}(req, res) {\n` +
            `    try {\n` +
+           `        const validationError = validate${entityName}(req.body);\n` +
+           `        if (validationError) {\n` +
+           `            return res.status(400).json({ success: false, error: validationError });\n` +
+           `        }\n` +
            `        const result = await ${modelVar}.create(req.body);\n` +
            `        res.status(201).json({ success: true, data: result });\n` +
            `    } catch (error) {\n` +
@@ -598,6 +700,10 @@ function generateController(entityName, relations = []) {
            `}\n\n` +
            `async function update${entityName}(req, res) {\n` +
            `    try {\n` +
+           `        const validationError = validate${entityName}(req.body);\n` +
+           `        if (validationError) {\n` +
+           `            return res.status(400).json({ success: false, error: validationError });\n` +
+           `        }\n` +
            `        const updated = await ${modelVar}.update(req.params.id, req.body);\n` +
            `        if (!updated) {\n` +
            `            return res.status(404).json({ success: false, error: '${entityName} not found' });\n` +
@@ -737,7 +843,8 @@ function generateServer(entities) {
 
 /**
  * PART 8: Swagger / OpenAPI Spec Generation
- * Generates OpenAPI 3.0.0 JSON specification for all entities and relationships.
+ * Generates OpenAPI 3.0.0 JSON specification for all entities and relationships,
+ * including minimum, maximum, and default property values.
  * 
  * @param {Array<Object>} entities - List of entity objects
  * @param {Array<Object>} [relations=[]] - List of relationship objects
@@ -761,8 +868,24 @@ function generateSwagger(entities, relations = []) {
 
         const properties = {};
         entity.fields.forEach(f => {
-            properties[f.name] = { type: SWAGGER_TYPE_MAP[f.dataType] || 'string' };
+            const prop = { type: SWAGGER_TYPE_MAP[f.dataType] || 'string' };
+
+            // Add minimum and maximum if validations exist
+            if (Array.isArray(f.validations)) {
+                const minV = f.validations.find(v => v.type === 'MIN');
+                const maxV = f.validations.find(v => v.type === 'MAX');
+                if (minV) prop.minimum = minV.value;
+                if (maxV) prop.maximum = maxV.value;
+            }
+
+            // Add default if defaultValue exists
+            if (f.defaultValue !== null && f.defaultValue !== undefined) {
+                prop.default = f.defaultValue.value;
+            }
+
+            properties[f.name] = prop;
         });
+
         schemas[entity.name] = { type: "object", properties };
     });
 
@@ -890,7 +1013,7 @@ function generate(optimizedIR, writeToDisk = true) {
     entities.forEach(entity => {
         const lowerName = lowerFirst(entity.name);
         files.push({ path: `models/${entity.name}.js`, content: generateModel(entity.name, entity.fields, relations, entities) });
-        files.push({ path: `controllers/${lowerName}Controller.js`, content: generateController(entity.name, relations) });
+        files.push({ path: `controllers/${lowerName}Controller.js`, content: generateController(entity.name, entity.fields, relations) });
         files.push({ path: `routes/${lowerName}Routes.js`, content: generateRoutes(entity.name, relations) });
     });
 
@@ -920,6 +1043,7 @@ module.exports = {
     generateRoutes,
     generateServer,
     generateSwagger,
+    formatSQLLiteral,
     pluralize,
     lowerFirst,
     extractEntitiesFromIR,

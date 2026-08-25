@@ -13,15 +13,21 @@
  *    Deduplicates and sorts field constraints deterministically:
  *    [PRIMARY_KEY, REQUIRED, UNIQUE, ...]
  * 
- * 2. Duplicate Entity Elimination
+ * 2. Duplicate Validation Elimination
+ *    Removes exact duplicate validation objects on each field.
+ * 
+ * 3. Validation Order Normalization
+ *    Sorts validations deterministically (MIN before MAX).
+ * 
+ * 4. Duplicate Entity Elimination
  *    Removes redundant CREATE_ENTITY instructions for the same entity.
  * 
- * 3. Duplicate Field Elimination
+ * 5. Duplicate Field Elimination
  *    Removes identical ADD_FIELD instructions for the same entity.field.
- *    If field declarations conflict (different type/constraints),
+ *    If field declarations conflict (different type/constraints/validations/defaults),
  *    both are preserved and an optimization warning is emitted.
  * 
- * 4. Duplicate Relationship Elimination
+ * 6. Duplicate Relationship Elimination
  *    Removes identical CREATE_RELATION instructions (matching source,
  *    name, target, and type). If relation declarations conflict,
  *    both are preserved and an optimization warning is emitted.
@@ -36,6 +42,14 @@ const CONSTRAINT_PRIORITY = {
     'PRIMARY_KEY': 1,
     'REQUIRED': 2,
     'UNIQUE': 3
+};
+
+/**
+ * Priority order for validation normalization.
+ */
+const VALIDATION_PRIORITY = {
+    'MIN': 1,
+    'MAX': 2
 };
 
 /**
@@ -101,7 +115,99 @@ function normalizeConstraints(instructions) {
 }
 
 /**
- * Pass 2: Duplicate Entity Elimination
+ * Pass 2: Duplicate Validation Elimination
+ * Removes exact duplicate validation objects on each ADD_FIELD instruction.
+ * 
+ * @param {Array} instructions - Array of IR instructions
+ * @returns {Object} - { instructions: Array, removedCount: number }
+ */
+function eliminateDuplicateValidations(instructions) {
+    let removedCount = 0;
+
+    const newInstructions = instructions.map(inst => {
+        if (!inst || inst.op !== 'ADD_FIELD' || !Array.isArray(inst.validations) || inst.validations.length <= 1) {
+            return inst;
+        }
+
+        const seen = new Set();
+        const uniqueValidations = [];
+
+        for (const v of inst.validations) {
+            if (!v || typeof v !== 'object') {
+                uniqueValidations.push(v);
+                continue;
+            }
+            const key = `${v.type}:${v.value}`;
+            if (seen.has(key)) {
+                removedCount++;
+            } else {
+                seen.add(key);
+                uniqueValidations.push(v);
+            }
+        }
+
+        if (uniqueValidations.length !== inst.validations.length) {
+            return {
+                ...inst,
+                validations: uniqueValidations
+            };
+        }
+
+        return inst;
+    });
+
+    return {
+        instructions: newInstructions,
+        removedCount
+    };
+}
+
+/**
+ * Pass 3: Validation Order Normalization
+ * Normalizes the order of validations on each ADD_FIELD instruction to MIN then MAX.
+ * 
+ * @param {Array} instructions - Array of IR instructions
+ * @returns {Object} - { instructions: Array, modifiedCount: number }
+ */
+function normalizeValidations(instructions) {
+    let modifiedCount = 0;
+
+    const newInstructions = instructions.map(inst => {
+        if (!inst || inst.op !== 'ADD_FIELD' || !Array.isArray(inst.validations) || inst.validations.length <= 1) {
+            return inst;
+        }
+
+        const sorted = [...inst.validations].sort((a, b) => {
+            const pA = VALIDATION_PRIORITY[a.type] || 100;
+            const pB = VALIDATION_PRIORITY[b.type] || 100;
+            if (pA !== pB) return pA - pB;
+            if (typeof a.value === 'number' && typeof b.value === 'number') {
+                return a.value - b.value;
+            }
+            return 0;
+        });
+
+        const changed = JSON.stringify(inst.validations) !== JSON.stringify(sorted);
+
+        if (changed) {
+            modifiedCount++;
+            return {
+                ...inst,
+                validations: sorted
+            };
+        }
+
+        return inst;
+    });
+
+    return {
+        instructions: newInstructions,
+        modifiedCount
+    };
+}
+
+/**
+ * Pass 4: Duplicate Entity Elimination
  * Removes duplicate CREATE_ENTITY instructions for the same entity name.
  * Preserves entity declaration order and line numbers.
  * 
@@ -133,9 +239,9 @@ function removeDuplicateEntities(instructions) {
 }
 
 /**
- * Pass 3: Duplicate Field Elimination
+ * Pass 5: Duplicate Field Elimination
  * Removes duplicate ADD_FIELD instructions for the same entity and field name.
- * If data types or constraints conflict, both are preserved and a warning is logged.
+ * If data types, constraints, validations, or default values conflict, both are preserved and a warning is logged.
  * 
  * @param {Array} instructions - Array of IR instructions
  * @returns {Object} - { instructions: Array, removedCount: number, warnings: Array<string> }
@@ -162,8 +268,10 @@ function removeDuplicateFields(instructions) {
             const prevInst = seenFields.get(key);
             const sameType = prevInst.dataType === inst.dataType;
             const sameConstraints = JSON.stringify(prevInst.constraints) === JSON.stringify(inst.constraints);
+            const sameValidations = JSON.stringify(prevInst.validations || []) === JSON.stringify(inst.validations || []);
+            const sameDefault = JSON.stringify(prevInst.defaultValue || null) === JSON.stringify(inst.defaultValue || null);
 
-            if (sameType && sameConstraints) {
+            if (sameType && sameConstraints && sameValidations && sameDefault) {
                 // Exact duplicate — eliminate
                 removedCount++;
             } else {
@@ -186,7 +294,7 @@ function removeDuplicateFields(instructions) {
 }
 
 /**
- * Pass 4: Duplicate Relationship Elimination
+ * Pass 6: Duplicate Relationship Elimination
  * Removes duplicate CREATE_RELATION instructions with identical properties.
  * If relationship declarations conflict (different type or endpoints),
  * both are preserved and an optimization conflict warning is logged.
@@ -264,7 +372,6 @@ function optimize(ir) {
         };
     }
 
-    const originalCount = ir.instructions.length;
     let currentInstructions = ir.instructions;
     const optimizations = [];
     const warnings = [];
@@ -280,43 +387,69 @@ function optimize(ir) {
         });
     }
 
-    // Pass 2: Remove duplicate CREATE_ENTITY instructions
-    const pass2 = removeDuplicateEntities(currentInstructions);
+    // Pass 2: Eliminate duplicate validations
+    const pass2 = eliminateDuplicateValidations(currentInstructions);
     currentInstructions = pass2.instructions;
     if (pass2.removedCount > 0) {
         optimizations.push({
-            pass: 'Duplicate Entity Elimination',
-            description: `Removed ${pass2.removedCount} duplicate CREATE_ENTITY instruction(s).`,
+            pass: 'Duplicate Validation Elimination',
+            description: pass2.removedCount === 1
+                ? 'Removed 1 duplicate validation.'
+                : `Removed ${pass2.removedCount} duplicate validations.`,
             count: pass2.removedCount
         });
     }
 
-    // Pass 3: Remove duplicate ADD_FIELD instructions
-    const pass3 = removeDuplicateFields(currentInstructions);
+    // Pass 3: Normalize validation order (MIN before MAX)
+    const pass3 = normalizeValidations(currentInstructions);
     currentInstructions = pass3.instructions;
-    if (pass3.removedCount > 0) {
+    if (pass3.modifiedCount > 0) {
         optimizations.push({
-            pass: 'Duplicate Field Elimination',
-            description: `Removed ${pass3.removedCount} duplicate ADD_FIELD instruction(s).`,
-            count: pass3.removedCount
+            pass: 'Validation Normalization',
+            description: pass3.modifiedCount === 1
+                ? 'Normalized validation order.'
+                : `Normalized validation order across ${pass3.modifiedCount} field(s).`,
+            count: pass3.modifiedCount
         });
     }
-    if (pass3.warnings.length > 0) {
-        warnings.push(...pass3.warnings);
-    }
 
-    // Pass 4: Remove duplicate CREATE_RELATION instructions
-    const pass4 = removeDuplicateRelations(currentInstructions);
+    // Pass 4: Remove duplicate CREATE_ENTITY instructions
+    const pass4 = removeDuplicateEntities(currentInstructions);
     currentInstructions = pass4.instructions;
     if (pass4.removedCount > 0) {
         optimizations.push({
-            pass: 'Duplicate Relationship Elimination',
-            description: `Removed ${pass4.removedCount} duplicate CREATE_RELATION instruction(s).`,
+            pass: 'Duplicate Entity Elimination',
+            description: `Removed ${pass4.removedCount} duplicate CREATE_ENTITY instruction(s).`,
             count: pass4.removedCount
         });
     }
-    if (pass4.warnings.length > 0) {
-        warnings.push(...pass4.warnings);
+
+    // Pass 5: Remove duplicate ADD_FIELD instructions
+    const pass5 = removeDuplicateFields(currentInstructions);
+    currentInstructions = pass5.instructions;
+    if (pass5.removedCount > 0) {
+        optimizations.push({
+            pass: 'Duplicate Field Elimination',
+            description: `Removed ${pass5.removedCount} duplicate ADD_FIELD instruction(s).`,
+            count: pass5.removedCount
+        });
+    }
+    if (pass5.warnings.length > 0) {
+        warnings.push(...pass5.warnings);
+    }
+
+    // Pass 6: Remove duplicate CREATE_RELATION instructions
+    const pass6 = removeDuplicateRelations(currentInstructions);
+    currentInstructions = pass6.instructions;
+    if (pass6.removedCount > 0) {
+        optimizations.push({
+            pass: 'Duplicate Relationship Elimination',
+            description: `Removed ${pass6.removedCount} duplicate CREATE_RELATION instruction(s).`,
+            count: pass6.removedCount
+        });
+    }
+    if (pass6.warnings.length > 0) {
+        warnings.push(...pass6.warnings);
     }
 
     const optimizedIR = {
@@ -334,6 +467,8 @@ function optimize(ir) {
 module.exports = {
     optimize,
     normalizeConstraints,
+    eliminateDuplicateValidations,
+    normalizeValidations,
     removeDuplicateEntities,
     removeDuplicateFields,
     removeDuplicateRelations,

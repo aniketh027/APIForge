@@ -10,7 +10,8 @@
  * Think of AST nodes like building blocks:
  * - A Program node contains lists of Entity nodes and Relation nodes.
  * - An Entity node contains its name and a list of Field nodes.
- * - A Field node contains its name, data type, and constraints.
+ * - A Field node contains its name, data type, constraints,
+ *   validations (MIN/MAX), and an optional default value.
  * - A Relation node contains source entity, relation name, target entity, and cardinality.
  * 
  * ── Node Hierarchy ──
@@ -57,26 +58,41 @@ class EntityNode {
 /**
  * FieldNode - Represents a single field inside an entity.
  * e.g., name STRING REQUIRED
+ *       age INT MIN 17 MAX 60
+ *       status STRING DEFAULT "active"
  * 
  * After parsing, constraints are combined forms:
  *   "PRIMARY_KEY", "REQUIRED", "UNIQUE"
  * 
- * @param {string} name        - Field name (e.g., "name")
- * @param {string} dataType    - Data type (e.g., "STRING")
- * @param {Array}  constraints - Parsed constraints (e.g., ["REQUIRED"])
- * @param {number} line        - Source line number
- * @param {number} [nameColumn] - Source column of the field name token
- * @param {number} [typeColumn] - Source column of the data type token
+ * Validations hold MIN/MAX rules:
+ *   [{ type: "MIN", value: 17 }, { type: "MAX", value: 60 }]
+ * 
+ * Default value holds a typed literal or null:
+ *   { type: "STRING", value: "active" }
+ *   { type: "NUMBER", value: 42 }
+ *   { type: "BOOLEAN", value: true }
+ *   null (if no default)
+ * 
+ * @param {string} name          - Field name (e.g., "name")
+ * @param {string} dataType      - Data type (e.g., "STRING")
+ * @param {Array}  constraints   - Parsed constraints (e.g., ["REQUIRED"])
+ * @param {number} line          - Source line number
+ * @param {number} [nameColumn]  - Source column of the field name token
+ * @param {number} [typeColumn]  - Source column of the data type token
+ * @param {Array}  [validations] - Validation rules (e.g., [{ type: "MIN", value: 17 }])
+ * @param {Object|null} [defaultValue] - Default value literal or null
  */
 class FieldNode {
-    constructor(name, dataType, constraints, line, nameColumn, typeColumn) {
+    constructor(name, dataType, constraints, line, nameColumn, typeColumn, validations, defaultValue) {
         this.type = 'Field';
-        this.name = name;                    // e.g., "name"
-        this.dataType = dataType;            // e.g., "STRING"
-        this.constraints = constraints || []; // e.g., ["REQUIRED"]
-        this.line = line;                    // Source line number
-        this.nameColumn = nameColumn;        // Column of the field name token
-        this.typeColumn = typeColumn;        // Column of the data type token
+        this.name = name;                        // e.g., "name"
+        this.dataType = dataType;                // e.g., "STRING"
+        this.constraints = constraints || [];     // e.g., ["REQUIRED"]
+        this.line = line;                        // Source line number
+        this.nameColumn = nameColumn;            // Column of the field name token
+        this.typeColumn = typeColumn;            // Column of the data type token
+        this.validations = validations || [];     // e.g., [{ type: "MIN", value: 17 }]
+        this.defaultValue = defaultValue || null; // e.g., { type: "STRING", value: "active" }
     }
 }
 

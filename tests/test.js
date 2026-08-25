@@ -3108,6 +3108,1497 @@ assertEqual('API error userMessage matches', apiUserFacingTest.errors[0].userMes
 
 
 // ═════════════════════════════════════════════════════════════
+// LEXER: FIELD VALIDATION & DEFAULT VALUE TOKENS
+// ═════════════════════════════════════════════════════════════
+
+currentPhase = 'lexer';
+console.log('');
+console.log('╔══════════════════════════════════════════════╗');
+console.log('║  Lexer: Validation & Default Token Tests     ║');
+console.log('╚══════════════════════════════════════════════╝');
+
+// ── Lexer: MIN token ─────────────────────────────────────────
+console.log('');
+console.log('── Lexer: MIN token ──');
+
+const tokMIN = Lexer.tokenize('MIN');
+assertEqual('MIN token type is MODIFIER', tokMIN[0].type, 'MODIFIER');
+assertEqual('MIN token value is MIN', tokMIN[0].value, 'MIN');
+
+// ── Lexer: MAX token ─────────────────────────────────────────
+console.log('');
+console.log('── Lexer: MAX token ──');
+
+const tokMAX = Lexer.tokenize('MAX');
+assertEqual('MAX token type is MODIFIER', tokMAX[0].type, 'MODIFIER');
+assertEqual('MAX token value is MAX', tokMAX[0].value, 'MAX');
+
+// ── Lexer: DEFAULT token ────────────────────────────────────
+console.log('');
+console.log('── Lexer: DEFAULT token ──');
+
+const tokDEF = Lexer.tokenize('DEFAULT');
+assertEqual('DEFAULT token type is MODIFIER', tokDEF[0].type, 'MODIFIER');
+assertEqual('DEFAULT token value is DEFAULT', tokDEF[0].value, 'DEFAULT');
+
+// ── Lexer: integer number ───────────────────────────────────
+console.log('');
+console.log('── Lexer: integer number ──');
+
+const tokInt = Lexer.tokenize('17');
+assertEqual('Integer 17 type is NUMBER', tokInt[0].type, 'NUMBER');
+assertEqual('Integer 17 value is "17"', tokInt[0].value, '17');
+
+// ── Lexer: decimal number ───────────────────────────────────
+console.log('');
+console.log('── Lexer: decimal number ──');
+
+const tokDec = Lexer.tokenize('8.5');
+assertEqual('Decimal 8.5 type is NUMBER', tokDec[0].type, 'NUMBER');
+assertEqual('Decimal 8.5 value is "8.5"', tokDec[0].value, '8.5');
+
+// ── Lexer: zero ─────────────────────────────────────────────
+console.log('');
+console.log('── Lexer: zero ──');
+
+const tokZero = Lexer.tokenize('0');
+assertEqual('Zero type is NUMBER', tokZero[0].type, 'NUMBER');
+assertEqual('Zero value is "0"', tokZero[0].value, '0');
+
+// ── Lexer: string literal ───────────────────────────────────
+console.log('');
+console.log('── Lexer: string literal ──');
+
+const tokStr = Lexer.tokenize('"active"');
+assertEqual('String literal type', tokStr[0].type, 'STRING_LITERAL');
+assertEqual('String literal value (no quotes)', tokStr[0].value, 'active');
+
+// ── Lexer: empty string literal ─────────────────────────────
+console.log('');
+console.log('── Lexer: empty string literal ──');
+
+const tokEmptyStr = Lexer.tokenize('""');
+assertEqual('Empty string literal type', tokEmptyStr[0].type, 'STRING_LITERAL');
+assertEqual('Empty string literal value', tokEmptyStr[0].value, '');
+
+// ── Lexer: TRUE boolean literal ─────────────────────────────
+console.log('');
+console.log('── Lexer: TRUE boolean literal ──');
+
+const tokTrue = Lexer.tokenize('TRUE');
+assertEqual('TRUE type is BOOLEAN_LITERAL', tokTrue[0].type, 'BOOLEAN_LITERAL');
+assertEqual('TRUE value is TRUE', tokTrue[0].value, 'TRUE');
+
+// ── Lexer: FALSE boolean literal ────────────────────────────
+console.log('');
+console.log('── Lexer: FALSE boolean literal ──');
+
+const tokFalse = Lexer.tokenize('FALSE');
+assertEqual('FALSE type is BOOLEAN_LITERAL', tokFalse[0].type, 'BOOLEAN_LITERAL');
+assertEqual('FALSE value is FALSE', tokFalse[0].value, 'FALSE');
+
+// ── Lexer: line/column tracking for new tokens ──────────────
+console.log('');
+console.log('── Lexer: line/column tracking for new tokens ──');
+
+const tokLineCol = Lexer.tokenize('age INT MIN 17 MAX 60');
+// tokens: age(IDENT) INT(DATATYPE) MIN(MODIFIER) 17(NUMBER) MAX(MODIFIER) 60(NUMBER) EOF
+assertEqual('age token line', tokLineCol[0].line, 1);
+assertEqual('age token column', tokLineCol[0].column, 1);
+assertEqual('MIN token column', tokLineCol[2].column, 9);
+assertEqual('17 token column', tokLineCol[3].column, 13);
+assertEqual('MAX token column', tokLineCol[4].column, 16);
+assertEqual('60 token column', tokLineCol[5].column, 20);
+
+// ── Lexer: string literal column tracking ───────────────────
+console.log('');
+console.log('── Lexer: string literal column tracking ──');
+
+const tokStrCol = Lexer.tokenize('status STRING DEFAULT "active"');
+// tokens: status(IDENT) STRING(DATATYPE) DEFAULT(MODIFIER) "active"(STRING_LITERAL) EOF
+assertEqual('DEFAULT token column', tokStrCol[2].column, 15);
+assertEqual('"active" token column', tokStrCol[3].column, 23);
+assertEqual('"active" token type', tokStrCol[3].type, 'STRING_LITERAL');
+
+// ── Lexer: multiline with new tokens ────────────────────────
+console.log('');
+console.log('── Lexer: multiline with new tokens ──');
+
+const tokMulti = Lexer.tokenize('ENTITY Student\nage INT MIN 0\nactive BOOLEAN DEFAULT TRUE');
+const ageTok = tokMulti.find(t => t.value === 'age');
+const activeTok = tokMulti.find(t => t.value === 'active');
+const trueTok = tokMulti.find(t => t.value === 'TRUE');
+assertEqual('age token is on line 2', ageTok.line, 2);
+assertEqual('active token is on line 3', activeTok.line, 3);
+assertEqual('TRUE token is on line 3', trueTok.line, 3);
+assertEqual('TRUE token type', trueTok.type, 'BOOLEAN_LITERAL');
+
+// ── Lexer: EOF still works ──────────────────────────────────
+console.log('');
+console.log('── Lexer: EOF still works with new tokens ──');
+
+const tokEofNew = Lexer.tokenize('MIN 5 MAX 10 DEFAULT "x" TRUE FALSE');
+const eofNew = tokEofNew[tokEofNew.length - 1];
+assertEqual('EOF type preserved', eofNew.type, 'EOF');
+assertEqual('EOF value preserved', eofNew.value, 'EOF');
+
+// ── Lexer: unterminated string literal ──────────────────────
+console.log('');
+console.log('── Lexer: unterminated string literal ──');
+
+assertThrows('Unterminated string throws error',
+    () => Lexer.tokenize('"hello'),
+    'Unterminated string literal');
+
+// ── Lexer: number followed by letter still errors ───────────
+console.log('');
+console.log('── Lexer: number-letter still errors ──');
+
+assertThrows('3name still errors',
+    () => Lexer.tokenize('3name'),
+    'cannot start with a digit');
+
+// ── Lexer: existing tokens unchanged ────────────────────────
+console.log('');
+console.log('── Lexer: existing tokens unchanged ──');
+
+const tokExisting = Lexer.tokenize('ENTITY Student\nid INT PRIMARY KEY\nname STRING REQUIRED UNIQUE');
+const entityTok = tokExisting.find(t => t.value === 'ENTITY');
+const primaryTok = tokExisting.find(t => t.value === 'PRIMARY');
+const requiredTok = tokExisting.find(t => t.value === 'REQUIRED');
+assertEqual('ENTITY still KEYWORD', entityTok.type, 'KEYWORD');
+assertEqual('PRIMARY still MODIFIER', primaryTok.type, 'MODIFIER');
+assertEqual('REQUIRED still MODIFIER', requiredTok.type, 'MODIFIER');
+
+
+// ═════════════════════════════════════════════════════════════
+// PARSER: FIELD VALIDATION & DEFAULT VALUE AST TESTS
+// ═════════════════════════════════════════════════════════════
+
+currentPhase = 'parser';
+console.log('');
+console.log('╔══════════════════════════════════════════════╗');
+console.log('║  Parser: Validation & Default AST Tests      ║');
+console.log('╚══════════════════════════════════════════════╝');
+
+// ── Parser: MIN validation ──────────────────────────────────
+console.log('');
+console.log('── Parser: MIN validation ──');
+
+const astMin = lexAndParse('ENTITY Student\nage INT MIN 17');
+const fMin = astMin.entities[0].fields[0];
+assertEqual('MIN field name', fMin.name, 'age');
+assertEqual('MIN field dataType', fMin.dataType, 'INT');
+assertEqual('MIN field constraints empty', fMin.constraints, []);
+assertEqual('MIN field validations length', fMin.validations.length, 1);
+assertEqual('MIN validation type', fMin.validations[0].type, 'MIN');
+assertEqual('MIN validation value', fMin.validations[0].value, 17);
+assertEqual('MIN field defaultValue null', fMin.defaultValue, null);
+
+// ── Parser: MAX validation ──────────────────────────────────
+console.log('');
+console.log('── Parser: MAX validation ──');
+
+const astMax = lexAndParse('ENTITY Student\nage INT MAX 60');
+const fMax = astMax.entities[0].fields[0];
+assertEqual('MAX field validations length', fMax.validations.length, 1);
+assertEqual('MAX validation type', fMax.validations[0].type, 'MAX');
+assertEqual('MAX validation value', fMax.validations[0].value, 60);
+
+// ── Parser: MIN + MAX combined ──────────────────────────────
+console.log('');
+console.log('── Parser: MIN + MAX combined ──');
+
+const astMinMax = lexAndParse('ENTITY Student\nage INT MIN 17 MAX 60');
+const fMinMax = astMinMax.entities[0].fields[0];
+assertEqual('MIN+MAX field name', fMinMax.name, 'age');
+assertEqual('MIN+MAX validations length', fMinMax.validations.length, 2);
+assertEqual('MIN+MAX first validation type', fMinMax.validations[0].type, 'MIN');
+assertEqual('MIN+MAX first validation value', fMinMax.validations[0].value, 17);
+assertEqual('MIN+MAX second validation type', fMinMax.validations[1].type, 'MAX');
+assertEqual('MIN+MAX second validation value', fMinMax.validations[1].value, 60);
+assertEqual('MIN+MAX constraints empty', fMinMax.constraints, []);
+assertEqual('MIN+MAX defaultValue null', fMinMax.defaultValue, null);
+
+// ── Parser: DEFAULT string ──────────────────────────────────
+console.log('');
+console.log('── Parser: DEFAULT string ──');
+
+const astDefStr = lexAndParse('ENTITY Student\nstatus STRING DEFAULT "active"');
+const fDefStr = astDefStr.entities[0].fields[0];
+assertEqual('DEFAULT string field name', fDefStr.name, 'status');
+assertEqual('DEFAULT string defaultValue type', fDefStr.defaultValue.type, 'STRING');
+assertEqual('DEFAULT string defaultValue value', fDefStr.defaultValue.value, 'active');
+assertEqual('DEFAULT string validations empty', fDefStr.validations, []);
+
+// ── Parser: DEFAULT number ──────────────────────────────────
+console.log('');
+console.log('── Parser: DEFAULT number ──');
+
+const astDefNum = lexAndParse('ENTITY Student\nscore FLOAT DEFAULT 85.5');
+const fDefNum = astDefNum.entities[0].fields[0];
+assertEqual('DEFAULT number field name', fDefNum.name, 'score');
+assertEqual('DEFAULT number defaultValue type', fDefNum.defaultValue.type, 'NUMBER');
+assertEqual('DEFAULT number defaultValue value', fDefNum.defaultValue.value, 85.5);
+
+// ── Parser: DEFAULT integer ─────────────────────────────────
+console.log('');
+console.log('── Parser: DEFAULT integer ──');
+
+const astDefInt = lexAndParse('ENTITY Student\nage INT DEFAULT 18');
+const fDefInt = astDefInt.entities[0].fields[0];
+assertEqual('DEFAULT integer defaultValue type', fDefInt.defaultValue.type, 'NUMBER');
+assertEqual('DEFAULT integer defaultValue value', fDefInt.defaultValue.value, 18);
+
+// ── Parser: DEFAULT TRUE ────────────────────────────────────
+console.log('');
+console.log('── Parser: DEFAULT TRUE ──');
+
+const astDefTrue = lexAndParse('ENTITY Student\nactive BOOLEAN DEFAULT TRUE');
+const fDefTrue = astDefTrue.entities[0].fields[0];
+assertEqual('DEFAULT TRUE field name', fDefTrue.name, 'active');
+assertEqual('DEFAULT TRUE defaultValue type', fDefTrue.defaultValue.type, 'BOOLEAN');
+assertEqual('DEFAULT TRUE defaultValue value', fDefTrue.defaultValue.value, true);
+
+// ── Parser: DEFAULT FALSE ───────────────────────────────────
+console.log('');
+console.log('── Parser: DEFAULT FALSE ──');
+
+const astDefFalse = lexAndParse('ENTITY Student\ndeleted BOOLEAN DEFAULT FALSE');
+const fDefFalse = astDefFalse.entities[0].fields[0];
+assertEqual('DEFAULT FALSE defaultValue type', fDefFalse.defaultValue.type, 'BOOLEAN');
+assertEqual('DEFAULT FALSE defaultValue value', fDefFalse.defaultValue.value, false);
+
+// ── Parser: multiple modifiers combined ─────────────────────
+console.log('');
+console.log('── Parser: multiple modifiers combined ──');
+
+const astCombo = lexAndParse('ENTITY Student\nemail STRING REQUIRED UNIQUE\nage INT MIN 0 MAX 120 DEFAULT 18');
+const fEmail = astCombo.entities[0].fields[0];
+const fAge = astCombo.entities[0].fields[1];
+
+assertEqual('email constraints', fEmail.constraints, ['REQUIRED', 'UNIQUE']);
+assertEqual('email validations empty', fEmail.validations, []);
+assertEqual('email defaultValue null', fEmail.defaultValue, null);
+
+assertEqual('age constraints empty', fAge.constraints, []);
+assertEqual('age validations length', fAge.validations.length, 2);
+assertEqual('age validations[0] MIN 0', fAge.validations[0], { type: 'MIN', value: 0 });
+assertEqual('age validations[1] MAX 120', fAge.validations[1], { type: 'MAX', value: 120 });
+assertEqual('age defaultValue', fAge.defaultValue, { type: 'NUMBER', value: 18 });
+
+// ── Parser: existing PRIMARY KEY / REQUIRED / UNIQUE ────────
+console.log('');
+console.log('── Parser: existing constraints preserved ──');
+
+const astExisting = lexAndParse('ENTITY Student\nid INT PRIMARY KEY\nname STRING REQUIRED\nemail STRING UNIQUE');
+const fId = astExisting.entities[0].fields[0];
+const fName = astExisting.entities[0].fields[1];
+const fEmailEx = astExisting.entities[0].fields[2];
+
+assertEqual('PRIMARY KEY constraint preserved', fId.constraints, ['PRIMARY_KEY']);
+assertEqual('PRIMARY KEY validations empty', fId.validations, []);
+assertEqual('PRIMARY KEY defaultValue null', fId.defaultValue, null);
+assertEqual('REQUIRED constraint preserved', fName.constraints, ['REQUIRED']);
+assertEqual('UNIQUE constraint preserved', fEmailEx.constraints, ['UNIQUE']);
+
+// ── Parser: decimal MIN/MAX ─────────────────────────────────
+console.log('');
+console.log('── Parser: decimal MIN/MAX values ──');
+
+const astDecVal = lexAndParse('ENTITY Product\nprice FLOAT MIN 0.01 MAX 9999.99');
+const fPrice = astDecVal.entities[0].fields[0];
+assertEqual('decimal MIN value', fPrice.validations[0].value, 0.01);
+assertEqual('decimal MAX value', fPrice.validations[1].value, 9999.99);
+
+// ── Parser: constraints + validations + default together ────
+console.log('');
+console.log('── Parser: constraints + validations + default ──');
+
+const astAll = lexAndParse('ENTITY Student\nage INT REQUIRED MIN 0 MAX 120 DEFAULT 18');
+const fAll = astAll.entities[0].fields[0];
+assertEqual('all: constraints', fAll.constraints, ['REQUIRED']);
+assertEqual('all: validations length', fAll.validations.length, 2);
+assertEqual('all: defaultValue', fAll.defaultValue, { type: 'NUMBER', value: 18 });
+
+// ── Parser error: missing MIN value ─────────────────────────
+console.log('');
+console.log('── Parser error: missing MIN value ──');
+
+let errMinVal = null;
+try {
+    lexAndParse('ENTITY Student\nage INT MIN');
+} catch (e) {
+    errMinVal = e;
+}
+assertTrue('Missing MIN value throws error', !!errMinVal);
+assertEqual('Missing MIN value error code', errMinVal.code, 'MISSING_MIN_VALUE');
+assertTrue('Missing MIN value message has Expected NUMBER', errMinVal.message.includes('Expected NUMBER'));
+assertTrue('Missing MIN value userMessage has Missing value after MIN', errMinVal.userMessage.includes('Missing value after MIN'));
+
+// ── Parser error: missing MAX value ─────────────────────────
+console.log('');
+console.log('── Parser error: missing MAX value ──');
+
+let errMaxVal = null;
+try {
+    lexAndParse('ENTITY Student\nage INT MAX');
+} catch (e) {
+    errMaxVal = e;
+}
+assertTrue('Missing MAX value throws error', !!errMaxVal);
+assertEqual('Missing MAX value error code', errMaxVal.code, 'MISSING_MAX_VALUE');
+assertTrue('Missing MAX value message has Expected NUMBER', errMaxVal.message.includes('Expected NUMBER'));
+assertTrue('Missing MAX value userMessage has Missing value after MAX', errMaxVal.userMessage.includes('Missing value after MAX'));
+
+// ── Parser error: missing DEFAULT value ─────────────────────
+console.log('');
+console.log('── Parser error: missing DEFAULT value ──');
+
+let errDefVal = null;
+try {
+    lexAndParse('ENTITY Student\nstatus STRING DEFAULT');
+} catch (e) {
+    errDefVal = e;
+}
+assertTrue('Missing DEFAULT value throws error', !!errDefVal);
+assertEqual('Missing DEFAULT value error code', errDefVal.code, 'MISSING_DEFAULT_VALUE');
+assertTrue('Missing DEFAULT value userMessage has Missing default value', errDefVal.userMessage.includes('Missing default value'));
+
+// ── Parser error: MIN with non-number ───────────────────────
+console.log('');
+console.log('── Parser error: MIN with non-number ──');
+
+let errMinNonNum = null;
+try {
+    lexAndParse('ENTITY Student\nage INT MIN "hello"');
+} catch (e) {
+    errMinNonNum = e;
+}
+assertTrue('MIN with string throws error', !!errMinNonNum);
+assertEqual('MIN non-number error code', errMinNonNum.code, 'MISSING_MIN_VALUE');
+assertTrue('MIN non-number message', errMinNonNum.message.includes('Expected NUMBER'));
+
+// ── Parser error: MAX with non-number ───────────────────────
+console.log('');
+console.log('── Parser error: MAX with non-number ──');
+
+let errMaxNonNum = null;
+try {
+    lexAndParse('ENTITY Student\nage INT MAX TRUE');
+} catch (e) {
+    errMaxNonNum = e;
+}
+assertTrue('MAX with boolean throws error', !!errMaxNonNum);
+assertEqual('MAX non-number error code', errMaxNonNum.code, 'MISSING_MAX_VALUE');
+
+// ── Parser: field with DEFAULT then another field ───────────
+console.log('');
+console.log('── Parser: DEFAULT followed by next field ──');
+
+const astNextField = lexAndParse('ENTITY Student\nstatus STRING DEFAULT "active"\nname STRING REQUIRED');
+assertEqual('Two fields parsed', astNextField.entities[0].fields.length, 2);
+assertEqual('First field has default', astNextField.entities[0].fields[0].defaultValue.value, 'active');
+assertEqual('Second field has REQUIRED', astNextField.entities[0].fields[1].constraints, ['REQUIRED']);
+assertEqual('Second field default is null', astNextField.entities[0].fields[1].defaultValue, null);
+
+// ── Parser: validations/default empty when not specified ─────
+console.log('');
+console.log('── Parser: validations/default empty when not specified ──');
+
+const astPlain = lexAndParse('ENTITY Student\nname STRING');
+const fPlain = astPlain.entities[0].fields[0];
+assertEqual('Plain field validations empty', fPlain.validations, []);
+assertEqual('Plain field defaultValue null', fPlain.defaultValue, null);
+assertEqual('Plain field type is Field', fPlain.type, 'Field');
+
+// ── Parser: full entity with mixed modifiers ────────────────
+console.log('');
+console.log('── Parser: full entity with mixed modifiers ──');
+
+const astFull = lexAndParse(
+    'ENTITY Student\n' +
+    'id INT PRIMARY KEY\n' +
+    'name STRING REQUIRED\n' +
+    'email STRING UNIQUE\n' +
+    'age INT MIN 17 MAX 60\n' +
+    'status STRING DEFAULT "active"\n' +
+    'active BOOLEAN DEFAULT TRUE'
+);
+const eFull = astFull.entities[0];
+assertEqual('Full entity has 6 fields', eFull.fields.length, 6);
+assertEqual('id has PRIMARY_KEY', eFull.fields[0].constraints, ['PRIMARY_KEY']);
+assertEqual('age has MIN 17', eFull.fields[3].validations[0], { type: 'MIN', value: 17 });
+assertEqual('age has MAX 60', eFull.fields[3].validations[1], { type: 'MAX', value: 60 });
+assertEqual('status default is active', eFull.fields[4].defaultValue, { type: 'STRING', value: 'active' });
+assertEqual('active default is true', eFull.fields[5].defaultValue, { type: 'BOOLEAN', value: true });
+
+
+// ═════════════════════════════════════════════════════════════
+// SEMANTIC: FIELD VALIDATION & DEFAULT VALUE TESTS
+// ═════════════════════════════════════════════════════════════
+
+currentPhase = 'semantic';
+console.log('');
+console.log('╔══════════════════════════════════════════════╗');
+console.log('║  Semantic: Validation & Default Tests        ║');
+console.log('╚══════════════════════════════════════════════╝');
+
+// ── Test 1: INT + MIN valid ──
+console.log('');
+console.log('── Semantic: INT + MIN valid ──');
+const sem1 = lexParseAnalyze('ENTITY Student\nage INT MIN 18');
+assertTrue('INT + MIN is valid', sem1.valid);
+assertEqual('sem1 errors empty', sem1.errors.length, 0);
+
+// ── Test 2: INT + MAX valid ──
+console.log('');
+console.log('── Semantic: INT + MAX valid ──');
+const sem2 = lexParseAnalyze('ENTITY Student\nage INT MAX 65');
+assertTrue('INT + MAX is valid', sem2.valid);
+assertEqual('sem2 errors empty', sem2.errors.length, 0);
+
+// ── Test 3: FLOAT + MIN valid ──
+console.log('');
+console.log('── Semantic: FLOAT + MIN valid ──');
+const sem3 = lexParseAnalyze('ENTITY Product\nprice FLOAT MIN 0.01');
+assertTrue('FLOAT + MIN is valid', sem3.valid);
+assertEqual('sem3 errors empty', sem3.errors.length, 0);
+
+// ── Test 4: FLOAT + MAX valid ──
+console.log('');
+console.log('── Semantic: FLOAT + MAX valid ──');
+const sem4 = lexParseAnalyze('ENTITY Product\nprice FLOAT MAX 9999.99');
+assertTrue('FLOAT + MAX is valid', sem4.valid);
+assertEqual('sem4 errors empty', sem4.errors.length, 0);
+
+// ── Test 5: MIN + MAX valid ──
+console.log('');
+console.log('── Semantic: MIN + MAX valid ──');
+const sem5 = lexParseAnalyze('ENTITY Student\nage INT MIN 18 MAX 60');
+assertTrue('MIN + MAX is valid', sem5.valid);
+assertEqual('sem5 errors empty', sem5.errors.length, 0);
+
+// ── Test 6: STRING + MIN rejected ──
+console.log('');
+console.log('── Semantic: STRING + MIN rejected ──');
+const sem6 = lexParseAnalyze('ENTITY Student\nname STRING MIN 18');
+assertTrue('STRING + MIN is invalid', !sem6.valid);
+assertTrue('Error mentions MIN only allowed for INT or FLOAT', sem6.errors.some(e => e.message === "Validation 'MIN' is only allowed for INT or FLOAT fields."));
+
+// ── Test 7: STRING + MAX rejected ──
+console.log('');
+console.log('── Semantic: STRING + MAX rejected ──');
+const sem7 = lexParseAnalyze('ENTITY Student\nname STRING MAX 100');
+assertTrue('STRING + MAX is invalid', !sem7.valid);
+assertTrue('Error mentions MAX only allowed for INT or FLOAT', sem7.errors.some(e => e.message === "Validation 'MAX' is only allowed for INT or FLOAT fields."));
+
+// ── Test 8: BOOLEAN + MIN rejected ──
+console.log('');
+console.log('── Semantic: BOOLEAN + MIN rejected ──');
+const sem8 = lexParseAnalyze('ENTITY Student\nactive BOOLEAN MIN 1');
+assertTrue('BOOLEAN + MIN is invalid', !sem8.valid);
+assertTrue('Error mentions MIN only allowed for INT or FLOAT', sem8.errors.some(e => e.message === "Validation 'MIN' is only allowed for INT or FLOAT fields."));
+
+// ── Test 9: BOOLEAN + MAX rejected ──
+console.log('');
+console.log('── Semantic: BOOLEAN + MAX rejected ──');
+const sem9 = lexParseAnalyze('ENTITY Student\nactive BOOLEAN MAX 1');
+assertTrue('BOOLEAN + MAX is invalid', !sem9.valid);
+assertTrue('Error mentions MAX only allowed for INT or FLOAT', sem9.errors.some(e => e.message === "Validation 'MAX' is only allowed for INT or FLOAT fields."));
+
+// ── Test 10: MIN > MAX rejected ──
+console.log('');
+console.log('── Semantic: MIN > MAX rejected ──');
+const sem10 = lexParseAnalyze('ENTITY Student\nage INT MIN 60 MAX 17');
+assertTrue('MIN > MAX is invalid', !sem10.valid);
+assertTrue('Error mentions MIN value 60 cannot be greater than MAX value 17.', sem10.errors.some(e => e.message === "MIN value 60 cannot be greater than MAX value 17."));
+
+// ── Test 11: INT + integer DEFAULT valid ──
+console.log('');
+console.log('── Semantic: INT + integer DEFAULT valid ──');
+const sem11 = lexParseAnalyze('ENTITY Student\nage INT DEFAULT 20');
+assertTrue('INT + integer DEFAULT is valid', sem11.valid);
+assertEqual('sem11 errors empty', sem11.errors.length, 0);
+
+// ── Test 12: INT + decimal DEFAULT rejected ──
+console.log('');
+console.log('── Semantic: INT + decimal DEFAULT rejected ──');
+const sem12 = lexParseAnalyze('ENTITY Student\nage INT DEFAULT 8.5');
+assertTrue('INT + decimal DEFAULT is invalid', !sem12.valid);
+assertTrue('Error mentions INT default must be integer', sem12.errors.some(e => e.message.includes("Default value for INT field 'age' must be an integer")));
+
+// ── Test 13: FLOAT + decimal DEFAULT valid ──
+console.log('');
+console.log('── Semantic: FLOAT + decimal DEFAULT valid ──');
+const sem13 = lexParseAnalyze('ENTITY Student\ncgpa FLOAT DEFAULT 8.5');
+assertTrue('FLOAT + decimal DEFAULT is valid', sem13.valid);
+assertEqual('sem13 errors empty', sem13.errors.length, 0);
+
+// ── Test 14: STRING + string DEFAULT valid ──
+console.log('');
+console.log('── Semantic: STRING + string DEFAULT valid ──');
+const sem14 = lexParseAnalyze('ENTITY Student\nstatus STRING DEFAULT "active"');
+assertTrue('STRING + string DEFAULT is valid', sem14.valid);
+assertEqual('sem14 errors empty', sem14.errors.length, 0);
+
+// ── Test 15: STRING + numeric DEFAULT rejected ──
+console.log('');
+console.log('── Semantic: STRING + numeric DEFAULT rejected ──');
+const sem15 = lexParseAnalyze('ENTITY Student\nname STRING DEFAULT 20');
+assertTrue('STRING + numeric DEFAULT is invalid', !sem15.valid);
+assertTrue('Error mentions STRING default must be string', sem15.errors.some(e => e.message.includes("Default value for STRING field 'name' must be a string.")));
+
+// ── Test 16: BOOLEAN + TRUE DEFAULT valid ──
+console.log('');
+console.log('── Semantic: BOOLEAN + TRUE DEFAULT valid ──');
+const sem16 = lexParseAnalyze('ENTITY Student\nactive BOOLEAN DEFAULT TRUE');
+assertTrue('BOOLEAN + TRUE DEFAULT is valid', sem16.valid);
+assertEqual('sem16 errors empty', sem16.errors.length, 0);
+
+// ── Test 17: BOOLEAN + FALSE DEFAULT valid ──
+console.log('');
+console.log('── Semantic: BOOLEAN + FALSE DEFAULT valid ──');
+const sem17 = lexParseAnalyze('ENTITY Student\nactive BOOLEAN DEFAULT FALSE');
+assertTrue('BOOLEAN + FALSE DEFAULT is valid', sem17.valid);
+assertEqual('sem17 errors empty', sem17.errors.length, 0);
+
+// ── Test 18: BOOLEAN + string DEFAULT rejected ──
+console.log('');
+console.log('── Semantic: BOOLEAN + string DEFAULT rejected ──');
+const sem18 = lexParseAnalyze('ENTITY Student\nactive BOOLEAN DEFAULT "true"');
+assertTrue('BOOLEAN + string DEFAULT is invalid', !sem18.valid);
+assertTrue('Error mentions BOOLEAN default must be boolean', sem18.errors.some(e => e.message.includes("Default value for BOOLEAN field 'active' must be a boolean")));
+
+// ── Test 19: REQUIRED + DEFAULT valid ──
+console.log('');
+console.log('── Semantic: REQUIRED + DEFAULT valid ──');
+const sem19 = lexParseAnalyze('ENTITY Student\nstatus STRING REQUIRED DEFAULT "active"');
+assertTrue('REQUIRED + DEFAULT is valid', sem19.valid);
+assertEqual('sem19 errors empty', sem19.errors.length, 0);
+
+// ── Test 20: PRIMARY KEY + DEFAULT behavior ──
+console.log('');
+console.log('── Semantic: PRIMARY KEY + DEFAULT behavior ──');
+const sem20 = lexParseAnalyze('ENTITY Student\nid INT PRIMARY KEY DEFAULT 1');
+assertTrue('PRIMARY KEY + DEFAULT is valid', sem20.valid);
+assertEqual('sem20 errors empty', sem20.errors.length, 0);
+
+// ── Test 21: MIN/MAX + DEFAULT inside range valid ──
+console.log('');
+console.log('── Semantic: MIN/MAX + DEFAULT inside range valid ──');
+const sem21 = lexParseAnalyze('ENTITY Student\nage INT MIN 18 MAX 60 DEFAULT 25');
+assertTrue('MIN/MAX + DEFAULT inside range is valid', sem21.valid);
+assertEqual('sem21 errors empty', sem21.errors.length, 0);
+
+// ── Test 22: MIN/MAX + DEFAULT outside range rejected ──
+console.log('');
+console.log('── Semantic: MIN/MAX + DEFAULT outside range rejected ──');
+const sem22a = lexParseAnalyze('ENTITY Student\nage INT MIN 18 MAX 60 DEFAULT 12');
+assertTrue('Default below range is invalid', !sem22a.valid);
+assertTrue('Error says Default value 12 is outside the allowed range [18, 60].', sem22a.errors.some(e => e.message === "Default value 12 is outside the allowed range [18, 60]."));
+
+const sem22b = lexParseAnalyze('ENTITY Student\nage INT MIN 18 MAX 60 DEFAULT 75');
+assertTrue('Default above range is invalid', !sem22b.valid);
+assertTrue('Error says Default value 75 is outside the allowed range [18, 60].', sem22b.errors.some(e => e.message === "Default value 75 is outside the allowed range [18, 60]."));
+
+const sem22c = lexParseAnalyze('ENTITY Student\nage INT MIN 18 DEFAULT 10');
+assertTrue('Default below single MIN is invalid', !sem22c.valid);
+assertTrue('Error mentions MIN value 18', sem22c.errors.some(e => e.message.includes("MIN value 18")));
+
+// ── Test 23: Duplicate MIN rejected ──
+console.log('');
+console.log('── Semantic: Duplicate MIN rejected ──');
+const sem23 = lexParseAnalyze('ENTITY Student\nage INT MIN 18 MIN 20');
+assertTrue('Duplicate MIN is invalid', !sem23.valid);
+assertTrue('Error mentions Duplicate MIN validation for field \'age\'.', sem23.errors.some(e => e.message === "Duplicate MIN validation for field 'age'."));
+
+// ── Test 24: Duplicate MAX rejected ──
+console.log('');
+console.log('── Semantic: Duplicate MAX rejected ──');
+const sem24 = lexParseAnalyze('ENTITY Student\nage INT MAX 50 MAX 60');
+assertTrue('Duplicate MAX is invalid', !sem24.valid);
+assertTrue('Error mentions Duplicate MAX validation for field \'age\'.', sem24.errors.some(e => e.message === "Duplicate MAX validation for field 'age'."));
+
+// ── Test 25: Duplicate DEFAULT rejected ──
+console.log('');
+console.log('── Semantic: Duplicate DEFAULT rejected ──');
+const dupDefAST = new ProgramNode();
+const dupDefEntity = new EntityNode('Student', 1);
+const dupDefField = new FieldNode('status', 'STRING', [], 2, 1, 8, [], [{ type: 'STRING', value: 'active' }, { type: 'STRING', value: 'inactive' }]);
+dupDefEntity.fields.push(dupDefField);
+dupDefAST.entities.push(dupDefEntity);
+const sem25 = SemanticAnalyzer.analyze(dupDefAST);
+assertTrue('Duplicate DEFAULT is invalid', !sem25.valid);
+assertTrue('Error mentions Duplicate DEFAULT value for field \'status\'.', sem25.errors.some(e => e.message === "Duplicate DEFAULT value for field 'status'."));
+
+// ── Test 26: Symbol table preserves validations ──
+console.log('');
+console.log('── Semantic: Symbol table preserves validations ──');
+const sem26 = lexParseAnalyze('ENTITY Student\nage INT MIN 18 MAX 60 DEFAULT 25');
+const fieldAge = sem26.symbolTable['Student'].fields['age'];
+assertTrue('Field age has validations in symbol table', Array.isArray(fieldAge.validations));
+assertEqual('Validations length is 2', fieldAge.validations.length, 2);
+assertEqual('First validation is MIN 18', fieldAge.validations[0], { type: 'MIN', value: 18 });
+assertEqual('Second validation is MAX 60', fieldAge.validations[1], { type: 'MAX', value: 60 });
+
+// ── Test 27: Symbol table preserves defaultValue ──
+console.log('');
+console.log('── Semantic: Symbol table preserves defaultValue ──');
+assertEqual('Field age defaultValue is NUMBER 25', fieldAge.defaultValue, { type: 'NUMBER', value: 25 });
+const sem27Str = lexParseAnalyze('ENTITY Student\nstatus STRING DEFAULT "active"');
+assertEqual('Field status defaultValue is STRING active', sem27Str.symbolTable['Student'].fields['status'].defaultValue, { type: 'STRING', value: 'active' });
+
+// ── Test 28: Multiple validation/default errors collected together ──
+console.log('');
+console.log('── Semantic: Multiple validation/default errors collected ──');
+const sem28 = lexParseAnalyze([
+    'ENTITY BadEntity',
+    'name STRING MIN 5',
+    'active BOOLEAN MAX 1',
+    'age INT MIN 60 MAX 17',
+    'status INT DEFAULT "bad"'
+].join('\n'));
+assertTrue('Multiple errors entity is invalid', !sem28.valid);
+assertTrue('At least 4 errors collected', sem28.errors.length >= 4);
+assertTrue('Collected STRING MIN error', sem28.errors.some(e => e.message.includes("Validation 'MIN' is only allowed for INT or FLOAT")));
+assertTrue('Collected BOOLEAN MAX error', sem28.errors.some(e => e.message.includes("Validation 'MAX' is only allowed for INT or FLOAT")));
+assertTrue('Collected MIN > MAX error', sem28.errors.some(e => e.message.includes("MIN value 60 cannot be greater than MAX value 17")));
+assertTrue('Collected INT default string error', sem28.errors.some(e => e.message.includes("Default value for INT field 'status' must be an integer")));
+
+
+// ═════════════════════════════════════════════════════════════
+// IR GENERATOR: FIELD VALIDATION & DEFAULT VALUE TESTS
+// ═════════════════════════════════════════════════════════════
+
+currentPhase = 'ir';
+console.log('');
+console.log('╔══════════════════════════════════════════════╗');
+console.log('║  IR: Validation & Default Tests              ║');
+console.log('╚══════════════════════════════════════════════╝');
+
+// ── IR Test: Field with MIN ──
+console.log('');
+console.log('── IR: Field with MIN ──');
+const irMinAst = lexAndParse('ENTITY Student\nage INT MIN 18');
+const irMinSem = SemanticAnalyzer.analyze(irMinAst);
+const irMin = IRGenerator.generate(irMinAst, irMinSem);
+const instMin = irMin.instructions.find(i => i.op === 'ADD_FIELD' && i.field === 'age');
+assertTrue('ADD_FIELD for MIN found', !!instMin);
+assertEqual('instMin validations', instMin.validations, [{ type: 'MIN', value: 18 }]);
+assertEqual('instMin defaultValue is null', instMin.defaultValue, null);
+
+// ── IR Test: Field with MAX ──
+console.log('');
+console.log('── IR: Field with MAX ──');
+const irMaxAst = lexAndParse('ENTITY Student\nage INT MAX 65');
+const irMaxSem = SemanticAnalyzer.analyze(irMaxAst);
+const irMax = IRGenerator.generate(irMaxAst, irMaxSem);
+const instMax = irMax.instructions.find(i => i.op === 'ADD_FIELD' && i.field === 'age');
+assertEqual('instMax validations', instMax.validations, [{ type: 'MAX', value: 65 }]);
+
+// ── IR Test: Field with MIN + MAX ──
+console.log('');
+console.log('── IR: Field with MIN + MAX ──');
+const irMinMaxAst = lexAndParse('ENTITY Student\nage INT MIN 18 MAX 60');
+const irMinMaxSem = SemanticAnalyzer.analyze(irMinMaxAst);
+const irMinMax = IRGenerator.generate(irMinMaxAst, irMinMaxSem);
+const instMinMax = irMinMax.instructions.find(i => i.op === 'ADD_FIELD' && i.field === 'age');
+assertEqual('instMinMax validations length', instMinMax.validations.length, 2);
+assertEqual('instMinMax validations', instMinMax.validations, [{ type: 'MIN', value: 18 }, { type: 'MAX', value: 60 }]);
+
+// ── IR Test: Field with string DEFAULT ──
+console.log('');
+console.log('── IR: Field with string DEFAULT ──');
+const irDefStrAst = lexAndParse('ENTITY Student\nstatus STRING DEFAULT "active"');
+const irDefStrSem = SemanticAnalyzer.analyze(irDefStrAst);
+const irDefStr = IRGenerator.generate(irDefStrAst, irDefStrSem);
+const instDefStr = irDefStr.instructions.find(i => i.op === 'ADD_FIELD' && i.field === 'status');
+assertEqual('instDefStr defaultValue', instDefStr.defaultValue, { type: 'STRING', value: 'active' });
+assertEqual('instDefStr validations empty', instDefStr.validations, []);
+
+// ── IR Test: Field with numeric DEFAULT ──
+console.log('');
+console.log('── IR: Field with numeric DEFAULT ──');
+const irDefNumAst = lexAndParse('ENTITY Student\nage INT DEFAULT 25\nscore FLOAT DEFAULT 98.5');
+const irDefNumSem = SemanticAnalyzer.analyze(irDefNumAst);
+const irDefNum = IRGenerator.generate(irDefNumAst, irDefNumSem);
+const instDefAge = irDefNum.instructions.find(i => i.op === 'ADD_FIELD' && i.field === 'age');
+const instDefScore = irDefNum.instructions.find(i => i.op === 'ADD_FIELD' && i.field === 'score');
+assertEqual('instDefAge defaultValue is 25', instDefAge.defaultValue, { type: 'NUMBER', value: 25 });
+assertEqual('instDefScore defaultValue is 98.5', instDefScore.defaultValue, { type: 'NUMBER', value: 98.5 });
+
+// ── IR Test: Field with boolean DEFAULT ──
+console.log('');
+console.log('── IR: Field with boolean DEFAULT ──');
+const irDefBoolAst = lexAndParse('ENTITY Student\nactive BOOLEAN DEFAULT TRUE\ndeleted BOOLEAN DEFAULT FALSE');
+const irDefBoolSem = SemanticAnalyzer.analyze(irDefBoolAst);
+const irDefBool = IRGenerator.generate(irDefBoolAst, irDefBoolSem);
+const instDefActive = irDefBool.instructions.find(i => i.op === 'ADD_FIELD' && i.field === 'active');
+const instDefDeleted = irDefBool.instructions.find(i => i.op === 'ADD_FIELD' && i.field === 'deleted');
+assertEqual('instDefActive defaultValue is true', instDefActive.defaultValue, { type: 'BOOLEAN', value: true });
+assertEqual('instDefDeleted defaultValue is false', instDefDeleted.defaultValue, { type: 'BOOLEAN', value: false });
+
+// ── IR Test: Field with constraints + validations + default ──
+console.log('');
+console.log('── IR: Field with constraints + validations + default ──');
+const irFullFieldAst = lexAndParse('ENTITY Student\nage INT REQUIRED MIN 18 MAX 60 DEFAULT 25');
+const irFullFieldSem = SemanticAnalyzer.analyze(irFullFieldAst);
+const irFullField = IRGenerator.generate(irFullFieldAst, irFullFieldSem);
+const instFullField = irFullField.instructions.find(i => i.op === 'ADD_FIELD' && i.field === 'age');
+assertEqual('instFullField constraints', instFullField.constraints, ['REQUIRED']);
+assertEqual('instFullField validations', instFullField.validations, [{ type: 'MIN', value: 18 }, { type: 'MAX', value: 60 }]);
+assertEqual('instFullField defaultValue', instFullField.defaultValue, { type: 'NUMBER', value: 25 });
+
+// ── IR Test: Null default ──
+console.log('');
+console.log('── IR: Null default ──');
+const irNullDefAst = lexAndParse('ENTITY Student\nname STRING REQUIRED');
+const irNullDefSem = SemanticAnalyzer.analyze(irNullDefAst);
+const irNullDef = IRGenerator.generate(irNullDefAst, irNullDefSem);
+const instNullDef = irNullDef.instructions.find(i => i.op === 'ADD_FIELD' && i.field === 'name');
+assertEqual('instNullDef defaultValue is null', instNullDef.defaultValue, null);
+assertEqual('instNullDef validations is empty array', instNullDef.validations, []);
+
+// ── IR Test: Multiple fields with different validations/defaults ──
+console.log('');
+console.log('── IR: Multiple fields with different validations/defaults ──');
+const irMultiAst = lexAndParse([
+    'ENTITY Student',
+    'id INT PRIMARY KEY',
+    'name STRING REQUIRED',
+    'age INT MIN 18 MAX 60 DEFAULT 25',
+    'status STRING DEFAULT "active"',
+    'active BOOLEAN DEFAULT TRUE'
+].join('\n'));
+const irMultiSem = SemanticAnalyzer.analyze(irMultiAst);
+const irMulti = IRGenerator.generate(irMultiAst, irMultiSem);
+assertEqual('irMulti instructions length', irMulti.instructions.length, 6);
+const addFields = irMulti.instructions.filter(i => i.op === 'ADD_FIELD');
+assertEqual('addFields length is 5', addFields.length, 5);
+
+// ── IR Test: Correct line preservation ──
+console.log('');
+console.log('── IR: Correct line preservation ──');
+assertEqual('id line is 2', addFields[0].line, 2);
+assertEqual('name line is 3', addFields[1].line, 3);
+assertEqual('age line is 4', addFields[2].line, 4);
+assertEqual('status line is 5', addFields[3].line, 5);
+assertEqual('active line is 6', addFields[4].line, 6);
+
+// ── IR Test: IR validator accepts valid validation structures ──
+console.log('');
+console.log('── IR: IR validator accepts valid validation structures ──');
+const validIRWithValidations = {
+    type: 'PROGRAM',
+    instructions: [
+        {
+            op: 'CREATE_ENTITY',
+            entity: 'Student'
+        },
+        {
+            op: 'ADD_FIELD',
+            entity: 'Student',
+            field: 'age',
+            dataType: 'INT',
+            constraints: [],
+            validations: [
+                { type: 'MIN', value: 18 },
+                { type: 'MAX', value: 60 }
+            ],
+            defaultValue: {
+                type: 'NUMBER',
+                value: 25
+            }
+        }
+    ]
+};
+const valRes1 = IRGenerator.validate(validIRWithValidations);
+assertTrue('validIRWithValidations is valid', valRes1.valid);
+assertEqual('valRes1 errors empty', valRes1.errors.length, 0);
+
+// ── IR Test: IR validator rejects invalid validation structure ──
+console.log('');
+console.log('── IR: IR validator rejects invalid validation structure ──');
+const invalidValTypeIR = {
+    type: 'PROGRAM',
+    instructions: [
+        {
+            op: 'ADD_FIELD',
+            entity: 'Student',
+            field: 'age',
+            dataType: 'INT',
+            constraints: [],
+            validations: [{ type: 'GREATER_THAN', value: 10 }]
+        }
+    ]
+};
+const valRes2 = IRGenerator.validate(invalidValTypeIR);
+assertTrue('invalidValTypeIR is invalid', !valRes2.valid);
+assertTrue('Error mentions invalid type', valRes2.errors.some(e => e.includes("invalid type 'GREATER_THAN'")));
+
+const invalidValValueIR = {
+    type: 'PROGRAM',
+    instructions: [
+        {
+            op: 'ADD_FIELD',
+            entity: 'Student',
+            field: 'age',
+            dataType: 'INT',
+            constraints: [],
+            validations: [{ type: 'MIN', value: 'eighteen' }]
+        }
+    ]
+};
+const valRes3 = IRGenerator.validate(invalidValValueIR);
+assertTrue('invalidValValueIR is invalid', !valRes3.valid);
+assertTrue('Error mentions numeric value', valRes3.errors.some(e => e.includes("must have a numeric 'value'")));
+
+const invalidValNotArrayIR = {
+    type: 'PROGRAM',
+    instructions: [
+        {
+            op: 'ADD_FIELD',
+            entity: 'Student',
+            field: 'age',
+            dataType: 'INT',
+            constraints: [],
+            validations: 'not-an-array'
+        }
+    ]
+};
+const valRes4 = IRGenerator.validate(invalidValNotArrayIR);
+assertTrue('invalidValNotArrayIR is invalid', !valRes4.valid);
+assertTrue('Error mentions validations array', valRes4.errors.some(e => e.includes("must have a 'validations' array")));
+
+// ── IR Test: IR validator accepts valid default structures ──
+console.log('');
+console.log('── IR: IR validator accepts valid default structures ──');
+const validDefaultsIR = {
+    type: 'PROGRAM',
+    instructions: [
+        { op: 'ADD_FIELD', entity: 'Test', field: 'f1', dataType: 'INT', constraints: [], defaultValue: { type: 'NUMBER', value: 42 } },
+        { op: 'ADD_FIELD', entity: 'Test', field: 'f2', dataType: 'STRING', constraints: [], defaultValue: { type: 'STRING', value: 'hello' } },
+        { op: 'ADD_FIELD', entity: 'Test', field: 'f3', dataType: 'BOOLEAN', constraints: [], defaultValue: { type: 'BOOLEAN', value: true } },
+        { op: 'ADD_FIELD', entity: 'Test', field: 'f4', dataType: 'INT', constraints: [], defaultValue: null }
+    ]
+};
+const valRes5 = IRGenerator.validate(validDefaultsIR);
+assertTrue('validDefaultsIR is valid', valRes5.valid);
+assertEqual('valRes5 errors empty', valRes5.errors.length, 0);
+
+// ── IR Test: IR validator rejects invalid default structure ──
+console.log('');
+console.log('── IR: IR validator rejects invalid default structure ──');
+const invalidDefTypeIR = {
+    type: 'PROGRAM',
+    instructions: [
+        { op: 'ADD_FIELD', entity: 'Test', field: 'f1', dataType: 'INT', constraints: [], defaultValue: { type: 'OBJECT', value: {} } }
+    ]
+};
+const valRes6 = IRGenerator.validate(invalidDefTypeIR);
+assertTrue('invalidDefTypeIR is invalid', !valRes6.valid);
+assertTrue('Error mentions invalid type OBJECT', valRes6.errors.some(e => e.includes("invalid type 'OBJECT'")));
+
+const invalidDefMismatchIR = {
+    type: 'PROGRAM',
+    instructions: [
+        { op: 'ADD_FIELD', entity: 'Test', field: 'f1', dataType: 'INT', constraints: [], defaultValue: { type: 'NUMBER', value: 'not-a-number' } }
+    ]
+};
+const valRes7 = IRGenerator.validate(invalidDefMismatchIR);
+assertTrue('invalidDefMismatchIR is invalid', !valRes7.valid);
+assertTrue('Error mentions numeric value for NUMBER default', valRes7.errors.some(e => e.includes("must have a numeric value")));
+
+const invalidDefNotObjIR = {
+    type: 'PROGRAM',
+    instructions: [
+        { op: 'ADD_FIELD', entity: 'Test', field: 'f1', dataType: 'INT', constraints: [], defaultValue: 'active' }
+    ]
+};
+const valRes8 = IRGenerator.validate(invalidDefNotObjIR);
+assertTrue('invalidDefNotObjIR is invalid', !valRes8.valid);
+assertTrue('Error mentions must be an object or null', valRes8.errors.some(e => e.includes("must be an object or null")));
+
+
+// ═════════════════════════════════════════════════════════════
+// OPTIMIZER: FIELD VALIDATION & DEFAULT VALUE TESTS
+// ═════════════════════════════════════════════════════════════
+
+currentPhase = 'optimizer';
+console.log('');
+console.log('╔══════════════════════════════════════════════╗');
+console.log('║  Optimizer: Validation & Default Tests       ║');
+console.log('╚══════════════════════════════════════════════╝');
+
+// ── Test 1: No validations -> unchanged ──
+console.log('');
+console.log('── Optimizer: No validations unchanged ──');
+const opt1_in = {
+    type: 'PROGRAM',
+    instructions: [
+        { op: 'CREATE_ENTITY', entity: 'Student' },
+        { op: 'ADD_FIELD', entity: 'Student', field: 'name', dataType: 'STRING', constraints: ['REQUIRED'], validations: [], defaultValue: null }
+    ]
+};
+const opt1 = Optimizer.optimize(opt1_in);
+assertEqual('opt1 instructions length', opt1.ir.instructions.length, 2);
+assertEqual('opt1 validations still empty', opt1.ir.instructions[1].validations, []);
+assertEqual('opt1 optimizations empty', opt1.optimizations.length, 0);
+
+// ── Test 2: One MIN -> unchanged ──
+console.log('');
+console.log('── Optimizer: One MIN unchanged ──');
+const opt2_in = {
+    type: 'PROGRAM',
+    instructions: [
+        { op: 'ADD_FIELD', entity: 'Student', field: 'age', dataType: 'INT', constraints: [], validations: [{ type: 'MIN', value: 18 }], defaultValue: null }
+    ]
+};
+const opt2 = Optimizer.optimize(opt2_in);
+assertEqual('opt2 validations', opt2.ir.instructions[0].validations, [{ type: 'MIN', value: 18 }]);
+assertTrue('opt2 no validation normalization pass', !opt2.optimizations.some(o => o.pass === 'Validation Normalization'));
+
+// ── Test 3: One MAX -> unchanged ──
+console.log('');
+console.log('── Optimizer: One MAX unchanged ──');
+const opt3_in = {
+    type: 'PROGRAM',
+    instructions: [
+        { op: 'ADD_FIELD', entity: 'Student', field: 'age', dataType: 'INT', constraints: [], validations: [{ type: 'MAX', value: 65 }], defaultValue: null }
+    ]
+};
+const opt3 = Optimizer.optimize(opt3_in);
+assertEqual('opt3 validations', opt3.ir.instructions[0].validations, [{ type: 'MAX', value: 65 }]);
+
+// ── Test 4: MIN + MAX already ordered -> unchanged ──
+console.log('');
+console.log('── Optimizer: MIN + MAX already ordered unchanged ──');
+const opt4_in = {
+    type: 'PROGRAM',
+    instructions: [
+        { op: 'ADD_FIELD', entity: 'Student', field: 'age', dataType: 'INT', constraints: [], validations: [{ type: 'MIN', value: 18 }, { type: 'MAX', value: 60 }], defaultValue: null }
+    ]
+};
+const opt4 = Optimizer.optimize(opt4_in);
+assertEqual('opt4 validations', opt4.ir.instructions[0].validations, [{ type: 'MIN', value: 18 }, { type: 'MAX', value: 60 }]);
+assertTrue('opt4 no validation normalization pass', !opt4.optimizations.some(o => o.pass === 'Validation Normalization'));
+
+// ── Test 5: MAX + MIN -> normalized to MIN + MAX ──
+console.log('');
+console.log('── Optimizer: MAX + MIN normalized to MIN + MAX ──');
+const opt5_in = {
+    type: 'PROGRAM',
+    instructions: [
+        { op: 'ADD_FIELD', entity: 'Student', field: 'age', dataType: 'INT', constraints: [], validations: [{ type: 'MAX', value: 60 }, { type: 'MIN', value: 18 }], defaultValue: null }
+    ]
+};
+const opt5 = Optimizer.optimize(opt5_in);
+assertEqual('opt5 normalized validations', opt5.ir.instructions[0].validations, [{ type: 'MIN', value: 18 }, { type: 'MAX', value: 60 }]);
+assertTrue('opt5 has Validation Normalization pass', opt5.optimizations.some(o => o.pass === 'Validation Normalization'));
+
+// ── Test 6: Exact duplicate MIN removed ──
+console.log('');
+console.log('── Optimizer: Exact duplicate MIN removed ──');
+const opt6_in = {
+    type: 'PROGRAM',
+    instructions: [
+        { op: 'ADD_FIELD', entity: 'Student', field: 'age', dataType: 'INT', constraints: [], validations: [{ type: 'MIN', value: 18 }, { type: 'MIN', value: 18 }], defaultValue: null }
+    ]
+};
+const opt6 = Optimizer.optimize(opt6_in);
+assertEqual('opt6 duplicate MIN eliminated', opt6.ir.instructions[0].validations, [{ type: 'MIN', value: 18 }]);
+assertTrue('opt6 has Duplicate Validation Elimination pass', opt6.optimizations.some(o => o.pass === 'Duplicate Validation Elimination'));
+
+// ── Test 7: Exact duplicate MAX removed ──
+console.log('');
+console.log('── Optimizer: Exact duplicate MAX removed ──');
+const opt7_in = {
+    type: 'PROGRAM',
+    instructions: [
+        { op: 'ADD_FIELD', entity: 'Student', field: 'age', dataType: 'INT', constraints: [], validations: [{ type: 'MAX', value: 60 }, { type: 'MAX', value: 60 }], defaultValue: null }
+    ]
+};
+const opt7 = Optimizer.optimize(opt7_in);
+assertEqual('opt7 duplicate MAX eliminated', opt7.ir.instructions[0].validations, [{ type: 'MAX', value: 60 }]);
+assertTrue('opt7 has Duplicate Validation Elimination pass', opt7.optimizations.some(o => o.pass === 'Duplicate Validation Elimination'));
+
+// ── Test 8: Different validation values preserved ──
+console.log('');
+console.log('── Optimizer: Different validation values preserved ──');
+const opt8_in = {
+    type: 'PROGRAM',
+    instructions: [
+        { op: 'ADD_FIELD', entity: 'Student', field: 'age', dataType: 'INT', constraints: [], validations: [{ type: 'MIN', value: 18 }, { type: 'MIN', value: 20 }], defaultValue: null }
+    ]
+};
+const opt8 = Optimizer.optimize(opt8_in);
+assertEqual('opt8 preserves different MIN values', opt8.ir.instructions[0].validations.length, 2);
+assertEqual('opt8 validations', opt8.ir.instructions[0].validations, [{ type: 'MIN', value: 18 }, { type: 'MIN', value: 20 }]);
+
+// ── Test 9: Default value preserved ──
+console.log('');
+console.log('── Optimizer: Default value preserved ──');
+const opt9_in = {
+    type: 'PROGRAM',
+    instructions: [
+        { op: 'ADD_FIELD', entity: 'Student', field: 'age', dataType: 'INT', constraints: [], validations: [], defaultValue: { type: 'NUMBER', value: 25 } }
+    ]
+};
+const opt9 = Optimizer.optimize(opt9_in);
+assertEqual('opt9 defaultValue', opt9.ir.instructions[0].defaultValue, { type: 'NUMBER', value: 25 });
+
+// ── Test 10: String default preserved ──
+console.log('');
+console.log('── Optimizer: String default preserved ──');
+const opt10_in = {
+    type: 'PROGRAM',
+    instructions: [
+        { op: 'ADD_FIELD', entity: 'Student', field: 'status', dataType: 'STRING', constraints: [], validations: [], defaultValue: { type: 'STRING', value: 'active' } }
+    ]
+};
+const opt10 = Optimizer.optimize(opt10_in);
+assertEqual('opt10 defaultValue', opt10.ir.instructions[0].defaultValue, { type: 'STRING', value: 'active' });
+
+// ── Test 11: Boolean default preserved ──
+console.log('');
+console.log('── Optimizer: Boolean default preserved ──');
+const opt11_in = {
+    type: 'PROGRAM',
+    instructions: [
+        { op: 'ADD_FIELD', entity: 'Student', field: 'active', dataType: 'BOOLEAN', constraints: [], validations: [], defaultValue: { type: 'BOOLEAN', value: true } }
+    ]
+};
+const opt11 = Optimizer.optimize(opt11_in);
+assertEqual('opt11 defaultValue', opt11.ir.instructions[0].defaultValue, { type: 'BOOLEAN', value: true });
+
+// ── Test 12: Numeric default preserved ──
+console.log('');
+console.log('── Optimizer: Numeric default preserved ──');
+const opt12_in = {
+    type: 'PROGRAM',
+    instructions: [
+        { op: 'ADD_FIELD', entity: 'Product', field: 'price', dataType: 'FLOAT', constraints: [], validations: [], defaultValue: { type: 'NUMBER', value: 19.99 } }
+    ]
+};
+const opt12 = Optimizer.optimize(opt12_in);
+assertEqual('opt12 defaultValue', opt12.ir.instructions[0].defaultValue, { type: 'NUMBER', value: 19.99 });
+
+// ── Test 13: Validation + default together preserved ──
+console.log('');
+console.log('── Optimizer: Validation + default together preserved ──');
+const opt13_in = {
+    type: 'PROGRAM',
+    instructions: [
+        {
+            op: 'ADD_FIELD',
+            entity: 'Student',
+            field: 'age',
+            dataType: 'INT',
+            constraints: ['REQUIRED'],
+            validations: [{ type: 'MAX', value: 60 }, { type: 'MIN', value: 18 }],
+            defaultValue: { type: 'NUMBER', value: 25 }
+        }
+    ]
+};
+const opt13 = Optimizer.optimize(opt13_in);
+assertEqual('opt13 normalized validations', opt13.ir.instructions[0].validations, [{ type: 'MIN', value: 18 }, { type: 'MAX', value: 60 }]);
+assertEqual('opt13 defaultValue', opt13.ir.instructions[0].defaultValue, { type: 'NUMBER', value: 25 });
+assertEqual('opt13 constraints', opt13.ir.instructions[0].constraints, ['REQUIRED']);
+
+// ── Test 14: Multiple fields optimized independently ──
+console.log('');
+console.log('── Optimizer: Multiple fields optimized independently ──');
+const opt14_in = {
+    type: 'PROGRAM',
+    instructions: [
+        { op: 'ADD_FIELD', entity: 'Student', field: 'age', dataType: 'INT', constraints: [], validations: [{ type: 'MAX', value: 60 }, { type: 'MIN', value: 18 }], defaultValue: null },
+        { op: 'ADD_FIELD', entity: 'Student', field: 'score', dataType: 'FLOAT', constraints: [], validations: [{ type: 'MAX', value: 100 }, { type: 'MIN', value: 0 }], defaultValue: { type: 'NUMBER', value: 75 } }
+    ]
+};
+const opt14 = Optimizer.optimize(opt14_in);
+assertEqual('opt14 field 1 validations', opt14.ir.instructions[0].validations, [{ type: 'MIN', value: 18 }, { type: 'MAX', value: 60 }]);
+assertEqual('opt14 field 2 validations', opt14.ir.instructions[1].validations, [{ type: 'MIN', value: 0 }, { type: 'MAX', value: 100 }]);
+assertEqual('opt14 field 2 defaultValue', opt14.ir.instructions[1].defaultValue, { type: 'NUMBER', value: 75 });
+const valNormPass = opt14.optimizations.find(o => o.pass === 'Validation Normalization');
+assertTrue('opt14 has Validation Normalization count 2', valNormPass && valNormPass.count === 2);
+
+// ── Test 15: Entity and field order preserved ──
+console.log('');
+console.log('── Optimizer: Entity and field order preserved ──');
+const opt15_in = {
+    type: 'PROGRAM',
+    instructions: [
+        { op: 'CREATE_ENTITY', entity: 'Student', line: 1 },
+        { op: 'ADD_FIELD', entity: 'Student', field: 'id', dataType: 'INT', constraints: ['PRIMARY_KEY'], validations: [], defaultValue: null, line: 2 },
+        { op: 'ADD_FIELD', entity: 'Student', field: 'name', dataType: 'STRING', constraints: ['REQUIRED'], validations: [], defaultValue: null, line: 3 },
+        { op: 'ADD_FIELD', entity: 'Student', field: 'age', dataType: 'INT', constraints: [], validations: [{ type: 'MAX', value: 60 }, { type: 'MIN', value: 18 }], defaultValue: { type: 'NUMBER', value: 25 }, line: 4 }
+    ]
+};
+const opt15 = Optimizer.optimize(opt15_in);
+assertEqual('opt15 count is 4', opt15.ir.instructions.length, 4);
+assertEqual('opt15 inst 0 is CREATE_ENTITY', opt15.ir.instructions[0].op, 'CREATE_ENTITY');
+assertEqual('opt15 inst 1 field is id', opt15.ir.instructions[1].field, 'id');
+assertEqual('opt15 inst 2 field is name', opt15.ir.instructions[2].field, 'name');
+assertEqual('opt15 inst 3 field is age', opt15.ir.instructions[3].field, 'age');
+assertEqual('opt15 lines preserved', [opt15.ir.instructions[0].line, opt15.ir.instructions[1].line, opt15.ir.instructions[2].line, opt15.ir.instructions[3].line], [1, 2, 3, 4]);
+
+// ── Test 16: Optimized IR passes Phase 4 validation ──
+console.log('');
+console.log('── Optimizer: Optimized IR passes Phase 4 validation ──');
+const opt16Val = IRGenerator.validate(opt15.ir);
+assertTrue('opt15 optimized IR is valid in Phase 4 validator', opt16Val.valid);
+assertEqual('opt16Val errors empty', opt16Val.errors.length, 0);
+
+// ── Test 17: Duplicate field elimination pass considers validations & defaults ──
+console.log('');
+console.log('── Optimizer: Duplicate field elimination with validations & defaults ──');
+const opt17_in = {
+    type: 'PROGRAM',
+    instructions: [
+        { op: 'ADD_FIELD', entity: 'Student', field: 'age', dataType: 'INT', constraints: [], validations: [{ type: 'MIN', value: 18 }, { type: 'MAX', value: 60 }], defaultValue: { type: 'NUMBER', value: 25 } },
+        { op: 'ADD_FIELD', entity: 'Student', field: 'age', dataType: 'INT', constraints: [], validations: [{ type: 'MIN', value: 18 }, { type: 'MAX', value: 60 }], defaultValue: { type: 'NUMBER', value: 25 } }
+    ]
+};
+const opt17 = Optimizer.optimize(opt17_in);
+assertEqual('opt17 duplicate ADD_FIELD removed', opt17.ir.instructions.length, 1);
+assertTrue('opt17 has Duplicate Field Elimination pass', opt17.optimizations.some(o => o.pass === 'Duplicate Field Elimination'));
+
+
+// ═════════════════════════════════════════════════════════════
+// CODE GENERATOR: FIELD VALIDATION & DEFAULT VALUE TESTS
+// ═════════════════════════════════════════════════════════════
+
+currentPhase = 'codegen';
+console.log('');
+console.log('╔══════════════════════════════════════════════╗');
+console.log('║  Codegen: Validation & Default Tests         ║');
+console.log('╚══════════════════════════════════════════════╝');
+
+// ── Codegen Test: INT DEFAULT ──
+console.log('');
+console.log('── Codegen: INT DEFAULT ──');
+const sqlIntDef = CodeGenerator.generateSQL({
+    type: 'PROGRAM',
+    instructions: [
+        { op: 'CREATE_ENTITY', entity: 'Student' },
+        { op: 'ADD_FIELD', entity: 'Student', field: 'age', dataType: 'INT', constraints: [], defaultValue: { type: 'NUMBER', value: 25 } }
+    ]
+});
+assertTrue('SQL contains age INT DEFAULT 25', sqlIntDef.includes('age INT DEFAULT 25'));
+
+// ── Codegen Test: FLOAT DEFAULT ──
+console.log('');
+console.log('── Codegen: FLOAT DEFAULT ──');
+const sqlFloatDef = CodeGenerator.generateSQL({
+    type: 'PROGRAM',
+    instructions: [
+        { op: 'CREATE_ENTITY', entity: 'Student' },
+        { op: 'ADD_FIELD', entity: 'Student', field: 'cgpa', dataType: 'FLOAT', constraints: [], defaultValue: { type: 'NUMBER', value: 8.5 } }
+    ]
+});
+assertTrue('SQL contains cgpa FLOAT DEFAULT 8.5', sqlFloatDef.includes('cgpa FLOAT DEFAULT 8.5'));
+
+// ── Codegen Test: STRING DEFAULT ──
+console.log('');
+console.log('── Codegen: STRING DEFAULT ──');
+const sqlStrDef = CodeGenerator.generateSQL({
+    type: 'PROGRAM',
+    instructions: [
+        { op: 'CREATE_ENTITY', entity: 'Student' },
+        { op: 'ADD_FIELD', entity: 'Student', field: 'status', dataType: 'STRING', constraints: [], defaultValue: { type: 'STRING', value: 'active' } }
+    ]
+});
+assertTrue("SQL contains status VARCHAR(255) DEFAULT 'active'", sqlStrDef.includes("status VARCHAR(255) DEFAULT 'active'"));
+
+// ── Codegen Test: BOOLEAN DEFAULT TRUE ──
+console.log('');
+console.log('── Codegen: BOOLEAN DEFAULT TRUE ──');
+const sqlBoolTrue = CodeGenerator.generateSQL({
+    type: 'PROGRAM',
+    instructions: [
+        { op: 'CREATE_ENTITY', entity: 'Student' },
+        { op: 'ADD_FIELD', entity: 'Student', field: 'active', dataType: 'BOOLEAN', constraints: [], defaultValue: { type: 'BOOLEAN', value: true } }
+    ]
+});
+assertTrue('SQL contains active BOOLEAN DEFAULT TRUE', sqlBoolTrue.includes('active BOOLEAN DEFAULT TRUE'));
+
+// ── Codegen Test: BOOLEAN DEFAULT FALSE ──
+console.log('');
+console.log('── Codegen: BOOLEAN DEFAULT FALSE ──');
+const sqlBoolFalse = CodeGenerator.generateSQL({
+    type: 'PROGRAM',
+    instructions: [
+        { op: 'CREATE_ENTITY', entity: 'Student' },
+        { op: 'ADD_FIELD', entity: 'Student', field: 'active', dataType: 'BOOLEAN', constraints: [], defaultValue: { type: 'BOOLEAN', value: false } }
+    ]
+});
+assertTrue('SQL contains active BOOLEAN DEFAULT FALSE', sqlBoolFalse.includes('active BOOLEAN DEFAULT FALSE'));
+
+// ── Codegen Test: MIN only ──
+console.log('');
+console.log('── Codegen: MIN only ──');
+const sqlMinOnly = CodeGenerator.generateSQL({
+    type: 'PROGRAM',
+    instructions: [
+        { op: 'CREATE_ENTITY', entity: 'Student' },
+        { op: 'ADD_FIELD', entity: 'Student', field: 'age', dataType: 'INT', constraints: [], validations: [{ type: 'MIN', value: 18 }] }
+    ]
+});
+assertTrue('SQL contains CHECK (age >= 18)', sqlMinOnly.includes('CHECK (age >= 18)'));
+
+// ── Codegen Test: MAX only ──
+console.log('');
+console.log('── Codegen: MAX only ──');
+const sqlMaxOnly = CodeGenerator.generateSQL({
+    type: 'PROGRAM',
+    instructions: [
+        { op: 'CREATE_ENTITY', entity: 'Student' },
+        { op: 'ADD_FIELD', entity: 'Student', field: 'age', dataType: 'INT', constraints: [], validations: [{ type: 'MAX', value: 60 }] }
+    ]
+});
+assertTrue('SQL contains CHECK (age <= 60)', sqlMaxOnly.includes('CHECK (age <= 60)'));
+
+// ── Codegen Test: MIN + MAX ──
+console.log('');
+console.log('── Codegen: MIN + MAX ──');
+const sqlMinMax = CodeGenerator.generateSQL({
+    type: 'PROGRAM',
+    instructions: [
+        { op: 'CREATE_ENTITY', entity: 'Student' },
+        { op: 'ADD_FIELD', entity: 'Student', field: 'age', dataType: 'INT', constraints: [], validations: [{ type: 'MIN', value: 18 }, { type: 'MAX', value: 60 }] }
+    ]
+});
+assertTrue('SQL contains CHECK (age >= 18 AND age <= 60)', sqlMinMax.includes('CHECK (age >= 18 AND age <= 60)'));
+
+// ── Codegen Test: REQUIRED + DEFAULT ──
+console.log('');
+console.log('── Codegen: REQUIRED + DEFAULT ──');
+const sqlReqDef = CodeGenerator.generateSQL({
+    type: 'PROGRAM',
+    instructions: [
+        { op: 'CREATE_ENTITY', entity: 'Student' },
+        { op: 'ADD_FIELD', entity: 'Student', field: 'status', dataType: 'STRING', constraints: ['REQUIRED'], defaultValue: { type: 'STRING', value: 'active' } }
+    ]
+});
+assertTrue('SQL contains NOT NULL and DEFAULT', sqlReqDef.includes("status VARCHAR(255) NOT NULL DEFAULT 'active'"));
+
+// ── Codegen Test: UNIQUE + DEFAULT ──
+console.log('');
+console.log('── Codegen: UNIQUE + DEFAULT ──');
+const sqlUniqDef = CodeGenerator.generateSQL({
+    type: 'PROGRAM',
+    instructions: [
+        { op: 'CREATE_ENTITY', entity: 'Student' },
+        { op: 'ADD_FIELD', entity: 'Student', field: 'status', dataType: 'STRING', constraints: ['UNIQUE'], defaultValue: { type: 'STRING', value: 'active' } }
+    ]
+});
+assertTrue('SQL contains UNIQUE and DEFAULT', sqlUniqDef.includes("DEFAULT 'active'") && sqlUniqDef.includes('UNIQUE'));
+
+// ── Codegen Test: PRIMARY KEY behavior (with and without default) ──
+console.log('');
+console.log('── Codegen: PRIMARY KEY behavior ──');
+const sqlPkNoDef = CodeGenerator.generateSQL({
+    type: 'PROGRAM',
+    instructions: [
+        { op: 'CREATE_ENTITY', entity: 'Student' },
+        { op: 'ADD_FIELD', entity: 'Student', field: 'id', dataType: 'INT', constraints: ['PRIMARY_KEY'] }
+    ]
+});
+assertTrue('PK without default has AUTO_INCREMENT', sqlPkNoDef.includes('id INT PRIMARY KEY AUTO_INCREMENT'));
+
+const sqlPkWithDef = CodeGenerator.generateSQL({
+    type: 'PROGRAM',
+    instructions: [
+        { op: 'CREATE_ENTITY', entity: 'Student' },
+        { op: 'ADD_FIELD', entity: 'Student', field: 'id', dataType: 'INT', constraints: ['PRIMARY_KEY'], defaultValue: { type: 'NUMBER', value: 1 } }
+    ]
+});
+assertTrue('PK with default has DEFAULT 1 without AUTO_INCREMENT', sqlPkWithDef.includes('id INT PRIMARY KEY DEFAULT 1') && !sqlPkWithDef.includes('AUTO_INCREMENT'));
+
+// ── Codegen Test: MIN/MAX + DEFAULT + REQUIRED ──
+console.log('');
+console.log('── Codegen: MIN/MAX + DEFAULT + REQUIRED ──');
+const sqlCombined = CodeGenerator.generateSQL({
+    type: 'PROGRAM',
+    instructions: [
+        { op: 'CREATE_ENTITY', entity: 'Student' },
+        {
+            op: 'ADD_FIELD',
+            entity: 'Student',
+            field: 'age',
+            dataType: 'INT',
+            constraints: ['REQUIRED'],
+            validations: [{ type: 'MIN', value: 18 }, { type: 'MAX', value: 60 }],
+            defaultValue: { type: 'NUMBER', value: 25 }
+        }
+    ]
+});
+assertTrue('SQL coherent combined definition', sqlCombined.includes('age INT NOT NULL DEFAULT 25 CHECK (age >= 18 AND age <= 60)'));
+
+// ── Codegen Test: SQL string escaping ──
+console.log('');
+console.log('── Codegen: SQL string escaping ──');
+const sqlEscaped = CodeGenerator.generateSQL({
+    type: 'PROGRAM',
+    instructions: [
+        { op: 'CREATE_ENTITY', entity: 'Book' },
+        { op: 'ADD_FIELD', entity: 'Book', field: 'author', dataType: 'STRING', constraints: [], defaultValue: { type: 'STRING', value: "O'Reilly" } }
+    ]
+});
+assertTrue("SQL escapes single quotes correctly", sqlEscaped.includes("author VARCHAR(255) DEFAULT 'O''Reilly'"));
+
+// ── Codegen Test: API validation function in generated controller ──
+console.log('');
+console.log('── Codegen: API validation in controller ──');
+const studentFields = [
+    { name: 'id', dataType: 'INT', constraints: ['PRIMARY_KEY'], validations: [], defaultValue: null },
+    { name: 'age', dataType: 'INT', constraints: [], validations: [{ type: 'MIN', value: 18 }, { type: 'MAX', value: 60 }], defaultValue: { type: 'NUMBER', value: 25 } },
+    { name: 'score', dataType: 'FLOAT', constraints: [], validations: [{ type: 'MIN', value: 0 }, { type: 'MAX', value: 100 }], defaultValue: null }
+];
+const ctrlContent = CodeGenerator.generateController('Student', studentFields);
+assertTrue('Controller contains validateStudent function', ctrlContent.includes('function validateStudent(data)'));
+assertTrue('Controller contains min check for age', ctrlContent.includes("data.age < 18"));
+assertTrue('Controller contains max check for age', ctrlContent.includes("data.age > 60"));
+assertTrue('Controller contains min check for score', ctrlContent.includes("data.score < 0"));
+assertTrue('Controller contains max check for score', ctrlContent.includes("data.score > 100"));
+assertTrue('Controller create calls validateStudent', ctrlContent.includes("const validationError = validateStudent(req.body)"));
+assertTrue('Controller update calls validateStudent', ctrlContent.includes("const validationError = validateStudent(req.body)"));
+
+// ── Codegen Test: Execute generated validation function directly via Function constructor ──
+console.log('');
+console.log('── Codegen: Execute validate function directly ──');
+const fnMatch = ctrlContent.match(/function validateStudent\(data\) \{[\s\S]*?\n\}/);
+assertTrue('Found validateStudent function implementation', !!fnMatch);
+const validateStudentFn = new Function('data', fnMatch[0].replace('function validateStudent(data) {', '').replace(/\n\}$/, ''));
+
+// API validation below MIN
+assertEqual('Reject below MIN (age: 12)', validateStudentFn({ age: 12 }), "Field 'age' must be >= 18.");
+// API validation above MAX
+assertEqual('Reject above MAX (age: 75)', validateStudentFn({ age: 75 }), "Field 'age' must be <= 60.");
+// API accepts valid value
+assertEqual('Accept valid (age: 25)', validateStudentFn({ age: 25 }), null);
+// API accepts boundary values
+assertEqual('Accept min boundary (age: 18)', validateStudentFn({ age: 18 }), null);
+assertEqual('Accept max boundary (age: 60)', validateStudentFn({ age: 60 }), null);
+// API allows omitted field (relies on DB default)
+assertEqual('Accept omitted field payload', validateStudentFn({ name: 'Aniketh' }), null);
+
+// ── Codegen Test: Swagger Schema metadata (minimum, maximum, default) ──
+console.log('');
+console.log('── Codegen: Swagger schema metadata ──');
+const swaggerDoc = JSON.parse(CodeGenerator.generateSwagger([
+    {
+        name: 'Student',
+        fields: [
+            { name: 'id', dataType: 'INT', constraints: ['PRIMARY_KEY'], validations: [], defaultValue: null },
+            { name: 'name', dataType: 'STRING', constraints: ['REQUIRED'], validations: [], defaultValue: { type: 'STRING', value: 'Guest' } },
+            { name: 'age', dataType: 'INT', constraints: [], validations: [{ type: 'MIN', value: 18 }, { type: 'MAX', value: 60 }], defaultValue: { type: 'NUMBER', value: 25 } },
+            { name: 'cgpa', dataType: 'FLOAT', constraints: [], validations: [{ type: 'MIN', value: 0.0 }, { type: 'MAX', value: 10.0 }], defaultValue: { type: 'NUMBER', value: 8.5 } },
+            { name: 'active', dataType: 'BOOLEAN', constraints: [], validations: [], defaultValue: { type: 'BOOLEAN', value: true } }
+        ]
+    }
+]));
+
+const studentSchema = swaggerDoc.components.schemas.Student.properties;
+assertEqual('Swagger age type is integer', studentSchema.age.type, 'integer');
+assertEqual('Swagger age minimum is 18', studentSchema.age.minimum, 18);
+assertEqual('Swagger age maximum is 60', studentSchema.age.maximum, 60);
+assertEqual('Swagger age default is 25', studentSchema.age.default, 25);
+assertEqual('Swagger name default is Guest', studentSchema.name.default, 'Guest');
+assertEqual('Swagger cgpa minimum is 0', studentSchema.cgpa.minimum, 0);
+assertEqual('Swagger cgpa maximum is 10', studentSchema.cgpa.maximum, 10);
+assertEqual('Swagger cgpa default is 8.5', studentSchema.cgpa.default, 8.5);
+assertEqual('Swagger active default is true', studentSchema.active.default, true);
+
+// ── Codegen Test: Existing CRUD and relationship generation remains intact ──
+console.log('');
+console.log('── Codegen: Relationships and CRUD intact ──');
+const relCodegenIR = {
+    type: 'PROGRAM',
+    instructions: [
+        { op: 'CREATE_ENTITY', entity: 'Student', line: 1 },
+        { op: 'ADD_FIELD', entity: 'Student', field: 'id', dataType: 'INT', constraints: ['PRIMARY_KEY'], validations: [], defaultValue: null },
+        { op: 'CREATE_ENTITY', entity: 'Course', line: 3 },
+        { op: 'ADD_FIELD', entity: 'Course', field: 'id', dataType: 'INT', constraints: ['PRIMARY_KEY'], validations: [], defaultValue: null },
+        { op: 'CREATE_RELATION', sourceEntity: 'Student', relationName: 'ENROLLS_IN', targetEntity: 'Course', relationType: 'MANY_TO_MANY', line: 5 }
+    ]
+};
+const relFiles = CodeGenerator.generate(relCodegenIR, false);
+assertTrue('Relationship code generation succeeds', relFiles.success);
+const relSql = relFiles.files.find(f => f.path === 'database/schema.sql').content;
+assertTrue('Contains Student_Course junction table', relSql.includes('CREATE TABLE Student_Course'));
+
+// ═════════════════════════════════════════════════════════════
+// END-TO-END PIPELINE TEST: ALL SIX PHASES (PART 12)
+// ═════════════════════════════════════════════════════════════
+
+console.log('');
+console.log('╔══════════════════════════════════════════════╗');
+console.log('║  End-to-End Pipeline: All 6 Phases Test      ║');
+console.log('╚══════════════════════════════════════════════╝');
+
+const e2eDSL = [
+    'ENTITY Student',
+    '',
+    'id INT PRIMARY KEY',
+    'name STRING REQUIRED',
+    'age INT MIN 18 MAX 60 DEFAULT 25',
+    'status STRING DEFAULT "active"',
+    'cgpa FLOAT MIN 0.0 MAX 10.0 DEFAULT 8.5',
+    'active BOOLEAN DEFAULT TRUE'
+].join('\n');
+
+// Phase 1: Lexer
+const e2eTokens = Lexer.tokenize(e2eDSL);
+assertTrue('E2E: Lexer produced tokens', Array.isArray(e2eTokens) && e2eTokens.length > 0);
+
+// Phase 2: Parser
+const e2eAST = Parser.parse(e2eTokens);
+assertTrue('E2E: Parser produced AST', e2eAST && e2eAST.entities.length === 1);
+assertEqual('E2E: Student entity parsed with 6 fields', e2eAST.entities[0].fields.length, 6);
+
+// Phase 3: Semantic Analyzer
+const e2eSem = SemanticAnalyzer.analyze(e2eAST);
+assertTrue('E2E: Semantic analysis passed', e2eSem.valid);
+assertEqual('E2E: Semantic errors empty', e2eSem.errors.length, 0);
+assertTrue('E2E: Symbol table has Student', 'Student' in e2eSem.symbolTable);
+
+// Phase 4: IR Generation
+const e2eIR = IRGenerator.generate(e2eAST, e2eSem);
+assertTrue('E2E: IR generated', e2eIR && e2eIR.instructions.length === 7);
+const e2eIRVal = IRGenerator.validate(e2eIR);
+assertTrue('E2E: IR passes validation', e2eIRVal.valid);
+
+// Phase 5: Optimizer
+const e2eOpt = Optimizer.optimize(e2eIR);
+assertTrue('E2E: Optimizer produced valid IR', e2eOpt && e2eOpt.ir.instructions.length === 7);
+
+// Phase 6: Code Generation
+const e2eCodegen = CodeGenerator.generate(e2eOpt.ir, false);
+assertTrue('E2E: Code generation succeeded', e2eCodegen.success);
+assertTrue('E2E: 8 files generated', e2eCodegen.files.length === 8);
+
+const e2eSql = e2eCodegen.files.find(f => f.path === 'database/schema.sql').content;
+assertTrue('E2E SQL: contains age INT', e2eSql.includes('age INT'));
+assertTrue('E2E SQL: contains DEFAULT 25', e2eSql.includes('DEFAULT 25'));
+assertTrue('E2E SQL: contains CHECK for age >= 18 AND age <= 60', e2eSql.includes('CHECK (age >= 18 AND age <= 60)'));
+assertTrue("E2E SQL: contains status DEFAULT 'active'", e2eSql.includes("status VARCHAR(255) DEFAULT 'active'"));
+assertTrue('E2E SQL: contains cgpa CHECK (cgpa >= 0 AND cgpa <= 10)', e2eSql.includes('CHECK (cgpa >= 0 AND cgpa <= 10)'));
+assertTrue('E2E SQL: contains cgpa DEFAULT 8.5', e2eSql.includes('DEFAULT 8.5'));
+assertTrue('E2E SQL: contains active BOOLEAN DEFAULT TRUE', e2eSql.includes('active BOOLEAN DEFAULT TRUE'));
+
+const e2eSwagger = JSON.parse(e2eCodegen.files.find(f => f.path === 'swagger.json').content);
+const e2eSwaggerProps = e2eSwagger.components.schemas.Student.properties;
+assertEqual('E2E Swagger: age minimum 18', e2eSwaggerProps.age.minimum, 18);
+assertEqual('E2E Swagger: age maximum 60', e2eSwaggerProps.age.maximum, 60);
+assertEqual('E2E Swagger: age default 25', e2eSwaggerProps.age.default, 25);
+assertEqual('E2E Swagger: status default active', e2eSwaggerProps.status.default, 'active');
+assertEqual('E2E Swagger: cgpa default 8.5', e2eSwaggerProps.cgpa.default, 8.5);
+assertEqual('E2E Swagger: active default true', e2eSwaggerProps.active.default, true);
+
+
+// ═════════════════════════════════════════════════════════════
 // SUMMARY (inside async IIFE so API test counts are included)
 // ═════════════════════════════════════════════════════════════
 

@@ -14,10 +14,4 @@ router.post('/', studentController.createStudent);
 router.put('/:id', studentController.updateStudent);
 router.delete('/:id', studentController.deleteStudent);
 
-// Relationship endpoints
-// Relationship: Student ENROLLS_IN Course (MANY_TO_MANY)
-router.get('/:id/courses', studentController.getCourses);
-router.post('/:id/courses/:courseId', studentController.addCourse);
-router.delete('/:id/courses/:courseId', studentController.removeCourse);
-
 module.exports = router;
