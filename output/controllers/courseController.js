@@ -5,8 +5,22 @@
 
 const CourseModel = require('../models/Course');
 
+/**
+ * Validates input data for Course
+ * @param {Object} data - Input payload
+ * @returns {string|null} - Error message if invalid, null if valid
+ */
+function validateCourse(data) {
+    if (!data || typeof data !== 'object') return null;
+    return null;
+}
+
 async function createCourse(req, res) {
     try {
+        const validationError = validateCourse(req.body);
+        if (validationError) {
+            return res.status(400).json({ success: false, error: validationError });
+        }
         const result = await CourseModel.create(req.body);
         res.status(201).json({ success: true, data: result });
     } catch (error) {
@@ -37,6 +51,10 @@ async function getCourseById(req, res) {
 
 async function updateCourse(req, res) {
     try {
+        const validationError = validateCourse(req.body);
+        if (validationError) {
+            return res.status(400).json({ success: false, error: validationError });
+        }
         const updated = await CourseModel.update(req.params.id, req.body);
         if (!updated) {
             return res.status(404).json({ success: false, error: 'Course not found' });
@@ -60,6 +78,7 @@ async function deleteCourse(req, res) {
 }
 
 module.exports = {
+    validateCourse,
     createCourse,
     getCourses,
     getCourseById,

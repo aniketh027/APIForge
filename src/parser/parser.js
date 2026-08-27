@@ -205,6 +205,27 @@ class Parser {
     // ════════════════════════════════════════════════════════
     
     /**
+     * isAtEntityEnd() - Checks if the current token terminates
+     * the current entity's field declaration list.
+     * Field parsing stops when the current token is:
+     * - EOF
+     * - ENTITY (keyword)
+     * - RELATION (keyword)
+     * 
+     * @returns {boolean}
+     */
+    isAtEntityEnd() {
+        const token = this.current();
+        if (token.type === 'EOF') {
+            return true;
+        }
+        if (token.type === 'KEYWORD' && (token.value === 'ENTITY' || token.value === 'RELATION')) {
+            return true;
+        }
+        return false;
+    }
+
+    /**
      * parseEntity()
      * 
      * Parses a single entity declaration:
@@ -225,10 +246,7 @@ class Parser {
         const entity = new EntityNode(nameToken.value, entityKeyword.line, nameToken.column);
 
         // Step 3: Parse fields until we hit another ENTITY, RELATION, or EOF.
-        while (
-            this.current().type !== 'EOF' &&
-            !(this.current().type === 'KEYWORD' && (this.current().value === 'ENTITY' || this.current().value === 'RELATION'))
-        ) {
+        while (!this.isAtEntityEnd()) {
             if (this.current().type === 'IDENTIFIER') {
                 entity.fields.push(this.parseField());
             } else {

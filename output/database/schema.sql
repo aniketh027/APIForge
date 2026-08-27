@@ -5,9 +5,23 @@
 
 CREATE TABLE Student (
     id INT PRIMARY KEY AUTO_INCREMENT,
-    name VARCHAR(255) NOT NULL,
-    age INT DEFAULT 25 CHECK (age >= 18 AND age <= 60),
-    status VARCHAR(255) DEFAULT 'active',
-    cgpa FLOAT DEFAULT 8.5 CHECK (cgpa >= 0 AND cgpa <= 10),
-    active BOOLEAN DEFAULT TRUE
+    name VARCHAR(255) NOT NULL
+);
+
+CREATE TABLE Course (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    title VARCHAR(255) NOT NULL
+);
+
+-- ============================================================
+-- Relationship Tables & Foreign Key Constraints
+-- ============================================================
+
+-- Relationship: Student ENROLLS_IN Course (MANY_TO_MANY)
+CREATE TABLE Student_Course (
+    student_id INT NOT NULL,
+    course_id INT NOT NULL,
+    PRIMARY KEY (student_id, course_id),
+    FOREIGN KEY (student_id) REFERENCES Student(id) ON DELETE CASCADE,
+    FOREIGN KEY (course_id) REFERENCES Course(id) ON DELETE CASCADE
 );

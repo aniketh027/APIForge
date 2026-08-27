@@ -13,8 +13,10 @@ app.use(express.json());
 
 // Registered Entity Routes
 const studentRoutes = require('./routes/studentRoutes');
+const courseRoutes = require('./routes/courseRoutes');
 
 app.use('/students', studentRoutes);
+app.use('/courses', courseRoutes);
 
 // Health Check Endpoint
 app.get('/health', (req, res) => {

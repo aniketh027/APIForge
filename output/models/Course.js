@@ -18,6 +18,8 @@ class CourseModel {
                     "constraints": [
                               "PRIMARY_KEY"
                     ],
+                    "validations": [],
+                    "defaultValue": null,
                     "line": 11
           },
           {
@@ -26,6 +28,8 @@ class CourseModel {
                     "constraints": [
                               "REQUIRED"
                     ],
+                    "validations": [],
+                    "defaultValue": null,
                     "line": 12
           }
 ];

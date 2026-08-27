@@ -12,19 +12,6 @@ const StudentModel = require('../models/Student');
  */
 function validateStudent(data) {
     if (!data || typeof data !== 'object') return null;
-
-    if (data.age !== undefined && data.age !== null && data.age < 18) {
-        return "Field 'age' must be >= 18.";
-    }
-    if (data.age !== undefined && data.age !== null && data.age > 60) {
-        return "Field 'age' must be <= 60.";
-    }
-    if (data.cgpa !== undefined && data.cgpa !== null && data.cgpa < 0) {
-        return "Field 'cgpa' must be >= 0.";
-    }
-    if (data.cgpa !== undefined && data.cgpa !== null && data.cgpa > 10) {
-        return "Field 'cgpa' must be <= 10.";
-    }
     return null;
 }
 
@@ -90,11 +77,41 @@ async function deleteStudent(req, res) {
     }
 }
 
+async function getCourses(req, res) {
+    try {
+        const items = await StudentModel.getCourses(req.params.id);
+        res.status(200).json({ success: true, data: items });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+}
+
+async function addCourse(req, res) {
+    try {
+        const result = await StudentModel.addCourse(req.params.id, req.params.courseId);
+        res.status(201).json({ success: true, data: result });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+}
+
+async function removeCourse(req, res) {
+    try {
+        const success = await StudentModel.removeCourse(req.params.id, req.params.courseId);
+        res.status(200).json({ success: true, message: 'Association removed successfully' });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+}
+
 module.exports = {
     validateStudent,
     createStudent,
     getStudents,
     getStudentById,
     updateStudent,
-    deleteStudent
+    deleteStudent,
+    getCourses,
+    addCourse,
+    removeCourse
 };

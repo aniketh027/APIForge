@@ -20,7 +20,7 @@ class StudentModel {
                     ],
                     "validations": [],
                     "defaultValue": null,
-                    "line": 8
+                    "line": 6
           },
           {
                     "name": "name",
@@ -30,69 +30,7 @@ class StudentModel {
                     ],
                     "validations": [],
                     "defaultValue": null,
-                    "line": 9
-          },
-          {
-                    "name": "age",
-                    "dataType": "INT",
-                    "constraints": [],
-                    "validations": [
-                              {
-                                        "type": "MIN",
-                                        "value": 18
-                              },
-                              {
-                                        "type": "MAX",
-                                        "value": 60
-                              }
-                    ],
-                    "defaultValue": {
-                              "type": "NUMBER",
-                              "value": 25
-                    },
-                    "line": 10
-          },
-          {
-                    "name": "status",
-                    "dataType": "STRING",
-                    "constraints": [],
-                    "validations": [],
-                    "defaultValue": {
-                              "type": "STRING",
-                              "value": "active"
-                    },
-                    "line": 11
-          },
-          {
-                    "name": "cgpa",
-                    "dataType": "FLOAT",
-                    "constraints": [],
-                    "validations": [
-                              {
-                                        "type": "MIN",
-                                        "value": 0
-                              },
-                              {
-                                        "type": "MAX",
-                                        "value": 10
-                              }
-                    ],
-                    "defaultValue": {
-                              "type": "NUMBER",
-                              "value": 8.5
-                    },
-                    "line": 12
-          },
-          {
-                    "name": "active",
-                    "dataType": "BOOLEAN",
-                    "constraints": [],
-                    "validations": [],
-                    "defaultValue": {
-                              "type": "BOOLEAN",
-                              "value": true
-                    },
-                    "line": 13
+                    "line": 7
           }
 ];
     }
@@ -119,6 +57,31 @@ class StudentModel {
 
     static async delete(id) {
         const [result] = await pool.query('DELETE FROM Student WHERE id = ?', [id]);
+        return result.affectedRows > 0;
+    }
+
+    // Relationship: Student ENROLLS_IN Course (MANY_TO_MANY)
+    static async getCourses(studentId) {
+        const [rows] = await pool.query(
+            'SELECT t.* FROM Course t JOIN Student_Course j ON t.id = j.course_id WHERE j.student_id = ?',
+            [studentId]
+        );
+        return rows;
+    }
+
+    static async addCourse(studentId, courseId) {
+        await pool.query(
+            'INSERT INTO Student_Course (student_id, course_id) VALUES (?, ?)',
+            [studentId, courseId]
+        );
+        return { student_id: studentId, course_id: courseId };
+    }
+
+    static async removeCourse(studentId, courseId) {
+        const [result] = await pool.query(
+            'DELETE FROM Student_Course WHERE student_id = ? AND course_id = ?',
+            [studentId, courseId]
+        );
         return result.affectedRows > 0;
     }
 }

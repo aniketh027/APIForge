@@ -886,6 +886,92 @@ assertThrows(
 );
 
 
+// ── Parser Regression Test: Entity followed by RELATION ──
+console.log('');
+console.log('── Parser Regression Test 1: Entity followed by RELATION ──');
+const reg1_src = [
+    'ENTITY Student',
+    'id INT PRIMARY KEY',
+    '',
+    'ENTITY Course',
+    'id INT PRIMARY KEY',
+    '',
+    'RELATION Student ENROLLS_IN Course MANY_TO_MANY'
+].join('\n');
+const reg1_ast = lexAndParse(reg1_src);
+assertEqual('Reg1: 2 entities parsed', reg1_ast.entities.length, 2);
+assertEqual('Reg1: 1 relation parsed', reg1_ast.relations.length, 1);
+assertEqual('Reg1: Student entity name', reg1_ast.entities[0].name, 'Student');
+assertEqual('Reg1: Course entity name', reg1_ast.entities[1].name, 'Course');
+assertEqual('Reg1: Relation name', reg1_ast.relations[0].name, 'ENROLLS_IN');
+
+// ── Parser Regression Test: Entity followed immediately by RELATION ──
+console.log('');
+console.log('── Parser Regression Test 2: Entity followed immediately by RELATION ──');
+const reg2_src = [
+    'ENTITY Student',
+    'id INT PRIMARY KEY',
+    'RELATION Student SOMETHING Course MANY_TO_MANY'
+].join('\n');
+const reg2_ast = lexAndParse(reg2_src);
+assertEqual('Reg2: 1 entity parsed', reg2_ast.entities.length, 1);
+assertEqual('Reg2: Student has 1 field', reg2_ast.entities[0].fields.length, 1);
+assertEqual('Reg2: 1 relation parsed', reg2_ast.relations.length, 1);
+assertEqual('Reg2: Relation source is Student', reg2_ast.relations[0].sourceEntity, 'Student');
+assertEqual('Reg2: Relation name is SOMETHING', reg2_ast.relations[0].name, 'SOMETHING');
+assertEqual('Reg2: Relation target is Course', reg2_ast.relations[0].targetEntity, 'Course');
+
+// ── Parser Regression Test: Multiple entities followed by multiple relationships ──
+console.log('');
+console.log('── Parser Regression Test 3: Multiple entities and multiple relationships ──');
+const reg3_src = [
+    'ENTITY Student',
+    'id INT PRIMARY KEY',
+    'name STRING REQUIRED',
+    '',
+    'ENTITY Course',
+    'id INT PRIMARY KEY',
+    'title STRING REQUIRED',
+    '',
+    'ENTITY Department',
+    'id INT PRIMARY KEY',
+    'name STRING REQUIRED',
+    '',
+    'RELATION Student ENROLLS_IN Course MANY_TO_MANY',
+    'RELATION Course OFFERED_BY Department MANY_TO_ONE'
+].join('\n');
+const reg3_ast = lexAndParse(reg3_src);
+assertEqual('Reg3: 3 entities parsed', reg3_ast.entities.length, 3);
+assertEqual('Reg3: 2 relations parsed', reg3_ast.relations.length, 2);
+assertEqual('Reg3: Rel 1 is ENROLLS_IN', reg3_ast.relations[0].name, 'ENROLLS_IN');
+assertEqual('Reg3: Rel 2 is OFFERED_BY', reg3_ast.relations[1].name, 'OFFERED_BY');
+
+// ── Parser Regression Test: Complex field modifiers followed by RELATION ──
+console.log('');
+console.log('── Parser Regression Test 4: Complex fields and modifiers followed by RELATION ──');
+const reg4_src = [
+    'ENTITY STUDENT',
+    '',
+    'student_id INT PRIMARY KEY',
+    'first_name STRING',
+    'last_name STRING',
+    'age INT MIN 10 MAX 18',
+    '',
+    'ENTITY COURSE',
+    '',
+    'course_id INT PRIMARY KEY',
+    'title STRING REQUIRED',
+    '',
+    'RELATION STUDENT ENROLLS_IN COURSE MANY_TO_MANY'
+].join('\n');
+const reg4_ast = lexAndParse(reg4_src);
+assertEqual('Reg4: 2 entities parsed', reg4_ast.entities.length, 2);
+assertEqual('Reg4: STUDENT has 4 fields', reg4_ast.entities[0].fields.length, 4);
+assertEqual('Reg4: COURSE has 2 fields', reg4_ast.entities[1].fields.length, 2);
+assertEqual('Reg4: 1 relation parsed', reg4_ast.relations.length, 1);
+assertEqual('Reg4: Relation name', reg4_ast.relations[0].name, 'ENROLLS_IN');
+
+
 // ═════════════════════════════════════════════════════════════
 // PHASE 3: SEMANTIC ANALYZER TESTS
 // ═════════════════════════════════════════════════════════════
