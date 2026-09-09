@@ -30,7 +30,7 @@
  *   └────────┬─────────┘
  *            ▼
  *   ┌─────────────────┐
- *   │  5. OPTIMIZER    │  Runs 4 IR optimization passes
+ *   │  5. OPTIMIZER    │  Runs 6 IR optimization passes
  *   └────────┬─────────┘
  *            ▼
  *   ┌─────────────────┐
@@ -283,7 +283,12 @@ if (semanticResult.relations && Object.keys(semanticResult.relations).length > 0
 // that is easier to optimize and transform into target code.
 
 console.log('─── Phase 4: IR Generation ───');
-const ir = IRGenerator.generate(ast, semanticResult);
+let ir;
+try {
+    ir = IRGenerator.generate(ast, semanticResult);
+} catch (err) {
+    reportFatalError(err);
+}
 console.log(`[✓] Intermediate representation generated (${ir.instructions.length} instruction(s))`);
 console.log('');
 
@@ -317,8 +322,14 @@ console.log('');
 // - Duplicate field elimination
 
 console.log('─── Phase 5: Optimization ───');
-const optResult = Optimizer.optimize(ir);
-const optimizedIR = optResult.ir;
+let optResult;
+let optimizedIR;
+try {
+    optResult = Optimizer.optimize(ir);
+    optimizedIR = optResult.ir;
+} catch (err) {
+    reportFatalError(err);
+}
 
 const countBefore = ir.instructions.length;
 const countAfter = optimizedIR.instructions.length;
@@ -378,7 +389,12 @@ console.log('');
 // - OpenAPI / Swagger Specification (output/swagger.json)
 
 console.log('─── Phase 6: Code Generation ───');
-const codegenResult = CodeGenerator.generate(optimizedIR, true);
+let codegenResult;
+try {
+    codegenResult = CodeGenerator.generate(optimizedIR, true);
+} catch (err) {
+    reportFatalError(err);
+}
 console.log(`[✓] Code generation completed (${codegenResult.files.length} file(s) generated)`);
 console.log('');
 

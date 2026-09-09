@@ -83,7 +83,7 @@ class EntityNode {
  * @param {Object|null} [defaultValue] - Default value literal or null
  */
 class FieldNode {
-    constructor(name, dataType, constraints, line, nameColumn, typeColumn, validations, defaultValue) {
+    constructor(name, dataType, constraints, line, nameColumn, typeColumn, validations, defaultValue, defaultValues) {
         this.type = 'Field';
         this.name = name;                        // e.g., "name"
         this.dataType = dataType;                // e.g., "STRING"
@@ -93,6 +93,7 @@ class FieldNode {
         this.typeColumn = typeColumn;            // Column of the data type token
         this.validations = validations || [];     // e.g., [{ type: "MIN", value: 17 }]
         this.defaultValue = defaultValue || null; // e.g., { type: "STRING", value: "active" }
+        this.defaultValues = defaultValues || (defaultValue ? [defaultValue] : []);
     }
 }
 

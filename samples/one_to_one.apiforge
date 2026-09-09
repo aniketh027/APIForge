@@ -1,0 +1,16 @@
+// APIForge DSL Sample - ONE_TO_ONE Relationship
+// User has exactly one Profile
+
+ENTITY User
+
+id INT PRIMARY KEY
+username STRING REQUIRED UNIQUE
+email STRING REQUIRED
+
+ENTITY Profile
+
+id INT PRIMARY KEY
+bio STRING
+avatarUrl STRING
+
+RELATION User HAS_PROFILE Profile ONE_TO_ONE

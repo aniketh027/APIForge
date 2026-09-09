@@ -19,13 +19,46 @@
 
 // ── Constants ───────────────────────────────────────────────
 
-const EXAMPLE_DSL = `ENTITY Student
+const EXAMPLES = [
+    {
+        name: 'Basic Student Entity',
+        code: `ENTITY Student
 
 id INT PRIMARY KEY
 name STRING REQUIRED
 email STRING UNIQUE
 age INT
-cgpa FLOAT`;
+cgpa FLOAT`
+    },
+    {
+        name: 'Relationships (M:N)',
+        code: `ENTITY Student
+
+id INT PRIMARY KEY
+name STRING REQUIRED
+
+ENTITY Course
+
+id INT PRIMARY KEY
+title STRING REQUIRED
+
+RELATION Student ENROLLS_IN Course MANY_TO_MANY`
+    },
+    {
+        name: 'Validations & Defaults',
+        code: `ENTITY Student
+
+id INT PRIMARY KEY
+name STRING REQUIRED
+age INT MIN 18 MAX 60 DEFAULT 25
+status STRING DEFAULT "active"
+cgpa FLOAT MIN 0.0 MAX 10.0 DEFAULT 8.5
+active BOOLEAN DEFAULT TRUE`
+    }
+];
+
+let currentExampleIndex = 0;
+const EXAMPLE_DSL = EXAMPLES[0].code;
 
 const PHASE_ORDER = ['lexer', 'parser', 'semantic', 'ir', 'optimizer', 'codegen'];
 
@@ -154,9 +187,10 @@ function applyPhaseStatuses(phases, isSuccess, failingPhase) {
             setPhaseStatus(phase, phases[phase] ? 'success' : 'error');
         } else if (idx < failedIndex) {
             setPhaseStatus(phase, 'success');
-        } else {
-            // Failing phase and all subsequent phases marked with ✗
+        } else if (idx === failedIndex) {
             setPhaseStatus(phase, 'error');
+        } else {
+            setPhaseStatus(phase, 'pending');
         }
     });
 }
@@ -404,7 +438,17 @@ function renderAST(ast) {
             const constraints = field.constraints && field.constraints.length > 0
                 ? ` <span class="ast-constraint">[${field.constraints.join(', ')}]</span>`
                 : '';
-            html += `<div class="ast-node">${childPrefix}${fPrefix}Field: <span class="ast-field">${escapeHtml(field.name)}</span> (<span class="ast-type">${escapeHtml(field.dataType)}</span>)${constraints}</div>`;
+            let valStr = '';
+            if (Array.isArray(field.validations) && field.validations.length > 0) {
+                const vals = field.validations.map(v => `${v.type} ${v.value}`).join(', ');
+                valStr = ` <span class="ast-constraint" style="color:var(--accent-orange, #e3b341);">[${escapeHtml(vals)}]</span>`;
+            }
+            let defStr = '';
+            if (field.defaultValue !== null && field.defaultValue !== undefined) {
+                const defVal = typeof field.defaultValue.value === 'string' ? `"${field.defaultValue.value}"` : field.defaultValue.value;
+                defStr = ` <span class="ast-constraint" style="color:var(--accent-green, #3fb950);">[DEFAULT ${escapeHtml(String(defVal))}]</span>`;
+            }
+            html += `<div class="ast-node">${childPrefix}${fPrefix}Field: <span class="ast-field">${escapeHtml(field.name)}</span> (<span class="ast-type">${escapeHtml(field.dataType)}</span>)${constraints}${valStr}${defStr}</div>`;
         });
     });
 
@@ -432,24 +476,34 @@ function renderSymbolTable(symbolTable) {
     let rows = '';
     Object.keys(symbolTable).forEach(entityName => {
         const entity = symbolTable[entityName];
+        if (!entity || !entity.fields) return;
         const fieldNames = Object.keys(entity.fields);
         fieldNames.forEach((fieldName, fIdx) => {
             const field = entity.fields[fieldName];
             const constraints = field.constraints && field.constraints.length > 0
                 ? field.constraints.map(c => `<span class="symbol-constraint">${escapeHtml(c)}</span>`).join(', ')
                 : '—';
+            const validations = Array.isArray(field.validations) && field.validations.length > 0
+                ? field.validations.map(v => `${v.type} ${v.value}`).join(', ')
+                : '—';
+            const defaultVal = (field.defaultValue !== null && field.defaultValue !== undefined)
+                ? (typeof field.defaultValue.value === 'string' ? `"${field.defaultValue.value}"` : String(field.defaultValue.value))
+                : '—';
+
             rows += `<tr>
                 <td class="symbol-entity">${fIdx === 0 ? escapeHtml(entityName) : ''}</td>
                 <td class="symbol-field">${escapeHtml(fieldName)}</td>
                 <td class="symbol-type">${escapeHtml(field.dataType)}</td>
                 <td>${constraints}</td>
+                <td style="color:var(--accent-orange, #e3b341);">${escapeHtml(validations)}</td>
+                <td style="color:var(--accent-green, #3fb950);">${escapeHtml(defaultVal)}</td>
                 <td>${field.line || '—'}</td>
             </tr>`;
         });
     });
 
     return `<table class="symbol-table">
-        <thead><tr><th>Entity</th><th>Field</th><th>Type</th><th>Constraints</th><th>Line</th></tr></thead>
+        <thead><tr><th>Entity</th><th>Field</th><th>Type</th><th>Constraints</th><th>Validations</th><th>Default</th><th>Line</th></tr></thead>
         <tbody>${rows}</tbody>
     </table>`;
 }
@@ -472,7 +526,19 @@ function renderIR(ir, label) {
             const cStr = inst.constraints && inst.constraints.length > 0
                 ? ` <span class="ir-constraint">[${inst.constraints.join(', ')}]</span>`
                 : '';
-            html += `<div class="ir-instruction">${num} <span class="ir-op">ADD_FIELD</span> <span class="ir-entity">${escapeHtml(inst.entity)}</span>.<span class="ir-field">${escapeHtml(inst.field)}</span> <span class="ir-type">${escapeHtml(inst.dataType)}</span>${cStr}</div>`;
+            let vStr = '';
+            if (Array.isArray(inst.validations) && inst.validations.length > 0) {
+                const vals = inst.validations.map(v => `${v.type} ${v.value}`).join(', ');
+                vStr = ` <span class="ir-constraint" style="color:var(--accent-orange, #e3b341);">[${escapeHtml(vals)}]</span>`;
+            }
+            let dStr = '';
+            if (inst.defaultValue !== null && inst.defaultValue !== undefined) {
+                const defVal = typeof inst.defaultValue.value === 'string' ? `"${inst.defaultValue.value}"` : inst.defaultValue.value;
+                dStr = ` <span class="ir-constraint" style="color:var(--accent-green, #3fb950);">[DEFAULT ${escapeHtml(String(defVal))}]</span>`;
+            }
+            html += `<div class="ir-instruction">${num} <span class="ir-op">ADD_FIELD</span> <span class="ir-entity">${escapeHtml(inst.entity)}</span>.<span class="ir-field">${escapeHtml(inst.field)}</span> <span class="ir-type">${escapeHtml(inst.dataType)}</span>${cStr}${vStr}${dStr}</div>`;
+        } else if (inst.op === 'CREATE_RELATION') {
+            html += `<div class="ir-instruction">${num} <span class="ir-op">CREATE_RELATION</span> <span class="ir-entity">${escapeHtml(inst.sourceEntity)}</span> <span class="ir-field">${escapeHtml(inst.relationName)}</span> <span class="ir-entity">${escapeHtml(inst.targetEntity)}</span> <span class="ir-constraint">[${escapeHtml(inst.relationType)}]</span></div>`;
         }
     });
     html += '</div>';
@@ -520,7 +586,9 @@ function highlightSQL(sql) {
         'CREATE', 'TABLE', 'DROP', 'IF', 'EXISTS', 'NOT', 'NULL',
         'PRIMARY', 'KEY', 'AUTO_INCREMENT', 'UNIQUE', 'INSERT',
         'INTO', 'VALUES', 'SELECT', 'FROM', 'WHERE', 'UPDATE',
-        'SET', 'DELETE', 'DEFAULT', 'DATABASE', 'USE'
+        'SET', 'DELETE', 'DEFAULT', 'DATABASE', 'USE',
+        'FOREIGN', 'REFERENCES', 'CHECK', 'CASCADE', 'ON', 'AND',
+        'ALTER', 'ADD', 'COLUMN', 'CONSTRAINT'
     ];
     const types = ['INT', 'VARCHAR', 'FLOAT', 'BOOLEAN', 'TEXT', 'DATE', 'DATETIME'];
 
@@ -552,15 +620,14 @@ function renderAPIFiles(files) {
 
     const apiFiles = files.filter(f =>
         !f.path.endsWith('.sql') &&
-        !f.path.endsWith('swagger.json') &&
-        !f.path.endsWith('.env.example')
+        !f.path.endsWith('swagger.json')
     );
 
     return apiFiles.map((file, i) => {
         return `<div class="api-file">
             <div class="api-file-header" onclick="toggleApiFile(this)">
                 <span>📄 ${escapeHtml(file.path)}</span>
-                <span class="toggle-icon">▾</span>
+                <span class="toggle-icon">${i === 0 ? '▾' : '▸'}</span>
             </div>
             <div class="api-file-content${i === 0 ? ' expanded' : ''}">
                 <pre>${escapeHtml(file.content)}</pre>
@@ -643,7 +710,10 @@ function clearAll() {
 // ═════════════════════════════════════════════════════════════
 
 function loadExample() {
-    editor.value = EXAMPLE_DSL;
+    const example = EXAMPLES[currentExampleIndex % EXAMPLES.length];
+    currentExampleIndex++;
+    editor.value = example.code;
+    exampleBtn.title = `Loaded: ${example.name} (Click to load next example)`;
     clearErrorHighlights();
     hideError();
     hideSummary();
@@ -749,25 +819,128 @@ async function compile() {
 // DOWNLOAD
 // ═════════════════════════════════════════════════════════════
 
+function createZip(files) {
+    const crcTable = [];
+    for (let n = 0; n < 256; n++) {
+        let c = n;
+        for (let k = 0; k < 8; k++) {
+            c = ((c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1));
+        }
+        crcTable[n] = c;
+    }
+    function crc32(buf) {
+        let crc = 0 ^ (-1);
+        for (let i = 0; i < buf.length; i++) {
+            crc = (crc >>> 8) ^ crcTable[(crc ^ buf[i]) & 0xFF];
+        }
+        return (crc ^ (-1)) >>> 0;
+    }
+
+    const enc = new TextEncoder();
+    const parts = [];
+    const cdEntries = [];
+    let offset = 0;
+
+    for (const f of files) {
+        const nameBytes = enc.encode(f.path.replace(/^\//, ''));
+        const dataBytes = enc.encode(f.content);
+        const crc = crc32(dataBytes);
+        const size = dataBytes.length;
+
+        const lh = new Uint8Array(30 + nameBytes.length);
+        const lhView = new DataView(lh.buffer);
+        lhView.setUint32(0, 0x04034b50, true);
+        lhView.setUint16(4, 20, true);
+        lhView.setUint16(6, 0, true);
+        lhView.setUint16(8, 0, true);
+        lhView.setUint16(10, 0, true);
+        lhView.setUint16(12, 0, true);
+        lhView.setUint32(14, crc, true);
+        lhView.setUint32(18, size, true);
+        lhView.setUint32(22, size, true);
+        lhView.setUint16(26, nameBytes.length, true);
+        lhView.setUint16(28, 0, true);
+        lh.set(nameBytes, 30);
+
+        parts.push(lh);
+        parts.push(dataBytes);
+
+        const cd = new Uint8Array(46 + nameBytes.length);
+        const cdView = new DataView(cd.buffer);
+        cdView.setUint32(0, 0x02014b50, true);
+        cdView.setUint16(4, 20, true);
+        cdView.setUint16(6, 20, true);
+        cdView.setUint16(8, 0, true);
+        cdView.setUint16(10, 0, true);
+        cdView.setUint16(12, 0, true);
+        cdView.setUint14 ? null : null;
+        cdView.setUint32(16, crc, true);
+        cdView.setUint32(20, size, true);
+        cdView.setUint32(24, size, true);
+        cdView.setUint16(28, nameBytes.length, true);
+        cdView.setUint16(30, 0, true);
+        cdView.setUint16(32, 0, true);
+        cdView.setUint16(34, 0, true);
+        cdView.setUint16(36, 0, true);
+        cdView.setUint32(38, 0, true);
+        cdView.setUint32(42, offset, true);
+        cd.set(nameBytes, 46);
+        cdEntries.push(cd);
+
+        offset += lh.length + dataBytes.length;
+    }
+
+    const cdOffset = offset;
+    let cdSize = 0;
+    for (const cd of cdEntries) {
+        parts.push(cd);
+        cdSize += cd.length;
+    }
+
+    const eocd = new Uint8Array(22);
+    const eocdView = new DataView(eocd.buffer);
+    eocdView.setUint32(0, 0x06054b50, true);
+    eocdView.setUint16(4, 0, true);
+    eocdView.setUint16(6, 0, true);
+    eocdView.setUint16(8, files.length, true);
+    eocdView.setUint16(10, files.length, true);
+    eocdView.setUint32(12, cdSize, true);
+    eocdView.setUint32(16, cdOffset, true);
+    eocdView.setUint16(20, 0, true);
+    parts.push(eocd);
+
+    return new Blob(parts, { type: 'application/zip' });
+}
+
 function downloadProject() {
     if (!lastCompileResult || !lastCompileResult.generatedFiles) return;
 
-    let content = '';
-    lastCompileResult.generatedFiles.forEach(file => {
-        content += `${'='.repeat(60)}\n`;
-        content += `FILE: ${file.path}\n`;
-        content += `${'='.repeat(60)}\n\n`;
-        content += file.content;
-        content += '\n\n';
-    });
+    try {
+        const zipBlob = createZip(lastCompileResult.generatedFiles);
+        const url = URL.createObjectURL(zipBlob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'apiforge-project.zip';
+        a.click();
+        URL.revokeObjectURL(url);
+    } catch (e) {
+        let content = '';
+        lastCompileResult.generatedFiles.forEach(file => {
+            content += `${'='.repeat(60)}\n`;
+            content += `FILE: ${file.path}\n`;
+            content += `${'='.repeat(60)}\n\n`;
+            content += file.content;
+            content += '\n\n';
+        });
 
-    const blob = new Blob([content], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'apiforge-generated-project.txt';
-    a.click();
-    URL.revokeObjectURL(url);
+        const blob = new Blob([content], { type: 'text/plain' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'apiforge-generated-project.txt';
+        a.click();
+        URL.revokeObjectURL(url);
+    }
 }
 
 // ═════════════════════════════════════════════════════════════

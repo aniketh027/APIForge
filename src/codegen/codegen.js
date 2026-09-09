@@ -113,6 +113,59 @@ const SWAGGER_TYPE_MAP = {
 };
 
 /**
+ * MySQL reserved words that must be quoted with backticks when used as table or column identifiers.
+ */
+const MYSQL_RESERVED_WORDS = new Set([
+    'ACCESSIBLE', 'ADD', 'ALL', 'ALTER', 'ANALYZE', 'AND', 'AS', 'ASC', 'ASENSITIVE',
+    'BEFORE', 'BETWEEN', 'BIGINT', 'BINARY', 'BLOB', 'BOTH', 'BY', 'CALL', 'CASCADE',
+    'CASE', 'CHANGE', 'CHAR', 'CHARACTER', 'CHECK', 'COLLATE', 'COLUMN', 'CONDITION',
+    'CONSTRAINT', 'CONTINUE', 'CONVERT', 'CREATE', 'CROSS', 'CUBE', 'CUME_DIST',
+    'CURRENT_DATE', 'CURRENT_TIME', 'CURRENT_TIMESTAMP', 'CURRENT_USER', 'CURSOR',
+    'DATABASE', 'DATABASES', 'DAY_HOUR', 'DAY_MICROSECOND', 'DAY_MINUTE', 'DAY_SECOND',
+    'DEC', 'DECIMAL', 'DECLARE', 'DEFAULT', 'DELAYED', 'DELETE', 'DENSE_RANK', 'DESC',
+    'DESCRIBE', 'DETERMINISTIC', 'DISTINCT', 'DISTINCTROW', 'DIV', 'DOUBLE', 'DROP',
+    'DUAL', 'EACH', 'ELSE', 'ELSEIF', 'EMPTY', 'ENCLOSED', 'ESCAPED', 'EXCEPT',
+    'EXISTS', 'EXIT', 'EXPLAIN', 'FALSE', 'FETCH', 'FIRST_VALUE', 'FLOAT', 'FLOAT4',
+    'FLOAT8', 'FOR', 'FORCE', 'FOREIGN', 'FROM', 'FULLTEXT', 'FUNCTION', 'GENERATED',
+    'GET', 'GRANT', 'GROUP', 'GROUPING', 'GROUPS', 'HAVING', 'HIGH_PRIORITY',
+    'HOUR_MICROSECOND', 'HOUR_MINUTE', 'HOUR_SECOND', 'IF', 'IGNORE', 'IN', 'INDEX',
+    'INFILE', 'INNER', 'INOUT', 'INSENSITIVE', 'INSERT', 'INT', 'INT1', 'INT2', 'INT3',
+    'INT4', 'INT8', 'INTEGER', 'INTERVAL', 'INTO', 'IO_AFTER_GTIDS', 'IO_BEFORE_GTIDS',
+    'IS', 'ITERATE', 'JOIN', 'JSON_TABLE', 'KEY', 'KEYS', 'KILL', 'LAG', 'LAST_VALUE',
+    'LEAD', 'LEADING', 'LEAVE', 'LEFT', 'LIKE', 'LIMIT', 'LINEAR', 'LINES', 'LOAD',
+    'LOCALTIME', 'LOCALTIMESTAMP', 'LOCK', 'LONG', 'LONGBLOB', 'LONGTEXT', 'LOOP',
+    'LOW_PRIORITY', 'MASTER_BIND', 'MASTER_SSL_VERIFY_SERVER_CERT', 'MATCH', 'MAXVALUE',
+    'MEDIUMBLOB', 'MEDIUMINT', 'MEDIUMTEXT', 'MIDDLEINT', 'MINUTE_MICROSECOND',
+    'MINUTE_SECOND', 'MOD', 'MODIFIES', 'NATURAL', 'NOT', 'NO_WRITE_TO_BINLOG', 'NTH_VALUE',
+    'NTILE', 'NULL', 'NUMERIC', 'OF', 'ON', 'OPTIMIZE', 'OPTIMIZER_COSTS', 'OPTION',
+    'OPTIONALLY', 'OR', 'ORDER', 'OUT', 'OUTER', 'OUTFILE', 'OVER', 'PARTITION',
+    'PERCENT_RANK', 'PRECISION', 'PRIMARY', 'PROCEDURE', 'PURGE', 'RANGE', 'RANK',
+    'READ', 'READS', 'READ_WRITE', 'REAL', 'RECURSIVE', 'REF_SYSTEM_ID', 'REFERENCES',
+    'REGEXP', 'RELEASE', 'RENAME', 'REPEAT', 'REPLACE', 'REQUIRE', 'RESIGNAL', 'RESTRICT',
+    'RETURN', 'REVOKE', 'RIGHT', 'RLIKE', 'ROW', 'ROWS', 'ROW_NUMBER', 'SCHEMA',
+    'SCHEMAS', 'SECOND_MICROSECOND', 'SELECT', 'SENSITIVE', 'SEPARATOR', 'SET', 'SHOW',
+    'SIGNAL', 'SMALLINT', 'SPATIAL', 'SPECIFIC', 'SQL', 'SQLEXCEPTION', 'SQLSTATE',
+    'SQLWARNING', 'SQL_BIG_RESULT', 'SQL_CALC_FOUND_ROWS', 'SQL_SMALL_RESULT', 'SSL',
+    'STARTING', 'STORED', 'STRAIGHT_JOIN', 'SYSTEM', 'TABLE', 'TERMINATED', 'THEN',
+    'TINYBLOB', 'TINYINT', 'TINYTEXT', 'TO', 'TRAILING', 'TRIGGER', 'TRUE', 'UNDO',
+    'UNION', 'UNIQUE', 'UNLOCK', 'UNSIGNED', 'UPDATE', 'USAGE', 'USE', 'USING',
+    'UTC_DATE', 'UTC_TIME', 'UTC_TIMESTAMP', 'VALUES', 'VARBINARY', 'VARCHAR',
+    'VARCHARACTER', 'VARYING', 'VIRTUAL', 'WHEN', 'WHERE', 'WHILE', 'WINDOW', 'WITH',
+    'WRITE', 'XOR', 'YEAR_MONTH', 'ZEROFILL'
+]);
+
+/**
+ * Quotes an identifier with backticks if it is a MySQL reserved word or contains non-alphanumeric chars.
+ */
+function quoteIdentifier(name) {
+    if (!name || typeof name !== 'string') return name;
+    if (MYSQL_RESERVED_WORDS.has(name.toUpperCase()) || /^[^a-zA-Z_]/.test(name) || /[^a-zA-Z0-9_]/.test(name)) {
+        return `\`${name}\``;
+    }
+    return name;
+}
+
+/**
  * Helper to extract entity definitions from IR instructions.
  * 
  * @param {Object} ir - The PROGRAM IR
@@ -189,7 +242,7 @@ function getPrimaryKeyField(entity) {
         return { name: 'id', dataType: 'INT' };
     }
     const pk = entity.fields.find(f => f.constraints && f.constraints.includes('PRIMARY_KEY'));
-    return pk || entity.fields[0] || { name: 'id', dataType: 'INT' };
+    return pk || { name: 'id', dataType: 'INT' };
 }
 
 // ════════════════════════════════════════════════════════════
@@ -212,6 +265,7 @@ function generateSQL(ir) {
 
     // 1. Entity table statements
     const tableStatements = entities.map(entity => {
+        const hasPk = entity.fields.some(f => f.constraints && f.constraints.includes('PRIMARY_KEY'));
         const columnDefs = entity.fields.map(field => {
             const mysqlType = MYSQL_TYPE_MAP[field.dataType] || field.dataType;
             const isPk = field.constraints.includes('PRIMARY_KEY');
@@ -255,19 +309,23 @@ function generateSQL(ir) {
                 const maxV = field.validations.find(v => v.type === 'MAX');
 
                 if (minV && maxV) {
-                    parts.push(`CHECK (${field.name} >= ${minV.value} AND ${field.name} <= ${maxV.value})`);
+                    parts.push(`CHECK (${quoteIdentifier(field.name)} >= ${minV.value} AND ${quoteIdentifier(field.name)} <= ${maxV.value})`);
                 } else if (minV) {
-                    parts.push(`CHECK (${field.name} >= ${minV.value})`);
+                    parts.push(`CHECK (${quoteIdentifier(field.name)} >= ${minV.value})`);
                 } else if (maxV) {
-                    parts.push(`CHECK (${field.name} <= ${maxV.value})`);
+                    parts.push(`CHECK (${quoteIdentifier(field.name)} <= ${maxV.value})`);
                 }
             }
 
             const constraintsStr = parts.length > 0 ? ' ' + parts.join(' ') : '';
-            return `    ${field.name} ${mysqlType}${constraintsStr}`;
+            return `    ${quoteIdentifier(field.name)} ${mysqlType}${constraintsStr}`;
         });
 
-        return `CREATE TABLE ${entity.name} (\n` + columnDefs.join(',\n') + `\n);`;
+        if (!hasPk) {
+            columnDefs.unshift('    id INT PRIMARY KEY AUTO_INCREMENT');
+        }
+
+        return `CREATE TABLE ${quoteIdentifier(entity.name)} (\n` + columnDefs.join(',\n') + `\n);`;
     });
 
     // 2. Relationship statements (Junction tables or ALTER TABLE statements)
@@ -286,38 +344,46 @@ function generateSQL(ir) {
         const sourceFkType = MYSQL_TYPE_MAP[sourcePk.dataType] || 'INT';
         const targetFkType = MYSQL_TYPE_MAP[targetPk.dataType] || 'INT';
 
+        const sourceTable = quoteIdentifier(sourceEntity.name);
+        const targetTable = quoteIdentifier(targetEntity.name);
+        const sourcePkName = quoteIdentifier(sourcePk.name);
+        const targetPkName = quoteIdentifier(targetPk.name);
+        const sourceFkColName = quoteIdentifier(sourceFkCol);
+        const targetFkColName = quoteIdentifier(targetFkCol);
+
         if (rel.relationType === 'MANY_TO_MANY') {
             const junctionTableName = `${sourceEntity.name}_${targetEntity.name}`;
+            const junctionTable = quoteIdentifier(junctionTableName);
             relationStatements.push(
                 `-- Relationship: ${sourceEntity.name} ${rel.relationName} ${targetEntity.name} (MANY_TO_MANY)\n` +
-                `CREATE TABLE ${junctionTableName} (\n` +
-                `    ${sourceFkCol} ${sourceFkType} NOT NULL,\n` +
-                `    ${targetFkCol} ${targetFkType} NOT NULL,\n` +
-                `    PRIMARY KEY (${sourceFkCol}, ${targetFkCol}),\n` +
-                `    FOREIGN KEY (${sourceFkCol}) REFERENCES ${sourceEntity.name}(${sourcePk.name}) ON DELETE CASCADE,\n` +
-                `    FOREIGN KEY (${targetFkCol}) REFERENCES ${targetEntity.name}(${targetPk.name}) ON DELETE CASCADE\n` +
+                `CREATE TABLE ${junctionTable} (\n` +
+                `    ${sourceFkColName} ${sourceFkType} NOT NULL,\n` +
+                `    ${targetFkColName} ${targetFkType} NOT NULL,\n` +
+                `    PRIMARY KEY (${sourceFkColName}, ${targetFkColName}),\n` +
+                `    FOREIGN KEY (${sourceFkColName}) REFERENCES ${sourceTable}(${sourcePkName}) ON DELETE CASCADE,\n` +
+                `    FOREIGN KEY (${targetFkColName}) REFERENCES ${targetTable}(${targetPkName}) ON DELETE CASCADE\n` +
                 `);`
             );
         } else if (rel.relationType === 'ONE_TO_MANY') {
             const fkConstraintName = `fk_${targetEntity.name.toLowerCase()}_${sourceEntity.name.toLowerCase()}`;
             relationStatements.push(
                 `-- Relationship: ${sourceEntity.name} ${rel.relationName} ${targetEntity.name} (ONE_TO_MANY)\n` +
-                `ALTER TABLE ${targetEntity.name} ADD COLUMN ${sourceFkCol} ${sourceFkType};\n` +
-                `ALTER TABLE ${targetEntity.name} ADD CONSTRAINT ${fkConstraintName} FOREIGN KEY (${sourceFkCol}) REFERENCES ${sourceEntity.name}(${sourcePk.name}) ON DELETE SET NULL;`
+                `ALTER TABLE ${targetTable} ADD COLUMN ${sourceFkColName} ${sourceFkType};\n` +
+                `ALTER TABLE ${targetTable} ADD CONSTRAINT ${fkConstraintName} FOREIGN KEY (${sourceFkColName}) REFERENCES ${sourceTable}(${sourcePkName}) ON DELETE SET NULL;`
             );
         } else if (rel.relationType === 'MANY_TO_ONE') {
             const fkConstraintName = `fk_${sourceEntity.name.toLowerCase()}_${targetEntity.name.toLowerCase()}`;
             relationStatements.push(
                 `-- Relationship: ${sourceEntity.name} ${rel.relationName} ${targetEntity.name} (MANY_TO_ONE)\n` +
-                `ALTER TABLE ${sourceEntity.name} ADD COLUMN ${targetFkCol} ${targetFkType};\n` +
-                `ALTER TABLE ${sourceEntity.name} ADD CONSTRAINT ${fkConstraintName} FOREIGN KEY (${targetFkCol}) REFERENCES ${targetEntity.name}(${targetPk.name}) ON DELETE SET NULL;`
+                `ALTER TABLE ${sourceTable} ADD COLUMN ${targetFkColName} ${targetFkType};\n` +
+                `ALTER TABLE ${sourceTable} ADD CONSTRAINT ${fkConstraintName} FOREIGN KEY (${targetFkColName}) REFERENCES ${targetTable}(${targetPkName}) ON DELETE SET NULL;`
             );
         } else if (rel.relationType === 'ONE_TO_ONE') {
             const fkConstraintName = `fk_${targetEntity.name.toLowerCase()}_${sourceEntity.name.toLowerCase()}`;
             relationStatements.push(
                 `-- Relationship: ${sourceEntity.name} ${rel.relationName} ${targetEntity.name} (ONE_TO_ONE)\n` +
-                `ALTER TABLE ${targetEntity.name} ADD COLUMN ${sourceFkCol} ${sourceFkType} UNIQUE;\n` +
-                `ALTER TABLE ${targetEntity.name} ADD CONSTRAINT ${fkConstraintName} FOREIGN KEY (${sourceFkCol}) REFERENCES ${sourceEntity.name}(${sourcePk.name}) ON DELETE CASCADE;`
+                `ALTER TABLE ${targetTable} ADD COLUMN ${sourceFkColName} ${sourceFkType} UNIQUE;\n` +
+                `ALTER TABLE ${targetTable} ADD CONSTRAINT ${fkConstraintName} FOREIGN KEY (${sourceFkColName}) REFERENCES ${sourceTable}(${sourcePkName}) ON DELETE CASCADE;`
             );
         }
     });
@@ -488,23 +554,26 @@ function generateModel(entityName, fields, relations = [], entities = []) {
            `        return ${fieldsJson};\n` +
            `    }\n\n` +
            `    static async findAll() {\n` +
-           `        const [rows] = await pool.query('SELECT * FROM ${entityName}');\n` +
+           `        const [rows] = await pool.query('SELECT * FROM ${quoteIdentifier(entityName)}');\n` +
            `        return rows;\n` +
            `    }\n\n` +
            `    static async findById(id) {\n` +
-           `        const [rows] = await pool.query('SELECT * FROM ${entityName} WHERE ${pkField.name} = ?', [id]);\n` +
+           `        const [rows] = await pool.query('SELECT * FROM ${quoteIdentifier(entityName)} WHERE ${quoteIdentifier(pkField.name)} = ?', [id]);\n` +
            `        return rows.length > 0 ? rows[0] : null;\n` +
            `    }\n\n` +
            `    static async create(data) {\n` +
-           `        const [result] = await pool.query('INSERT INTO ${entityName} SET ?', [data]);\n` +
+           `        const [result] = await pool.query('INSERT INTO ${quoteIdentifier(entityName)} SET ?', [data]);\n` +
            `        return { ${pkField.name}: result.insertId, ...data };\n` +
            `    }\n\n` +
            `    static async update(id, data) {\n` +
-           `        await pool.query('UPDATE ${entityName} SET ? WHERE ${pkField.name} = ?', [data, id]);\n` +
+           `        if (!data || Object.keys(data).length === 0) {\n` +
+           `            return await this.findById(id);\n` +
+           `        }\n` +
+           `        await pool.query('UPDATE ${quoteIdentifier(entityName)} SET ? WHERE ${quoteIdentifier(pkField.name)} = ?', [data, id]);\n` +
            `        return await this.findById(id);\n` +
            `    }\n\n` +
            `    static async delete(id) {\n` +
-           `        const [result] = await pool.query('DELETE FROM ${entityName} WHERE ${pkField.name} = ?', [id]);\n` +
+           `        const [result] = await pool.query('DELETE FROM ${quoteIdentifier(entityName)} WHERE ${quoteIdentifier(pkField.name)} = ?', [id]);\n` +
            `        return result.affectedRows > 0;\n` +
            `    }${relMethodsStr}\n` +
            `}\n\n` +
@@ -856,13 +925,46 @@ function generateSwagger(entities, relations = []) {
 
     entities.forEach(entity => {
         const plural = pluralize(entity.name);
+        const idParam = [
+            {
+                name: "id",
+                in: "path",
+                required: true,
+                schema: { type: "integer" },
+                description: `ID of the ${entity.name}`
+            }
+        ];
+
         paths[`/${plural}`] = {
             get: { summary: `Get all ${plural}`, responses: { "200": { description: "OK" } } },
-            post: { summary: `Create ${entity.name}`, responses: { "201": { description: "Created" } } }
+            post: {
+                summary: `Create ${entity.name}`,
+                requestBody: {
+                    required: true,
+                    content: {
+                        "application/json": {
+                            schema: { "$ref": `#/components/schemas/${entity.name}` }
+                        }
+                    }
+                },
+                responses: { "201": { description: "Created" } }
+            }
         };
         paths[`/${plural}/{id}`] = {
+            parameters: idParam,
             get: { summary: `Get ${entity.name} by ID`, responses: { "200": { description: "OK" } } },
-            put: { summary: `Update ${entity.name}`, responses: { "200": { description: "OK" } } },
+            put: {
+                summary: `Update ${entity.name}`,
+                requestBody: {
+                    required: true,
+                    content: {
+                        "application/json": {
+                            schema: { "$ref": `#/components/schemas/${entity.name}` }
+                        }
+                    }
+                },
+                responses: { "200": { description: "OK" } }
+            },
             delete: { summary: `Delete ${entity.name}`, responses: { "200": { description: "OK" } } }
         };
 
@@ -886,16 +988,34 @@ function generateSwagger(entities, relations = []) {
             properties[f.name] = prop;
         });
 
-        schemas[entity.name] = { type: "object", properties };
+        const schemaObj = { type: "object", properties };
+        const requiredFields = entity.fields
+            .filter(f => f.constraints && f.constraints.includes('REQUIRED'))
+            .map(f => f.name);
+        if (requiredFields.length > 0) {
+            schemaObj.required = requiredFields;
+        }
+
+        schemas[entity.name] = schemaObj;
     });
 
     relations.forEach(rel => {
         const sourcePlural = pluralize(rel.sourceEntity);
         const targetPlural = pluralize(rel.targetEntity);
         const targetParam = `${lowerFirst(rel.targetEntity)}Id`;
+        const idParam = [
+            {
+                name: "id",
+                in: "path",
+                required: true,
+                schema: { type: "integer" },
+                description: `ID of the ${rel.sourceEntity}`
+            }
+        ];
 
         if (rel.relationType === 'MANY_TO_MANY') {
             paths[`/${sourcePlural}/{id}/${targetPlural}`] = {
+                parameters: idParam,
                 get: {
                     summary: `Get all ${targetPlural} associated with ${rel.sourceEntity} (${rel.relationName})`,
                     responses: {
@@ -914,6 +1034,16 @@ function generateSwagger(entities, relations = []) {
                 }
             };
             paths[`/${sourcePlural}/{id}/${targetPlural}/{${targetParam}}`] = {
+                parameters: [
+                    ...idParam,
+                    {
+                        name: targetParam,
+                        in: "path",
+                        required: true,
+                        schema: { type: "integer" },
+                        description: `ID of the ${rel.targetEntity}`
+                    }
+                ],
                 post: {
                     summary: `Associate ${rel.targetEntity} with ${rel.sourceEntity} (${rel.relationName})`,
                     responses: { "201": { description: "Associated successfully" } }
@@ -925,6 +1055,7 @@ function generateSwagger(entities, relations = []) {
             };
         } else if (rel.relationType === 'ONE_TO_MANY') {
             paths[`/${sourcePlural}/{id}/${targetPlural}`] = {
+                parameters: idParam,
                 get: {
                     summary: `Get all ${targetPlural} in ${rel.sourceEntity} (${rel.relationName})`,
                     responses: {
@@ -945,6 +1076,7 @@ function generateSwagger(entities, relations = []) {
         } else if (rel.relationType === 'MANY_TO_ONE' || rel.relationType === 'ONE_TO_ONE') {
             const segment = lowerFirst(rel.targetEntity);
             paths[`/${sourcePlural}/{id}/${segment}`] = {
+                parameters: idParam,
                 get: {
                     summary: `Get ${rel.targetEntity} for ${rel.sourceEntity} (${rel.relationName})`,
                     responses: {

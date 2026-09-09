@@ -377,9 +377,9 @@ class Parser {
         const dataTypeToken = this.advance();
 
         // Step 3: Parse zero or more field modifiers (constraints, validations, defaults)
-        const { constraints, validations, defaultValue } = this.parseFieldModifiers();
+        const { constraints, validations, defaultValue, defaultValues } = this.parseFieldModifiers();
 
-        return new FieldNode(
+        const fieldNode = new FieldNode(
             nameToken.value,
             dataTypeToken.value,
             constraints,
@@ -389,6 +389,11 @@ class Parser {
             validations,
             defaultValue
         );
+        if (defaultValues && defaultValues.length > 0) {
+            fieldNode.defaultValues = defaultValues;
+        }
+
+        return fieldNode;
     }
 
     // ════════════════════════════════════════════════════════
@@ -412,6 +417,7 @@ class Parser {
         const constraints = [];
         const validations = [];
         let defaultValue = null;
+        const defaultValues = [];
 
         // Keep reading while the current token is a MODIFIER
         while (this.current().type === 'MODIFIER') {
@@ -529,12 +535,15 @@ class Parser {
                     if (valToken.type === 'NUMBER') {
                         this.advance();
                         defaultValue = { type: 'NUMBER', value: parseFloat(valToken.value) };
+                        defaultValues.push(defaultValue);
                     } else if (valToken.type === 'STRING_LITERAL') {
                         this.advance();
                         defaultValue = { type: 'STRING', value: valToken.value };
+                        defaultValues.push(defaultValue);
                     } else if (valToken.type === 'BOOLEAN_LITERAL') {
                         this.advance();
                         defaultValue = { type: 'BOOLEAN', value: valToken.value === 'TRUE' };
+                        defaultValues.push(defaultValue);
                     } else {
                         const isEof = valToken.type === 'EOF';
                         const userMessage = isEof
@@ -567,7 +576,7 @@ class Parser {
             }
         }
 
-        return { constraints, validations, defaultValue };
+        return { constraints, validations, defaultValue, defaultValues };
     }
 }
 

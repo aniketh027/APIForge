@@ -1,0 +1,15 @@
+// APIForge DSL Sample - ONE_TO_MANY Relationship
+// Department has many Employees
+
+ENTITY Department
+
+id INT PRIMARY KEY
+name STRING REQUIRED UNIQUE
+
+ENTITY Employee
+
+id INT PRIMARY KEY
+name STRING REQUIRED
+salary FLOAT MIN 1000.0 DEFAULT 50000.0
+
+RELATION Department HAS_EMPLOYEES Employee ONE_TO_MANY

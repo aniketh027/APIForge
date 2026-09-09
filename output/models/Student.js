@@ -51,6 +51,9 @@ class StudentModel {
     }
 
     static async update(id, data) {
+        if (!data || Object.keys(data).length === 0) {
+            return await this.findById(id);
+        }
         await pool.query('UPDATE Student SET ? WHERE id = ?', [data, id]);
         return await this.findById(id);
     }

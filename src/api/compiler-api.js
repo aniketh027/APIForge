@@ -35,7 +35,7 @@ router.get('/health', (req, res) => {
 // ── POST /compile ───────────────────────────────────────────
 
 router.post('/compile', (req, res) => {
-    const { source } = req.body;
+    const source = req.body ? req.body.source : undefined;
 
     // Validate input
     if (!source || typeof source !== 'string' || source.trim().length === 0) {
@@ -89,7 +89,7 @@ router.post('/compile', (req, res) => {
             const colMatch = err.message.match(/column\s+(\d+)/i);
             if (colMatch) column = parseInt(colMatch[1], 10);
         }
-        return res.json({
+        return res.status(400).json({
             success: false,
             phase: 'lexer',
             phases,
@@ -112,7 +112,7 @@ router.post('/compile', (req, res) => {
             const colMatch = err.message.match(/column\s+(\d+)/i);
             if (colMatch) column = parseInt(colMatch[1], 10);
         }
-        return res.json({
+        return res.status(400).json({
             success: false,
             phase: 'parser',
             phases,
@@ -132,7 +132,7 @@ router.post('/compile', (req, res) => {
         const semanticResult = SemanticAnalyzer.analyze(ast);
 
         if (!semanticResult.valid) {
-            return res.json({
+            return res.status(422).json({
                 success: false,
                 phase: 'semantic',
                 phases: { ...phases, semantic: false },
@@ -151,7 +151,7 @@ router.post('/compile', (req, res) => {
             ir = IRGenerator.generate(ast, semanticResult);
             phases.ir = true;
         } catch (err) {
-            return res.json({
+            return res.status(500).json({
                 success: false,
                 phase: 'ir',
                 phases,
@@ -170,7 +170,7 @@ router.post('/compile', (req, res) => {
             warnings = optResult.warnings || [];
             phases.optimizer = true;
         } catch (err) {
-            return res.json({
+            return res.status(500).json({
                 success: false,
                 phase: 'optimizer',
                 phases,
@@ -189,7 +189,7 @@ router.post('/compile', (req, res) => {
             generatedFiles = codegenResult.files;
             phases.codegen = true;
         } catch (err) {
-            return res.json({
+            return res.status(500).json({
                 success: false,
                 phase: 'codegen',
                 phases,
@@ -206,7 +206,7 @@ router.post('/compile', (req, res) => {
 
     } catch (err) {
         // Unexpected semantic phase error
-        return res.json({
+        return res.status(500).json({
             success: false,
             phase: 'semantic',
             phases,

@@ -2620,6 +2620,59 @@ assertTrue('Plain Student model has create', plainStudentModel.includes('static 
 assertTrue('Plain Student model has update', plainStudentModel.includes('static async update(id, data)'));
 assertTrue('Plain Student model has delete', plainStudentModel.includes('static async delete(id)'));
 
+// ── Codegen Test: MySQL reserved word backtick quoting ──
+console.log('');
+console.log('── Codegen Test: MySQL reserved word backtick quoting ──');
+const orderIR = {
+    type: 'PROGRAM',
+    instructions: [
+        { op: 'CREATE_ENTITY', entity: 'Order', line: 1 },
+        { op: 'ADD_FIELD', entity: 'Order', field: 'id', dataType: 'INT', constraints: ['PRIMARY_KEY'], line: 2 },
+        { op: 'ADD_FIELD', entity: 'Order', field: 'group', dataType: 'STRING', constraints: [], line: 3 },
+        { op: 'ADD_FIELD', entity: 'Order', field: 'key', dataType: 'INT', constraints: [], line: 4 }
+    ]
+};
+const orderSql = CodeGenerator.generateSQL(orderIR);
+assertTrue('Reserved word table Order quoted with backticks', orderSql.includes('CREATE TABLE `Order` ('));
+assertTrue('Reserved word column group quoted with backticks', orderSql.includes('`group` VARCHAR(255)'));
+assertTrue('Reserved word column key quoted with backticks', orderSql.includes('`key` INT'));
+
+// ── Codegen Test: Auto-inject PK when missing ──
+console.log('');
+console.log('── Codegen Test: Auto-inject PK when missing ──');
+const noPkIR = {
+    type: 'PROGRAM',
+    instructions: [
+        { op: 'CREATE_ENTITY', entity: 'Item', line: 1 },
+        { op: 'ADD_FIELD', entity: 'Item', field: 'title', dataType: 'STRING', constraints: ['REQUIRED'], line: 2 }
+    ]
+};
+const noPkSql = CodeGenerator.generateSQL(noPkIR);
+assertTrue('Auto-injected id PK column', noPkSql.includes('id INT PRIMARY KEY AUTO_INCREMENT'));
+
+// ── Codegen Test: OpenAPI 3.0 path parameters and required fields ──
+console.log('');
+console.log('── Codegen Test: OpenAPI 3.0 path parameters and required ──');
+const swaggerGenerated = JSON.parse(CodeGenerator.generateSwagger([
+    {
+        name: 'Student',
+        fields: [
+            { name: 'id', dataType: 'INT', constraints: ['PRIMARY_KEY'] },
+            { name: 'name', dataType: 'STRING', constraints: ['REQUIRED'] }
+        ]
+    }
+]));
+assertTrue('Path /students/{id} has parameters', Array.isArray(swaggerGenerated.paths['/students/{id}'].parameters));
+assertEqual('Path parameter name is id', swaggerGenerated.paths['/students/{id}'].parameters[0].name, 'id');
+assertEqual('Path parameter in is path', swaggerGenerated.paths['/students/{id}'].parameters[0].in, 'path');
+assertTrue('Schema has required array', Array.isArray(swaggerGenerated.components.schemas.Student.required));
+assertTrue('Schema required includes name', swaggerGenerated.components.schemas.Student.required.includes('name'));
+
+// ── Codegen Test: Model update handles empty payload ──
+console.log('');
+console.log('── Codegen Test: Model update handles empty payload ──');
+assertTrue('Model update guards empty data', plainStudentModel.includes('if (!data || Object.keys(data).length === 0)'));
+
 
 
 // ═════════════════════════════════════════════════════════════
@@ -2661,7 +2714,28 @@ function simulatePost(routePath, body) {
             _statusCode: 200,
             _data: null,
             status(code) { this._statusCode = code; return this; },
-            json(data) { this._data = data; resolve(data); }
+            json(data) { data._statusCode = this._statusCode; this._data = data; resolve(data); }
+        };
+        handler(req, res);
+    });
+}
+
+function simulateGet(routePath) {
+    return new Promise((resolve) => {
+        const route = compilerAPI.stack.find(layer => {
+            return layer.route && layer.route.path === routePath && layer.route.methods.get;
+        });
+        if (!route) {
+            resolve({ error: 'Route not found' });
+            return;
+        }
+        const handler = route.route.stack[0].handle;
+        const req = {};
+        const res = {
+            _statusCode: 200,
+            _data: null,
+            status(code) { this._statusCode = code; return this; },
+            json(data) { data._statusCode = this._statusCode; this._data = data; resolve(data); }
         };
         handler(req, res);
     });
@@ -2911,6 +2985,46 @@ const relSampleRes = e2eCompile(readSample('student_course_rel.apiforge'));
 assertTrue('sample student_course_rel.apiforge compiles clean', relSampleRes.valid);
 assertTrue('sample student_course_rel.apiforge builds junction table', relSampleRes.schema.includes('CREATE TABLE Student_Course ('));
 
+const valSampleRes = e2eCompile(readSample('student_validation.apiforge'));
+assertTrue('sample student_validation.apiforge compiles clean', valSampleRes.valid);
+assertTrue('sample student_validation.apiforge has CHECK age', valSampleRes.schema.includes('CHECK (age >= 18 AND age <= 60)'));
+assertTrue('sample student_validation.apiforge has DEFAULT 25', valSampleRes.schema.includes('DEFAULT 25'));
+assertTrue('sample student_validation.apiforge has DEFAULT active', valSampleRes.schema.includes("DEFAULT 'active'"));
+
+const o2oSampleRes = e2eCompile(readSample('one_to_one.apiforge'));
+assertTrue('sample one_to_one.apiforge compiles clean', o2oSampleRes.valid);
+assertTrue('sample one_to_one.apiforge alters Profile table', o2oSampleRes.schema.includes('ALTER TABLE Profile ADD COLUMN user_id INT UNIQUE;'));
+
+const o2mSampleRes = e2eCompile(readSample('one_to_many.apiforge'));
+assertTrue('sample one_to_many.apiforge compiles clean', o2mSampleRes.valid);
+assertTrue('sample one_to_many.apiforge alters Employee table', o2mSampleRes.schema.includes('ALTER TABLE Employee ADD COLUMN department_id INT;'));
+
+// ── Syntax validation: vm.Script parses all generated JS files without error ──
+console.log('');
+console.log('── Syntax Validation: vm.Script verifies generated JS ──');
+const vm = require('vm');
+const allGeneratedJs = [
+    ...studentSampleRes.files,
+    ...relSampleRes.files,
+    ...valSampleRes.files,
+    ...o2oSampleRes.files,
+    ...o2mSampleRes.files
+].filter(f => f.path.endsWith('.js'));
+
+let allJsValid = true;
+let syntaxErrorMsg = '';
+for (const jsFile of allGeneratedJs) {
+    try {
+        new vm.Script(jsFile.content, { filename: jsFile.path });
+    } catch (syntaxErr) {
+        allJsValid = false;
+        syntaxErrorMsg = `${jsFile.path}: ${syntaxErr.message}`;
+        break;
+    }
+}
+assertTrue(`Generated JS files pass vm.Script syntax validation (${allGeneratedJs.length} files checked)`, allJsValid);
+assertEqual('No syntax errors in generated code', syntaxErrorMsg, '');
+
 const dupSampleSem = lexParseAnalyze(readSample('dup_rel.apiforge'));
 assertTrue('sample dup_rel.apiforge fails semantics', !dupSampleSem.valid);
 assertTrue('sample dup_rel.apiforge reports duplicate relationship',
@@ -2920,6 +3034,21 @@ const invalidSampleSem = lexParseAnalyze(readSample('invalid_rel.apiforge'));
 assertTrue('sample invalid_rel.apiforge fails semantics', !invalidSampleSem.valid);
 assertTrue('sample invalid_rel.apiforge reports missing target entity',
     invalidSampleSem.errors.some(e => e.message.includes("Target entity 'Course'") && e.message.includes('does not exist')));
+
+// ── Lexer Hardening: Negative numbers & UTF-8 BOM ──
+currentPhase = 'lexer';
+console.log('');
+console.log('── Lexer: Negative numbers & BOM handling ──');
+const bomTokens = Lexer.tokenize('\uFEFFENTITY Test\nid INT PRIMARY KEY');
+assertEqual('BOM stripped cleanly', bomTokens[0].value, 'ENTITY');
+
+const negTokens = Lexer.tokenize('ENTITY Temperature\nreading FLOAT DEFAULT -15.5\nminVal INT MIN -40 MAX -1');
+const negReading = negTokens.find(t => t.type === 'NUMBER' && t.value === '-15.5');
+const negMin = negTokens.find(t => t.type === 'NUMBER' && t.value === '-40');
+const negMax = negTokens.find(t => t.type === 'NUMBER' && t.value === '-1');
+assertTrue('Negative float parsed', !!negReading);
+assertTrue('Negative int min parsed', !!negMin);
+assertTrue('Negative int max parsed', !!negMax);
 
 // Reset phase for the API tests that follow.
 currentPhase = 'other';
@@ -3355,6 +3484,52 @@ const requiredTok = tokExisting.find(t => t.value === 'REQUIRED');
 assertEqual('ENTITY still KEYWORD', entityTok.type, 'KEYWORD');
 assertEqual('PRIMARY still MODIFIER', primaryTok.type, 'MODIFIER');
 assertEqual('REQUIRED still MODIFIER', requiredTok.type, 'MODIFIER');
+
+// ── Lexer: Negative number support ──────────────────────────
+console.log('');
+console.log('── Lexer: Negative number support ──');
+
+const negTokens1 = Lexer.tokenize('ENTITY Student\n\nage INT MIN -10 MAX 100');
+const negNumTokens = negTokens1.filter(t => t.type === 'NUMBER');
+assertTrue('Negative number: -10 tokenized', negNumTokens.some(t => t.value === '-10'));
+assertTrue('Positive number: 100 tokenized', negNumTokens.some(t => t.value === '100'));
+
+const negTokens2 = Lexer.tokenize('ENTITY Test\n\nval FLOAT DEFAULT -3.14');
+const negFloatTokens = negTokens2.filter(t => t.type === 'NUMBER');
+assertTrue('Negative float: -3.14 tokenized', negFloatTokens.some(t => t.value === '-3.14'));
+
+const negTokens3 = Lexer.tokenize('ENTITY Test\n\nval INT DEFAULT -1');
+const negDefTokens = negTokens3.filter(t => t.type === 'NUMBER');
+assertTrue('Negative integer: -1 tokenized', negDefTokens.some(t => t.value === '-1'));
+
+const negTokens4 = Lexer.tokenize('ENTITY Test\n\nval INT MIN -100 MAX -1');
+const negRangeTokens = negTokens4.filter(t => t.type === 'NUMBER');
+assertTrue('Negative MIN: -100 tokenized', negRangeTokens.some(t => t.value === '-100'));
+assertTrue('Negative MAX: -1 tokenized', negRangeTokens.some(t => t.value === '-1'));
+
+// ── Lexer: Structured error metadata ────────────────────────
+console.log('');
+console.log('── Lexer: Structured error metadata ──');
+
+try {
+    Lexer.tokenize('ENTITY Test\n@invalid');
+    assertTrue('Lexer error should have been thrown', false);
+} catch (e) {
+    assertTrue('Lexer error has line property', typeof e.line === 'number');
+    assertTrue('Lexer error has column property', typeof e.column === 'number');
+    assertTrue('Lexer error has code property', typeof e.code === 'string');
+    assertTrue('Lexer error has userMessage property', typeof e.userMessage === 'string');
+    assertEqual('Lexer error code is UNEXPECTED_CHARACTER', e.code, 'UNEXPECTED_CHARACTER');
+}
+
+try {
+    Lexer.tokenize('ENTITY Test\n\nname STRING DEFAULT "hello');
+    assertTrue('Unterminated string should throw', false);
+} catch (e) {
+    assertTrue('Unterminated string has line', typeof e.line === 'number');
+    assertTrue('Unterminated string has code', typeof e.code === 'string');
+    assertEqual('Unterminated string code', e.code, 'UNTERMINATED_STRING');
+}
 
 
 // ═════════════════════════════════════════════════════════════
@@ -3851,6 +4026,84 @@ assertTrue('Collected STRING MIN error', sem28.errors.some(e => e.message.includ
 assertTrue('Collected BOOLEAN MAX error', sem28.errors.some(e => e.message.includes("Validation 'MAX' is only allowed for INT or FLOAT")));
 assertTrue('Collected MIN > MAX error', sem28.errors.some(e => e.message.includes("MIN value 60 cannot be greater than MAX value 17")));
 assertTrue('Collected INT default string error', sem28.errors.some(e => e.message.includes("Default value for INT field 'status' must be an integer")));
+
+// ── Test 29: Duplicate DEFAULT in DSL ──
+console.log('');
+console.log('── Semantic: Duplicate DEFAULT in DSL rejected ──');
+const semDupDefDsl = lexParseAnalyze('ENTITY Student\nstatus STRING DEFAULT "active" DEFAULT "inactive"');
+assertTrue('Duplicate DEFAULT in DSL is invalid', !semDupDefDsl.valid);
+assertTrue('Error mentions duplicate DEFAULT', semDupDefDsl.errors.some(e => e.message.includes("Duplicate DEFAULT value for field 'status'")));
+
+// ── Test 30: INT field with non-integer MIN/MAX rejected ──
+console.log('');
+console.log('── Semantic: INT field with decimal MIN/MAX rejected ──');
+const semIntDecMin = lexParseAnalyze('ENTITY Student\nage INT MIN 18.5');
+assertTrue('INT with decimal MIN is invalid', !semIntDecMin.valid);
+assertTrue('Error mentions integer for MIN', semIntDecMin.errors.some(e => e.message.includes("Validation 'MIN' value for INT field 'age' must be an integer")));
+
+const semIntDecMax = lexParseAnalyze('ENTITY Student\nage INT MAX 60.5');
+assertTrue('INT with decimal MAX is invalid', !semIntDecMax.valid);
+assertTrue('Error mentions integer for MAX', semIntDecMax.errors.some(e => e.message.includes("Validation 'MAX' value for INT field 'age' must be an integer")));
+
+// ── Test 31: Exact boundary defaults valid ──
+console.log('');
+console.log('── Semantic: Exact boundary defaults valid ──');
+const semBoundMin = lexParseAnalyze('ENTITY Student\nage INT MIN 18 MAX 60 DEFAULT 18');
+assertTrue('DEFAULT equal to MIN is valid', semBoundMin.valid);
+const semBoundMax = lexParseAnalyze('ENTITY Student\nage INT MIN 18 MAX 60 DEFAULT 60');
+assertTrue('DEFAULT equal to MAX is valid', semBoundMax.valid);
+
+// ── Test 32: Symbol table preserves first declaration on duplicates ──
+console.log('');
+console.log('── Semantic: Symbol table preserves first declaration on duplicates ──');
+const semDupFieldTable = lexParseAnalyze('ENTITY Student\nname STRING\nname INT');
+assertTrue('Duplicate field fails analysis', !semDupFieldTable.valid);
+assertEqual('Symbol table preserves first field type', semDupFieldTable.symbolTable['Student'].fields['name'].dataType, 'STRING');
+
+const semDupEntityTable = lexParseAnalyze('ENTITY Student\nid INT\nENTITY Student\ncode STRING');
+assertTrue('Duplicate entity fails analysis', !semDupEntityTable.valid);
+assertTrue('Symbol table preserves first entity fields', 'id' in semDupEntityTable.symbolTable['Student'].fields);
+assertTrue('Symbol table does not contain second entity fields', !('code' in semDupEntityTable.symbolTable['Student'].fields));
+
+const semDupRelTable = lexParseAnalyze([
+    'ENTITY Student\nid INT',
+    'ENTITY Course\nid INT',
+    'RELATION Student ENROLLS Course ONE_TO_ONE',
+    'RELATION Student ENROLLS Course MANY_TO_MANY'
+].join('\n'));
+assertTrue('Duplicate relation fails analysis', !semDupRelTable.valid);
+assertEqual('Symbol table preserves first relation type', semDupRelTable.relations['ENROLLS'].relationType, 'ONE_TO_ONE');
+
+// ── Test 33: Constraint validity & duplicate constraint detection ──
+console.log('');
+console.log('── Semantic: Constraint validity and duplicates ──');
+const semDupConst = lexParseAnalyze('ENTITY Student\nname STRING REQUIRED REQUIRED');
+assertTrue('Duplicate constraint fails analysis', !semDupConst.valid);
+assertTrue('Error mentions duplicate constraint', semDupConst.errors.some(e => e.message.includes("Duplicate constraint 'REQUIRED'")));
+
+const invalidConstAst = new ProgramNode();
+const invConstEntity = new EntityNode('Student', 1);
+invConstEntity.fields.push(new FieldNode('name', 'STRING', ['NOT_A_REAL_CONSTRAINT'], 2, 1, 6));
+invalidConstAst.entities.push(invConstEntity);
+const semInvConst = SemanticAnalyzer.analyze(invalidConstAst);
+assertTrue('Invalid constraint fails analysis', !semInvConst.valid);
+assertTrue('Error mentions invalid constraint', semInvConst.errors.some(e => e.message.includes("Invalid constraint 'NOT_A_REAL_CONSTRAINT'")));
+
+// ── Test 34: Reserved word as relationship name ──
+console.log('');
+console.log('── Semantic: Reserved word as relationship name ──');
+const relResAst = new ProgramNode();
+const relResStudent = new EntityNode('Student', 1);
+relResStudent.fields.push(new FieldNode('id', 'INT', ['PRIMARY_KEY'], 2));
+const relResCourse = new EntityNode('Course', 3);
+relResCourse.fields.push(new FieldNode('id', 'INT', ['PRIMARY_KEY'], 4));
+relResAst.entities.push(relResStudent, relResCourse);
+const { RelationNode } = require('../src/ast/ast');
+relResAst.relations.push(new RelationNode('Student', 'ENTITY', 'Course', 'ONE_TO_ONE', 5));
+const semRelResWord = SemanticAnalyzer.analyze(relResAst);
+assertTrue('Reserved word relation name fails analysis', !semRelResWord.valid);
+assertTrue('Error mentions reserved word', semRelResWord.errors.some(e => e.message.includes("Relationship name 'ENTITY' is a reserved word")));
+
 
 
 // ═════════════════════════════════════════════════════════════
@@ -4614,6 +4867,63 @@ const relFiles = CodeGenerator.generate(relCodegenIR, false);
 assertTrue('Relationship code generation succeeds', relFiles.success);
 const relSql = relFiles.files.find(f => f.path === 'database/schema.sql').content;
 assertTrue('Contains Student_Course junction table', relSql.includes('CREATE TABLE Student_Course'));
+
+// ── API Test: Health endpoint ───────────────────────────────
+console.log('');
+console.log('── API Test: GET /health ──');
+
+const healthResult = await simulateGet('/health');
+assertEqual('API health returns status ok', healthResult.status, 'ok');
+assertEqual('API health returns version', healthResult.version, '1.0.0');
+
+// ── API Test: Missing body ──────────────────────────────────
+console.log('');
+console.log('── API Test: Missing/undefined body ──');
+
+const missingBodyResult = await simulatePost('/compile', undefined);
+assertTrue('API missing body returns success false', missingBodyResult.success === false);
+assertTrue('API missing body returns 400', missingBodyResult._statusCode === 400);
+
+// ── API Test: Empty source string ───────────────────────────
+console.log('');
+console.log('── API Test: Empty source string ──');
+
+const emptySourceResult = await simulatePost('/compile', { source: '' });
+assertTrue('API empty source returns success false', emptySourceResult.success === false);
+assertTrue('API empty source returns 400', emptySourceResult._statusCode === 400);
+
+// ── API Test: Non-string source ─────────────────────────────
+console.log('');
+console.log('── API Test: Non-string source ──');
+
+const nonStringResult = await simulatePost('/compile', { source: 12345 });
+assertTrue('API non-string source returns success false', nonStringResult.success === false);
+assertTrue('API non-string source returns 400', nonStringResult._statusCode === 400);
+
+// ── API Test: Lexer error returns 400 ───────────────────────
+console.log('');
+console.log('── API Test: Lexer error returns 400 ──');
+
+const lexerErrResult = await simulatePost('/compile', { source: 'ENTITY Student\n@ invalid' });
+assertTrue('API lexer error returns success false', lexerErrResult.success === false);
+assertTrue('API lexer error returns 400', lexerErrResult._statusCode === 400);
+assertTrue('API lexer error phase is lexer', lexerErrResult.phase === 'lexer');
+
+// ── API Test: Parser error returns 400 ──────────────────────
+console.log('');
+console.log('── API Test: Parser error returns 400 ──');
+
+const parserErrResult = await simulatePost('/compile', { source: 'ENTITY' });
+assertTrue('API parser error returns 400', parserErrResult._statusCode === 400);
+assertTrue('API parser error phase is parser', parserErrResult.phase === 'parser');
+
+// ── API Test: Semantic error returns 422 ────────────────────
+console.log('');
+console.log('── API Test: Semantic error returns 422 ──');
+
+const semErrResult = await simulatePost('/compile', { source: 'ENTITY Student\n\nname STRING\nname INT' });
+assertTrue('API semantic error returns 422', semErrResult._statusCode === 422);
+assertTrue('API semantic error phase is semantic', semErrResult.phase === 'semantic');
 
 // ═════════════════════════════════════════════════════════════
 // END-TO-END PIPELINE TEST: ALL SIX PHASES (PART 12)

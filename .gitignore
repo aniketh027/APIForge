@@ -3,3 +3,7 @@ node_modules/
 output/.env
 .DS_Store
 *.log
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/

@@ -16,6 +16,16 @@
       },
       "post": {
         "summary": "Create Student",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Student"
+              }
+            }
+          }
+        },
         "responses": {
           "201": {
             "description": "Created"
@@ -24,6 +34,17 @@
       }
     },
     "/students/{id}": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "integer"
+          },
+          "description": "ID of the Student"
+        }
+      ],
       "get": {
         "summary": "Get Student by ID",
         "responses": {
@@ -34,6 +55,16 @@
       },
       "put": {
         "summary": "Update Student",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Student"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "OK"
@@ -60,6 +91,16 @@
       },
       "post": {
         "summary": "Create Course",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Course"
+              }
+            }
+          }
+        },
         "responses": {
           "201": {
             "description": "Created"
@@ -68,6 +109,17 @@
       }
     },
     "/courses/{id}": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "integer"
+          },
+          "description": "ID of the Course"
+        }
+      ],
       "get": {
         "summary": "Get Course by ID",
         "responses": {
@@ -78,6 +130,16 @@
       },
       "put": {
         "summary": "Update Course",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Course"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "OK"
@@ -94,6 +156,17 @@
       }
     },
     "/students/{id}/courses": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "integer"
+          },
+          "description": "ID of the Student"
+        }
+      ],
       "get": {
         "summary": "Get all courses associated with Student (ENROLLS_IN)",
         "responses": {
@@ -114,6 +187,26 @@
       }
     },
     "/students/{id}/courses/{courseId}": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "integer"
+          },
+          "description": "ID of the Student"
+        },
+        {
+          "name": "courseId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "integer"
+          },
+          "description": "ID of the Course"
+        }
+      ],
       "post": {
         "summary": "Associate Course with Student (ENROLLS_IN)",
         "responses": {
@@ -143,7 +236,10 @@
           "name": {
             "type": "string"
           }
-        }
+        },
+        "required": [
+          "name"
+        ]
       },
       "Course": {
         "type": "object",
@@ -154,7 +250,10 @@
           "title": {
             "type": "string"
           }
-        }
+        },
+        "required": [
+          "title"
+        ]
       }
     }
   }

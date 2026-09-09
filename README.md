@@ -86,7 +86,7 @@ Source Code (.apiforge)
 └────────┬─────────┘
          ▼
 ┌─────────────────┐
-│  5. OPTIMIZER    │  Runs 4 IR optimization passes
+│  5. OPTIMIZER    │  Runs 6 IR optimization passes
 │                  │  Input: IR → Output: optimized IR
 └────────┬─────────┘
          ▼
@@ -98,12 +98,14 @@ Source Code (.apiforge)
 
 ### Phase 5 — Optimizer passes
 
-The optimizer is **not** a pass-through. It applies four real, target-independent
+The optimizer is **not** a pass-through. It applies six real, target-independent
 passes to the IR and reports which ones fired:
 
 | Pass | What it does |
 |------|--------------|
 | **Constraint Normalization** | De-duplicates and canonically orders each field's constraints |
+| **Duplicate Validation Elimination** | Removes redundant MIN/MAX validation rules on the same field |
+| **Validation Order Normalization** | Canonically orders validations (MIN before MAX) for consistency |
 | **Duplicate Entity Elimination** | Removes repeated `CREATE_ENTITY` instructions |
 | **Duplicate Field Elimination** | Removes repeated fields (and flags conflicting re-declarations) |
 | **Duplicate Relationship Elimination** | Removes identical `CREATE_RELATION` instructions |
@@ -122,6 +124,9 @@ APIForge/
 ├── samples/                      # Sample .apiforge DSL files
 │   ├── student.apiforge          #   Single-entity example
 │   ├── student_course_rel.apiforge  # MANY_TO_MANY relationship example
+│   ├── student_validation.apiforge  # MIN, MAX, and DEFAULT validations example
+│   ├── one_to_one.apiforge       #   ONE_TO_ONE relationship example
+│   ├── one_to_many.apiforge      #   ONE_TO_MANY relationship example
 │   ├── dup_rel.apiforge          #   Duplicate-relationship (semantic error demo)
 │   └── invalid_rel.apiforge      #   Missing-target-entity (semantic error demo)
 │
@@ -131,7 +136,7 @@ APIForge/
 │   ├── ast/ast.js                # AST node definitions (Program/Entity/Field/Relation)
 │   ├── semantic/analyzer.js      # Phase 3: validation + symbol table
 │   ├── ir/generator.js           # Phase 4: AST → IR instructions
-│   ├── optimizer/optimizer.js    # Phase 5: 4 IR optimization passes
+│   ├── optimizer/optimizer.js    # Phase 5: 6 IR optimization passes
 │   ├── codegen/codegen.js        # Phase 6: MySQL + Express + OpenAPI generation
 │   ├── api/compiler-api.js       # Programmatic pipeline wrapper (used by the web server)
 │   └── utils/errors.js           # Levenshtein "did you mean?" + code-frame helpers
@@ -151,7 +156,7 @@ APIForge/
 │   ├── swagger.json
 │   └── .env.example
 │
-└── tests/                        # Custom test suite (549 tests, no dependencies)
+└── tests/                        # Custom test suite (988+ tests, no dependencies)
     └── test.js                   #   Per-phase + end-to-end + sample coverage
 ```
 
@@ -212,6 +217,9 @@ CREATE TABLE Student_Course (
 | `KEY`       | Used with `PRIMARY` to form `PRIMARY KEY`      |
 | `REQUIRED`  | Field cannot be null (`NOT NULL`)              |
 | `UNIQUE`    | Field must have unique values                  |
+| `MIN`       | Minimum numeric value constraint (`CHECK (col >= val)`) |
+| `MAX`       | Maximum numeric value constraint (`CHECK (col <= val)`) |
+| `DEFAULT`   | Default column value (`DEFAULT val`)          |
 
 ## 📊 Supported Data Types
 
@@ -223,6 +231,34 @@ CREATE TABLE Student_Course (
 | `BOOLEAN` | `BOOLEAN`         | True/false values        |
 
 > A `PRIMARY KEY` may only be declared on an `INT` or `STRING` field.
+
+---
+
+## 🛡 Field Validations & Default Values
+
+Fields can declare numeric boundary constraints and default values:
+
+```
+ENTITY Student
+
+    id      INT      PRIMARY KEY
+    name    STRING   REQUIRED
+    age     INT      MIN 18 MAX 60 DEFAULT 25
+    cgpa    FLOAT    MIN 0.0 MAX 10.0 DEFAULT 8.5
+    status  STRING   DEFAULT "active"
+    active  BOOLEAN  DEFAULT TRUE
+```
+
+- **`MIN <number>`** & **`MAX <number>`**:
+  - Allowed for `INT` and `FLOAT` fields (negative values such as `MIN -10` supported).
+  - Semantic analysis verifies `MIN <= MAX` and ensures integer types have integer bounds.
+  - Generates SQL `CHECK (age >= 18 AND age <= 60)` table constraints.
+  - Adds OpenAPI `minimum` and `maximum` properties in `swagger.json`.
+  - Generates input validation logic in Express controllers (`validateStudent(data)`).
+- **`DEFAULT <literal>`**:
+  - Type-checked against field data type (integers for `INT`, numbers for `FLOAT`, quoted strings for `STRING`, `TRUE`/`FALSE` for `BOOLEAN`).
+  - Semantic analysis verifies default values fall within `[MIN, MAX]` boundaries.
+  - Generates SQL `DEFAULT` clauses and OpenAPI `default` properties.
 
 ---
 
@@ -300,6 +336,7 @@ npm run dev
 ```bash
 npm test
 ```
+Executes the comprehensive test suite (1000+ tests across all 6 compiler phases, error utilities, and end-to-end pipelines).
 
 ---
 
@@ -322,7 +359,7 @@ npm test
 - [x] Phase 2: Parser implementation
 - [x] Phase 3: Semantic analyzer implementation
 - [x] Phase 4: IR generator implementation
-- [x] Phase 5: Optimizer (4 passes)
+- [x] Phase 5: Optimizer (6 passes)
 - [x] Phase 6: MySQL code generator
 - [x] Phase 6: REST API code generator (Express + OpenAPI)
 - [x] Frontend web playground

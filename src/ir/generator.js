@@ -223,8 +223,9 @@ function generate(ast, semanticResult = null) {
                 : [];
 
             // Format defaultValue
-            const defaultValue = (field.defaultValue && typeof field.defaultValue === 'object')
-                ? { type: field.defaultValue.type, value: field.defaultValue.value }
+            const rawDef = Array.isArray(field.defaultValue) ? field.defaultValue[0] : field.defaultValue;
+            const defaultValue = (rawDef && typeof rawDef === 'object' && rawDef.type)
+                ? { type: rawDef.type, value: rawDef.value }
                 : null;
 
             // Instruction: ADD_FIELD

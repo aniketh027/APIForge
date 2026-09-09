@@ -213,6 +213,11 @@ function createToken(type, value, line, column) {
  * @throws {Error}            - On lexical errors (with line/column info)
  */
 function tokenize(sourceCode) {
+    // Strip leading UTF-8 Byte Order Mark (BOM) if present
+    if (typeof sourceCode === 'string' && sourceCode.charCodeAt(0) === 0xFEFF) {
+        sourceCode = sourceCode.slice(1);
+    }
+
     const tokens = [];     // Output array — we push tokens here
     let pos = 0;           // Current position in the source string
     let line = 1;          // Current line number (1-indexed)
@@ -299,11 +304,17 @@ function tokenize(sourceCode) {
         }
 
         // ── Case 5: Number literal ──────────────────────────
-        // Read an integer or decimal number (e.g., 17, 8.5).
+        // Read an integer or decimal number (e.g., 17, -5, 8.5, -3.14).
         // Used as values for MIN, MAX, and DEFAULT modifiers.
-        if (isDigit(ch)) {
+        if (isDigit(ch) || (ch === '-' && pos + 1 < sourceCode.length && isDigit(sourceCode[pos + 1]))) {
             const startColumn = column;
             let numStr = '';
+
+            if (ch === '-') {
+                numStr += '-';
+                pos++;
+                column++;
+            }
 
             // Read integer part
             while (pos < sourceCode.length && isDigit(sourceCode[pos])) {
@@ -335,10 +346,15 @@ function tokenize(sourceCode) {
                     pos++;
                     column++;
                 }
-                throw new Error(
+                const err = new Error(
                     `Lexical Error at line ${line}, column ${startColumn}: ` +
                     `Identifier "${badToken}" cannot start with a digit.`
                 );
+                err.line = line;
+                err.column = startColumn;
+                err.code = 'INVALID_IDENTIFIER';
+                err.userMessage = `Identifier "${badToken}" cannot start with a digit at line ${line}, column ${startColumn}.`;
+                throw err;
             }
 
             tokens.push(createToken('NUMBER', numStr, line, startColumn));
@@ -361,10 +377,15 @@ function tokenize(sourceCode) {
             }
 
             if (pos >= sourceCode.length || sourceCode[pos] === '\n') {
-                throw new Error(
+                const err = new Error(
                     `Lexical Error at line ${line}, column ${startColumn}: ` +
                     `Unterminated string literal.`
                 );
+                err.line = line;
+                err.column = startColumn;
+                err.code = 'UNTERMINATED_STRING';
+                err.userMessage = `Unterminated string literal at line ${line}, column ${startColumn}.`;
+                throw err;
             }
 
             pos++;      // skip closing quote
@@ -374,14 +395,48 @@ function tokenize(sourceCode) {
             continue;
         }
 
+        // Negative number support: '-' followed by a digit
+        if (ch === '-' && pos + 1 < sourceCode.length && isDigit(sourceCode[pos + 1])) {
+            const startColumn = column;
+            let num = '-';
+            pos++;
+            column++;
+            
+            while (pos < sourceCode.length && isDigit(sourceCode[pos])) {
+                num += sourceCode[pos];
+                pos++;
+                column++;
+            }
+            
+            // Handle decimal part
+            if (pos < sourceCode.length && sourceCode[pos] === '.' && pos + 1 < sourceCode.length && isDigit(sourceCode[pos + 1])) {
+                num += '.';
+                pos++;
+                column++;
+                while (pos < sourceCode.length && isDigit(sourceCode[pos])) {
+                    num += sourceCode[pos];
+                    pos++;
+                    column++;
+                }
+            }
+            
+            tokens.push(createToken('NUMBER', num, line, startColumn));
+            continue;
+        }
+
         // ── Case 7: Unexpected character ────────────────────
         // If we reach here, the character is not a letter,
         // digit, whitespace, newline, quote, or comment starter.
         // It's something our DSL doesn't understand (e.g., @, #, $).
-        throw new Error(
+        const err = new Error(
             `Lexical Error at line ${line}, column ${column}: ` +
             `Unexpected character '${ch}' (char code ${ch.charCodeAt(0)}).`
         );
+        err.line = line;
+        err.column = column;
+        err.code = 'UNEXPECTED_CHARACTER';
+        err.userMessage = `Unexpected character '${ch}' at line ${line}, column ${column}.`;
+        throw err;
     }
 
     // ── Append EOF token ────────────────────────────────────

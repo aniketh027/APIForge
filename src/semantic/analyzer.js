@@ -104,6 +104,12 @@ const PRIMARY_KEY_ALLOWED_TYPES = new Set([
     'INT', 'STRING'
 ]);
 
+// ── Valid Constraints ───────────────────────────────────────
+
+const VALID_CONSTRAINTS = new Set([
+    'PRIMARY_KEY', 'REQUIRED', 'UNIQUE'
+]);
+
 // ── Valid Relationship Types ────────────────────────────────
 
 const VALID_RELATION_TYPES = new Set([
@@ -286,6 +292,14 @@ class SemanticAnalyzer {
                 );
             } else {
                 seenFieldNames.add(field.name);
+                // Register the field in the field table (only first declaration)
+                fieldTable[field.name] = {
+                    dataType: field.dataType,
+                    constraints: field.constraints || [],
+                    validations: field.validations || [],
+                    defaultValue: field.defaultValue || null,
+                    line: field.line
+                };
             }
 
             // ── Rule: Reserved field name ───────────────────
@@ -307,8 +321,28 @@ class SemanticAnalyzer {
                 );
             }
 
-            // ── Rule: Primary key checks ───────────────────
+            // ── Rule: Constraint validity & duplicates ───────
             const constraints = field.constraints || [];
+            const seenConstraints = new Set();
+            for (const c of constraints) {
+                if (!VALID_CONSTRAINTS.has(c)) {
+                    this.addError(
+                        `Invalid constraint '${c}' on field '${field.name}' in entity '${entity.name}'. Allowed constraints: PRIMARY KEY, REQUIRED, UNIQUE.`,
+                        field.line,
+                        field.nameColumn
+                    );
+                } else if (seenConstraints.has(c)) {
+                    this.addError(
+                        `Duplicate constraint '${c}' on field '${field.name}' in entity '${entity.name}'.`,
+                        field.line,
+                        field.nameColumn
+                    );
+                } else {
+                    seenConstraints.add(c);
+                }
+            }
+
+            // ── Rule: Primary key checks ───────────────────
             if (constraints.includes('PRIMARY_KEY')) {
                 primaryKeyCount++;
 
@@ -396,6 +430,28 @@ class SemanticAnalyzer {
                     if (minVal > maxVal) {
                         this.addError(
                             `MIN value ${minVal} cannot be greater than MAX value ${maxVal}.`,
+                            field.line,
+                            field.nameColumn
+                        );
+                    }
+                }
+            }
+
+            // 6. Integer check for INT fields with MIN / MAX
+            if (field.dataType === 'INT') {
+                for (const val of minList) {
+                    if (typeof val.value === 'number' && !Number.isInteger(val.value)) {
+                        this.addError(
+                            `Validation 'MIN' value for INT field '${field.name}' must be an integer, but found ${val.value}.`,
+                            field.line,
+                            field.nameColumn
+                        );
+                    }
+                }
+                for (const val of maxList) {
+                    if (typeof val.value === 'number' && !Number.isInteger(val.value)) {
+                        this.addError(
+                            `Validation 'MAX' value for INT field '${field.name}' must be an integer, but found ${val.value}.`,
                             field.line,
                             field.nameColumn
                         );
@@ -493,22 +549,15 @@ class SemanticAnalyzer {
                     }
                 }
             }
-
-            // Register the field in the field table
-            fieldTable[field.name] = {
-                dataType: field.dataType,
-                constraints: field.constraints || [],
-                validations: field.validations || [],
-                defaultValue: field.defaultValue || null,
-                line: field.line
-            };
         }
 
-        // Register the entity in the global symbol table
-        this.symbolTable[entity.name] = {
-            fields: fieldTable,
-            line: entity.line
-        };
+        // Register the entity in the global symbol table (first declaration only)
+        if (!this.symbolTable[entity.name]) {
+            this.symbolTable[entity.name] = {
+                fields: fieldTable,
+                line: entity.line
+            };
+        }
     }
 
     // ════════════════════════════════════════════════════════
@@ -545,6 +594,13 @@ class SemanticAnalyzer {
                 );
             } else {
                 seenRelNames.add(rel.name);
+                // Register in the relations table (first declaration only)
+                this.relationsTable[rel.name] = {
+                    sourceEntity: rel.sourceEntity,
+                    targetEntity: rel.targetEntity,
+                    relationType: rel.relationType,
+                    line: rel.line
+                };
             }
 
             // ── Check: Reserved word for relation name ──────
@@ -593,14 +649,6 @@ class SemanticAnalyzer {
                     rel.targetColumn
                 );
             }
-
-            // Register in the relations table
-            this.relationsTable[rel.name] = {
-                sourceEntity: rel.sourceEntity,
-                targetEntity: rel.targetEntity,
-                relationType: rel.relationType,
-                line: rel.line
-            };
         }
     }
 }
