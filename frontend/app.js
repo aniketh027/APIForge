@@ -89,12 +89,40 @@ const downloadBtn      = document.getElementById('download-btn');
 const downloadSection  = document.getElementById('download-section');
 const errorPanel       = document.getElementById('error-panel');
 const summaryPanel     = document.getElementById('compilation-summary');
+const exampleName      = document.getElementById('example-name');
+const pipelineState    = document.getElementById('pipeline-state');
+const headerStatus     = document.getElementById('header-status');
+const headerStatusText = document.getElementById('header-status-text');
 
 // Set of line numbers with compiler errors (1-indexed)
 const errorLines = new Set();
 
 // Store last successful compilation for download
 let lastCompileResult = null;
+let isCompiling = false;
+
+function emptyState(title = 'No compilation yet', message = 'Write APIForge DSL and press Compile, or load an example.') {
+    return `<div class="output-placeholder">
+        <div class="empty-state">
+            <span class="empty-state-mark" aria-hidden="true">{ }</span>
+            <strong>${escapeHtml(title)}</strong>
+            <span>${escapeHtml(message)}</span>
+        </div>
+    </div>`;
+}
+
+function resetOutputPanes(title, message) {
+    TAB_IDS.forEach(id => {
+        const pane = document.getElementById('output-' + id);
+        if (pane) pane.innerHTML = emptyState(title, message);
+    });
+}
+
+function setCompilerAvailability(isAvailable) {
+    if (!headerStatus || !headerStatusText) return;
+    headerStatus.classList.toggle('unavailable', !isAvailable);
+    headerStatusText.textContent = isAvailable ? 'Compiler ready' : 'Compiler unavailable';
+}
 
 // ═════════════════════════════════════════════════════════════
 // LINE NUMBERS & EDITOR HIGHLIGHTS (TASK 1 & TASK 6)
@@ -140,14 +168,28 @@ function clearErrorHighlights() {
 
 function switchTab(tabId) {
     // Deactivate all tabs and panes
-    document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
-    document.querySelectorAll('.output-pane').forEach(pane => pane.classList.remove('active'));
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.classList.remove('active');
+        btn.setAttribute('aria-selected', 'false');
+        btn.setAttribute('tabindex', '-1');
+    });
+    document.querySelectorAll('.output-pane').forEach(pane => {
+        pane.classList.remove('active');
+        pane.hidden = true;
+    });
 
     // Activate selected
     const tabBtn = document.getElementById('tab-' + tabId);
     const pane = document.getElementById('output-' + tabId);
-    if (tabBtn) tabBtn.classList.add('active');
-    if (pane) pane.classList.add('active');
+    if (tabBtn) {
+        tabBtn.classList.add('active');
+        tabBtn.setAttribute('aria-selected', 'true');
+        tabBtn.setAttribute('tabindex', '0');
+    }
+    if (pane) {
+        pane.classList.add('active');
+        pane.hidden = false;
+    }
 }
 
 // ═════════════════════════════════════════════════════════════
@@ -161,11 +203,16 @@ function setPhaseStatus(phase, status) {
     icon.className = 'status-icon ' + status;
     if (status === 'success') icon.textContent = '✓';
     else if (status === 'error') icon.textContent = '✗';
+    else if (status === 'skipped') icon.textContent = '–';
+    else if (status === 'active') icon.textContent = '•';
     else icon.textContent = '○';
+    const readableStatus = status === 'error' ? 'failed' : status;
+    el.setAttribute('aria-label', `${el.querySelector('.status-label').textContent} phase: ${readableStatus}`);
 }
 
 function resetAllStatus() {
     PHASE_ORDER.forEach(phase => setPhaseStatus(phase, 'pending'));
+    if (pipelineState) pipelineState.textContent = 'Waiting for compilation';
 }
 
 function applyPhaseStatuses(phases, isSuccess, failingPhase) {
@@ -173,6 +220,7 @@ function applyPhaseStatuses(phases, isSuccess, failingPhase) {
 
     if (isSuccess) {
         PHASE_ORDER.forEach(phase => setPhaseStatus(phase, 'success'));
+        if (pipelineState) pipelineState.textContent = 'All phases completed';
         return;
     }
 
@@ -190,9 +238,17 @@ function applyPhaseStatuses(phases, isSuccess, failingPhase) {
         } else if (idx === failedIndex) {
             setPhaseStatus(phase, 'error');
         } else {
-            setPhaseStatus(phase, 'pending');
+            setPhaseStatus(phase, 'skipped');
         }
     });
+
+    if (pipelineState) pipelineState.textContent = `${formatPhaseName(failingPhase || PHASE_ORDER[failedIndex] || 'compiler')} failed`;
+}
+
+function formatPhaseName(phase) {
+    if (phase === 'codegen') return 'CodeGen';
+    if (phase === 'ir') return 'IR';
+    return phase ? phase.charAt(0).toUpperCase() + phase.slice(1) : 'Compiler';
 }
 
 function setupPhaseClickHandlers() {
@@ -241,26 +297,14 @@ function renderSummary(data) {
 
     summaryPanel.classList.add('visible');
     summaryPanel.innerHTML = `
-        <div class="summary-header">
-            <span class="summary-icon">✓</span>
-            <span class="summary-title">Compilation Successful</span>
-        </div>
-        <div class="summary-grid">
-            <div class="summary-item">
-                <span class="summary-label">Entities:</span>
-                <span class="summary-value">${entitiesCount}</span>
-            </div>
-            <div class="summary-item">
-                <span class="summary-label">Fields:</span>
-                <span class="summary-value">${fieldsCount}</span>
-            </div>
-            <div class="summary-item">
-                <span class="summary-label">Optimizations:</span>
-                <span class="summary-value">${optimizationsCount}</span>
-            </div>
-            <div class="summary-item">
-                <span class="summary-label">Files Generated:</span>
-                <span class="summary-value">${filesCount}</span>
+        <span class="summary-icon" aria-hidden="true">✓</span>
+        <div class="summary-body">
+            <div class="summary-title">Compiled successfully</div>
+            <div class="summary-grid">
+                <span class="summary-item"><span class="summary-value">${entitiesCount}</span>${entitiesCount === 1 ? 'entity' : 'entities'}</span>
+                <span class="summary-item"><span class="summary-value">${fieldsCount}</span>${fieldsCount === 1 ? 'field' : 'fields'}</span>
+                <span class="summary-item"><span class="summary-value">${optimizationsCount}</span>${optimizationsCount === 1 ? 'optimization' : 'optimizations'}</span>
+                <span class="summary-item"><span class="summary-value">${filesCount}</span>${filesCount === 1 ? 'file' : 'files'}</span>
             </div>
         </div>
     `;
@@ -278,7 +322,7 @@ function hideSummary() {
 
 function showError(phase, errors) {
     errorPanel.classList.add('visible');
-    const phaseHeader = `${(phase || 'COMPILER').toUpperCase()} ERROR`;
+    const phaseHeader = `${formatPhaseName(phase || 'compiler')} error`;
     const sourceLines = editor.value.split('\n');
 
     // Register all error lines for highlighting
@@ -347,7 +391,7 @@ function showError(phase, errors) {
 
             excerptHtml = `
                 <div class="error-excerpt">
-                    <div class="error-source-line">${escapeHtml(lineContent)}</div>
+                    <div class="error-source-line"><span class="error-line-number">${line} │</span>${escapeHtml(lineContent)}</div>
                     ${pointerLine ? `<div class="error-pointer-line">${escapeHtml(pointerLine)}</div>` : ''}
                 </div>
             `;
@@ -355,10 +399,13 @@ function showError(phase, errors) {
 
         return `
             <div class="error-card">
-                <div class="error-phase-title">${escapeHtml(phaseHeader)}</div>
-                ${locationText ? `<div class="error-location">${escapeHtml(locationText)}</div>` : ''}
-                ${excerptHtml}
+                <div class="error-heading">
+                    <div class="error-phase-title">${escapeHtml(phaseHeader)}</div>
+                    ${err.code ? `<span class="error-code">${escapeHtml(err.code)}</span>` : ''}
+                </div>
                 <div class="error-message-text">${escapeHtml(displayMessage)}</div>
+                ${excerptHtml}
+                ${locationText ? `<div class="error-location">${escapeHtml(locationText)}</div>` : ''}
             </div>
         `;
     }).join('');
@@ -397,18 +444,17 @@ function renderTokens(tokens) {
     const rows = tokens.map((t, i) => {
         const cls = typeClass[t.type] || '';
         return `<tr>
-            <td>${i + 1}</td>
+            <td class="table-index">${String(i + 1).padStart(2, '0')}</td>
             <td class="${cls}">${escapeHtml(t.type)}</td>
             <td>${escapeHtml(t.value)}</td>
-            <td>${t.line}</td>
-            <td>${t.column}</td>
+            <td class="table-location">${t.line}:${t.column}</td>
         </tr>`;
     }).join('');
 
-    return `<table class="token-table">
-        <thead><tr><th>#</th><th>Type</th><th>Value</th><th>Line</th><th>Column</th></tr></thead>
+    return `<div class="table-shell"><table class="token-table">
+        <thead><tr><th>#</th><th>Type</th><th>Value</th><th>Location</th></tr></thead>
         <tbody>${rows}</tbody>
-    </table>`;
+    </table></div>`;
 }
 
 // ═════════════════════════════════════════════════════════════
@@ -421,7 +467,7 @@ function renderAST(ast) {
     }
 
     let html = '<div class="ast-tree">';
-    html += '<div class="ast-node">Program</div>';
+    html += '<div class="ast-node ast-root">Program</div>';
 
     const hasRelations = ast.relations && ast.relations.length > 0;
 
@@ -441,12 +487,12 @@ function renderAST(ast) {
             let valStr = '';
             if (Array.isArray(field.validations) && field.validations.length > 0) {
                 const vals = field.validations.map(v => `${v.type} ${v.value}`).join(', ');
-                valStr = ` <span class="ast-constraint" style="color:var(--accent-orange, #e3b341);">[${escapeHtml(vals)}]</span>`;
+                valStr = ` <span class="symbol-validation">[${escapeHtml(vals)}]</span>`;
             }
             let defStr = '';
             if (field.defaultValue !== null && field.defaultValue !== undefined) {
                 const defVal = typeof field.defaultValue.value === 'string' ? `"${field.defaultValue.value}"` : field.defaultValue.value;
-                defStr = ` <span class="ast-constraint" style="color:var(--accent-green, #3fb950);">[DEFAULT ${escapeHtml(String(defVal))}]</span>`;
+                defStr = ` <span class="symbol-default">[DEFAULT ${escapeHtml(String(defVal))}]</span>`;
             }
             html += `<div class="ast-node">${childPrefix}${fPrefix}Field: <span class="ast-field">${escapeHtml(field.name)}</span> (<span class="ast-type">${escapeHtml(field.dataType)}</span>)${constraints}${valStr}${defStr}</div>`;
         });
@@ -495,17 +541,17 @@ function renderSymbolTable(symbolTable) {
                 <td class="symbol-field">${escapeHtml(fieldName)}</td>
                 <td class="symbol-type">${escapeHtml(field.dataType)}</td>
                 <td>${constraints}</td>
-                <td style="color:var(--accent-orange, #e3b341);">${escapeHtml(validations)}</td>
-                <td style="color:var(--accent-green, #3fb950);">${escapeHtml(defaultVal)}</td>
-                <td>${field.line || '—'}</td>
+                <td class="symbol-validation">${escapeHtml(validations)}</td>
+                <td class="symbol-default">${escapeHtml(defaultVal)}</td>
+                <td class="symbol-line">${field.line || '—'}</td>
             </tr>`;
         });
     });
 
-    return `<table class="symbol-table">
+    return `<div class="table-shell"><table class="symbol-table">
         <thead><tr><th>Entity</th><th>Field</th><th>Type</th><th>Constraints</th><th>Validations</th><th>Default</th><th>Line</th></tr></thead>
         <tbody>${rows}</tbody>
-    </table>`;
+    </table></div>`;
 }
 
 // ═════════════════════════════════════════════════════════════
@@ -519,9 +565,9 @@ function renderIR(ir, label) {
 
     let html = '<div class="ir-list">';
     ir.instructions.forEach((inst, i) => {
-        const num = `<span class="ir-num">${(i + 1).toString().padStart(2, ' ')}.</span>`;
+        const num = `<span class="ir-num">${(i + 1).toString().padStart(2, '0')}</span>`;
         if (inst.op === 'CREATE_ENTITY') {
-            html += `<div class="ir-instruction">${num} <span class="ir-op">CREATE_ENTITY</span> <span class="ir-entity">${escapeHtml(inst.entity)}</span></div>`;
+            html += `<div class="ir-instruction">${num}<div class="ir-content"><span class="ir-op">CREATE_ENTITY</span> <span class="ir-entity">${escapeHtml(inst.entity)}</span></div></div>`;
         } else if (inst.op === 'ADD_FIELD') {
             const cStr = inst.constraints && inst.constraints.length > 0
                 ? ` <span class="ir-constraint">[${inst.constraints.join(', ')}]</span>`
@@ -529,16 +575,16 @@ function renderIR(ir, label) {
             let vStr = '';
             if (Array.isArray(inst.validations) && inst.validations.length > 0) {
                 const vals = inst.validations.map(v => `${v.type} ${v.value}`).join(', ');
-                vStr = ` <span class="ir-constraint" style="color:var(--accent-orange, #e3b341);">[${escapeHtml(vals)}]</span>`;
+                vStr = ` <span class="ir-validation">[${escapeHtml(vals)}]</span>`;
             }
             let dStr = '';
             if (inst.defaultValue !== null && inst.defaultValue !== undefined) {
                 const defVal = typeof inst.defaultValue.value === 'string' ? `"${inst.defaultValue.value}"` : inst.defaultValue.value;
-                dStr = ` <span class="ir-constraint" style="color:var(--accent-green, #3fb950);">[DEFAULT ${escapeHtml(String(defVal))}]</span>`;
+                dStr = ` <span class="ir-default">[DEFAULT ${escapeHtml(String(defVal))}]</span>`;
             }
-            html += `<div class="ir-instruction">${num} <span class="ir-op">ADD_FIELD</span> <span class="ir-entity">${escapeHtml(inst.entity)}</span>.<span class="ir-field">${escapeHtml(inst.field)}</span> <span class="ir-type">${escapeHtml(inst.dataType)}</span>${cStr}${vStr}${dStr}</div>`;
+            html += `<div class="ir-instruction">${num}<div class="ir-content"><span class="ir-op">ADD_FIELD</span> <span class="ir-entity">${escapeHtml(inst.entity)}</span>.<span class="ir-field">${escapeHtml(inst.field)}</span> <span class="ir-type">${escapeHtml(inst.dataType)}</span>${cStr}${vStr}${dStr}</div></div>`;
         } else if (inst.op === 'CREATE_RELATION') {
-            html += `<div class="ir-instruction">${num} <span class="ir-op">CREATE_RELATION</span> <span class="ir-entity">${escapeHtml(inst.sourceEntity)}</span> <span class="ir-field">${escapeHtml(inst.relationName)}</span> <span class="ir-entity">${escapeHtml(inst.targetEntity)}</span> <span class="ir-constraint">[${escapeHtml(inst.relationType)}]</span></div>`;
+            html += `<div class="ir-instruction">${num}<div class="ir-content"><span class="ir-op">CREATE_RELATION</span> <span class="ir-entity">${escapeHtml(inst.sourceEntity)}</span> <span class="ir-field">${escapeHtml(inst.relationName)}</span> <span class="ir-entity">${escapeHtml(inst.targetEntity)}</span> <span class="ir-constraint">[${escapeHtml(inst.relationType)}]</span></div></div>`;
         }
     });
     html += '</div>';
@@ -553,7 +599,7 @@ function renderOptimizedIR(data) {
         const optCount = data.optimizedIR ? data.optimizedIR.instructions.length : '?';
         html += `<div class="ir-summary">✓ ${data.optimizations.length} optimization(s) applied — instructions: ${origCount} → ${optCount}</div>`;
         data.optimizations.forEach(opt => {
-            html += `<div class="ir-summary" style="margin-top:0.25rem;">• ${escapeHtml(opt.pass)}: ${escapeHtml(opt.description)}</div>`;
+            html += `<div class="ir-summary">${escapeHtml(opt.pass)}: ${escapeHtml(opt.description)}</div>`;
         });
     } else {
         html += '<div class="ir-summary">✓ No optimizations required — IR is already optimal</div>';
@@ -561,7 +607,7 @@ function renderOptimizedIR(data) {
 
     if (data.warnings && data.warnings.length > 0) {
         data.warnings.forEach(w => {
-            html += `<div class="ir-summary" style="border-color:var(--warning);background:#1c1800;color:var(--warning);">⚠ ${escapeHtml(w)}</div>`;
+            html += `<div class="ir-summary warning">Warning: ${escapeHtml(w)}</div>`;
         });
     }
 
@@ -578,7 +624,7 @@ function renderSQL(files) {
     if (!sqlFile) return '<p class="output-placeholder">No SQL generated.</p>';
 
     const highlighted = highlightSQL(sqlFile.content);
-    return `<pre>${highlighted}</pre>`;
+    return `<div class="code-file-header"><span>${escapeHtml(sqlFile.path)}</span><span class="code-file-meta">Generated SQL</span></div><pre>${highlighted}</pre>`;
 }
 
 function highlightSQL(sql) {
@@ -625,10 +671,10 @@ function renderAPIFiles(files) {
 
     return apiFiles.map((file, i) => {
         return `<div class="api-file">
-            <div class="api-file-header" onclick="toggleApiFile(this)">
-                <span>📄 ${escapeHtml(file.path)}</span>
+            <button class="api-file-header" type="button" aria-expanded="${i === 0 ? 'true' : 'false'}">
+                <span>${escapeHtml(file.path)}</span>
                 <span class="toggle-icon">${i === 0 ? '▾' : '▸'}</span>
-            </div>
+            </button>
             <div class="api-file-content${i === 0 ? ' expanded' : ''}">
                 <pre>${escapeHtml(file.content)}</pre>
             </div>
@@ -642,9 +688,11 @@ function toggleApiFile(headerEl) {
     if (content.classList.contains('expanded')) {
         content.classList.remove('expanded');
         icon.textContent = '▸';
+        headerEl.setAttribute('aria-expanded', 'false');
     } else {
         content.classList.add('expanded');
         icon.textContent = '▾';
+        headerEl.setAttribute('aria-expanded', 'true');
     }
 }
 window.toggleApiFile = toggleApiFile;
@@ -668,7 +716,7 @@ function renderSwagger(files) {
         // use as-is
     }
 
-    return `<pre>${escapeHtml(content)}</pre>`;
+    return `<div class="code-file-header"><span>swagger.json</span><span class="code-file-meta">OpenAPI specification</span></div><pre>${escapeHtml(content)}</pre>`;
 }
 
 // ═════════════════════════════════════════════════════════════
@@ -676,8 +724,8 @@ function renderSwagger(files) {
 // ═════════════════════════════════════════════════════════════
 
 function escapeHtml(str) {
-    if (!str) return '';
-    return str
+    if (str === null || str === undefined) return '';
+    return String(str)
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;')
@@ -697,10 +745,8 @@ function clearAll() {
     lastCompileResult = null;
     downloadSection.classList.remove('visible');
 
-    TAB_IDS.forEach(id => {
-        const pane = document.getElementById('output-' + id);
-        if (pane) pane.innerHTML = '';
-    });
+    if (exampleName) exampleName.textContent = 'Untitled source';
+    resetOutputPanes('No compilation yet', 'Write APIForge DSL and press Compile, or load an example.');
 
     switchTab('tokens');
 }
@@ -713,6 +759,7 @@ function loadExample() {
     const example = EXAMPLES[currentExampleIndex % EXAMPLES.length];
     currentExampleIndex++;
     editor.value = example.code;
+    if (exampleName) exampleName.textContent = example.name;
     exampleBtn.title = `Loaded: ${example.name} (Click to load next example)`;
     clearErrorHighlights();
     hideError();
@@ -720,10 +767,7 @@ function loadExample() {
     resetAllStatus();
     downloadSection.classList.remove('visible');
 
-    TAB_IDS.forEach(id => {
-        const pane = document.getElementById('output-' + id);
-        if (pane) pane.innerHTML = '';
-    });
+    resetOutputPanes('Ready to compile', `${example.name} is loaded in the editor.`);
 
     switchTab('tokens');
 }
@@ -733,10 +777,17 @@ function loadExample() {
 // ═════════════════════════════════════════════════════════════
 
 async function compile() {
+    if (isCompiling) return;
+
     const source = editor.value.trim();
     if (!source) {
         hideSummary();
+        resetAllStatus();
+        lastCompileResult = null;
+        downloadSection.classList.remove('visible');
+        resetOutputPanes('No source to compile', 'Write APIForge DSL or load an example before compiling.');
         showError('input', [{ message: 'Please enter some DSL code before compiling.' }]);
+        if (pipelineState) pipelineState.textContent = 'No source to compile';
         return;
     }
 
@@ -747,14 +798,16 @@ async function compile() {
     resetAllStatus();
     lastCompileResult = null;
     downloadSection.classList.remove('visible');
-    TAB_IDS.forEach(id => {
-        const pane = document.getElementById('output-' + id);
-        if (pane) pane.innerHTML = '';
-    });
+    resetOutputPanes('Compilation running', 'Results will appear when the compiler responds.');
 
     // Show loading
+    isCompiling = true;
+    compileBtn.disabled = true;
+    compileBtn.setAttribute('aria-busy', 'true');
     compileBtn.classList.add('loading');
-    compileBtn.textContent = '⏳ Compiling...';
+    compileBtn.querySelector('.button-icon').textContent = '◌';
+    compileBtn.querySelector('.button-label').textContent = 'Compiling';
+    if (pipelineState) pipelineState.textContent = 'Compilation running';
 
     try {
         const response = await fetch('/api/compile', {
@@ -764,6 +817,7 @@ async function compile() {
         });
 
         const data = await response.json();
+        setCompilerAvailability(true);
 
         // Update phase statuses
         applyPhaseStatuses(data.phases, data.success, data.phase);
@@ -791,6 +845,10 @@ async function compile() {
             // ── Error occurred ──
             hideSummary();
             showError(data.phase || 'unknown', data.errors || [{ message: 'Unknown compilation error.' }]);
+            resetOutputPanes(
+                `Unavailable after ${formatPhaseName(data.phase || 'compiler')} failure`,
+                'This output was not produced because compilation stopped earlier.'
+            );
 
             // Still render partial results if available
             if (data.tokens) {
@@ -807,11 +865,18 @@ async function compile() {
             }
         }
     } catch (err) {
+        setCompilerAvailability(false);
         hideSummary();
         showError('network', [{ message: 'Failed to connect to the compiler server. Make sure it is running.' }]);
+        resetOutputPanes('Compiler unavailable', 'No output was produced because the compiler server could not be reached.');
+        if (pipelineState) pipelineState.textContent = 'Compiler unavailable';
     } finally {
+        isCompiling = false;
+        compileBtn.disabled = false;
+        compileBtn.removeAttribute('aria-busy');
         compileBtn.classList.remove('loading');
-        compileBtn.textContent = '▶ Compile';
+        compileBtn.querySelector('.button-icon').textContent = '▶';
+        compileBtn.querySelector('.button-label').textContent = 'Compile';
     }
 }
 
@@ -950,6 +1015,7 @@ function downloadProject() {
 document.addEventListener('DOMContentLoaded', () => {
     // Editor event listeners
     editor.addEventListener('input', () => {
+        if (exampleName) exampleName.textContent = 'Modified source';
         if (errorLines.size > 0) {
             clearErrorHighlights();
             hideError();
@@ -973,6 +1039,24 @@ document.addEventListener('DOMContentLoaded', () => {
             const tabId = btn.getAttribute('data-tab');
             if (tabId) switchTab(tabId);
         });
+        btn.addEventListener('keydown', (event) => {
+            if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+            event.preventDefault();
+            const tabs = Array.from(document.querySelectorAll('.tab-btn'));
+            const current = tabs.indexOf(btn);
+            let target = current;
+            if (event.key === 'ArrowRight') target = (current + 1) % tabs.length;
+            if (event.key === 'ArrowLeft') target = (current - 1 + tabs.length) % tabs.length;
+            if (event.key === 'Home') target = 0;
+            if (event.key === 'End') target = tabs.length - 1;
+            switchTab(tabs[target].getAttribute('data-tab'));
+            tabs[target].focus();
+        });
+    });
+
+    document.getElementById('output-api').addEventListener('click', (event) => {
+        const header = event.target.closest('.api-file-header');
+        if (header) toggleApiFile(header);
     });
 
     // Clickable status bar phases
