@@ -258,14 +258,9 @@ phase('codegen', () => {
 });
 
 phase('integration', () => {
-    test('compiles the representative feature source through all six phases', () => {
-        const compiled = compile([
-            'ENTITY User',
-            'id INT PRIMARY KEY',
-            'username STRING REQUIRED MIN_LENGTH 3 MAX_LENGTH 20',
-            'bio STRING MAX_LENGTH 500',
-            'role STRING DEFAULT "student" MIN_LENGTH 3 MAX_LENGTH 20'
-        ].join('\n'));
+    test('compiles the STRING length validation sample through all six phases', () => {
+        const sample = fs.readFileSync(path.join(__dirname, '..', 'samples', 'string_length_validation.apiforge'), 'utf8');
+        const compiled = compile(sample);
         assert.strictEqual(compiled.generated.success, true);
         assert.strictEqual(compiled.generated.files.length, 10);
         assert.strictEqual(IRGenerator.validate(compiled.optimized).valid, true);
