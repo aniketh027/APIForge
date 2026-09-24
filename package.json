@@ -7,8 +7,9 @@
     "start": "node server.js",
     "compile": "node index.js samples/student.apiforge",
     "dev": "node server.js",
-    "test": "node tests/test.js && node tests/string-length-validation.test.js && node tests/disk-generation.test.js",
+    "test": "node tests/test.js && node tests/string-length-validation.test.js && node tests/disk-generation.test.js && node tests/generated-backend-mysql-safety.test.js",
     "test:generated-integration": "node tests/generated-backend-integration.test.js",
+    "test:generated-mysql": "node tests/generated-backend-mysql.test.js",
     "test:disk-generation": "node tests/disk-generation.test.js",
     "test:string-length": "node tests/string-length-validation.test.js"
   },

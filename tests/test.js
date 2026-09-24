@@ -2467,9 +2467,11 @@ console.log('── Codegen Test 19: DB Config & Env Example Generated ──');
 const dbConfigContent = CodeGenerator.generateDBConfig();
 assertTrue('dbConfig imports mysql2/promise', dbConfigContent.includes("require('mysql2/promise')"));
 assertTrue('dbConfig creates pool with DB_HOST', dbConfigContent.includes('process.env.DB_HOST'));
+assertTrue('dbConfig creates pool with DB_PORT', dbConfigContent.includes('Number(process.env.DB_PORT) || 3306'));
 
 const envExampleContent = CodeGenerator.generateEnvExample();
 assertTrue('envExample contains DB_NAME', envExampleContent.includes('DB_NAME=apiforge_db'));
+assertTrue('envExample contains DB_PORT', envExampleContent.includes('DB_PORT=3306'));
 assertTrue('envExample contains PORT', envExampleContent.includes('PORT=3000'));
 
 

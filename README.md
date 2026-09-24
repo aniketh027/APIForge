@@ -173,7 +173,7 @@ Compiling a `.apiforge` file writes a complete backend into `output/`:
 |------|-------------|
 | `database/schema.sql` | MySQL DDL — tables, primary keys, foreign keys, junction tables |
 | `config/db.js` | `mysql2/promise` connection pool |
-| `.env.example` | Environment-variable template (DB host/user/password/name) |
+| `.env.example` | Environment-variable template (DB host/port/user/password/name) |
 | `package.json` | Generated backend metadata, runtime dependencies, and `npm start` script |
 | `README.md` | Generated-project installation and startup guide |
 | `models/<Entity>.js` | Data-access model per entity (parameterized queries + relationship helpers) |
@@ -361,7 +361,24 @@ To verify a generated backend as a standalone consumer project, run the opt-in i
 npm run test:generated-integration
 ```
 
-This network-dependent check generates into a temporary directory, runs `npm install` and `npm start`, verifies `GET /health`, then stops the server and removes the temporary project. It is intentionally excluded from `npm test`; database-backed CRUD remains a separate integration concern.
+This network-dependent check generates into a temporary directory, runs `npm install` and `npm start`, verifies `GET /health`, then stops the server and removes the temporary project. It is intentionally excluded from `npm test`.
+
+To verify a generated backend end to end against an explicitly configured MySQL server, set these environment variables:
+
+```text
+APIFORGE_TEST_DB_HOST
+APIFORGE_TEST_DB_PORT
+APIFORGE_TEST_DB_USER
+APIFORGE_TEST_DB_PASSWORD
+```
+
+Then run:
+
+```bash
+npm run test:generated-mysql
+```
+
+The MySQL harness creates a uniquely named `apiforge_e2e_*` database, imports the generated schema, exercises database-backed CRUD, defaults, validation, and a many-to-many relationship, and drops that database during cleanup. The configured user therefore needs permission to create and drop databases. The harness never uses a configured database name, does not install MySQL or require Docker, and reports missing configuration as an error. It is also excluded from `npm test`.
 
 ---
 

@@ -537,6 +537,7 @@ function generateDBConfig() {
            `const mysql = require('mysql2/promise');\n\n` +
            `const pool = mysql.createPool({\n` +
            `    host: process.env.DB_HOST || 'localhost',\n` +
+           `    port: Number(process.env.DB_PORT) || 3306,\n` +
            `    user: process.env.DB_USER || 'root',\n` +
            `    password: process.env.DB_PASSWORD || '',\n` +
            `    database: process.env.DB_NAME || 'apiforge_db',\n` +
@@ -557,6 +558,7 @@ function generateEnvExample() {
     return `# APIForge Generated Environment Variables\n` +
            `PORT=3000\n` +
            `DB_HOST=localhost\n` +
+           `DB_PORT=3306\n` +
            `DB_USER=root\n` +
            `DB_PASSWORD=your_mysql_password\n` +
            `DB_NAME=apiforge_db\n`;
