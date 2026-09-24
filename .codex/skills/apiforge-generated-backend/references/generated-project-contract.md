@@ -87,4 +87,6 @@ If ZIP construction throws, the browser downloads a single `apiforge-generated-p
 
 ## Standalone verification boundary
 
-The generated artifact contains the metadata and instructions needed for `npm install` and `npm start`, but a strict standalone claim still requires verifying the complete consumer workflow: extract the ZIP, install dependencies, configure the environment, prepare MySQL, import the schema, start the server, and exercise the API. The absence of a lockfile means compatible dependency releases may vary between installations.
+The opt-in `npm run test:generated-integration` harness verifies the generated project as a consumer artifact without mutating repository `output/`: it compiles representative DSL, materializes the in-memory files in a temporary directory, installs declared dependencies, starts the backend through `npm start` on an ephemeral port, confirms `GET /health`, stops the process tree, and removes the temporary project. It is intentionally excluded from the offline-friendly `npm test` command. The absence of a generated lockfile means compatible dependency releases may vary between integration runs.
+
+This harness proves generated-project install and server startup, not database behavior. A complete DB-backed standalone claim still requires configuring MySQL, importing `database/schema.sql`, and exercising CRUD, validation, constraints, and relationships against that database.

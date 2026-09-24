@@ -355,6 +355,14 @@ npm test
 ```
 Executes the comprehensive test suite (1000+ tests across all 6 compiler phases, error utilities, and end-to-end pipelines).
 
+To verify a generated backend as a standalone consumer project, run the opt-in integration harness:
+
+```bash
+npm run test:generated-integration
+```
+
+This network-dependent check generates into a temporary directory, runs `npm install` and `npm start`, verifies `GET /health`, then stops the server and removes the temporary project. It is intentionally excluded from `npm test`; database-backed CRUD remains a separate integration concern.
+
 ---
 
 ## 🛠 Tech Stack
