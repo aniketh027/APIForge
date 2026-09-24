@@ -2380,11 +2380,34 @@ const genResult = CodeGenerator.generate(testStudentIR, false);
 assertTrue('Result has success: true', genResult.success);
 const filePaths = genResult.files.map(f => f.path);
 assertTrue('Contains schema.sql', filePaths.includes('database/schema.sql'));
+assertTrue('Contains config/db.js', filePaths.includes('config/db.js'));
+assertTrue('Contains .env.example', filePaths.includes('.env.example'));
 assertTrue('Contains Student.js model', filePaths.includes('models/Student.js'));
 assertTrue('Contains studentController.js', filePaths.includes('controllers/studentController.js'));
 assertTrue('Contains studentRoutes.js', filePaths.includes('routes/studentRoutes.js'));
 assertTrue('Contains server.js', filePaths.includes('server.js'));
 assertTrue('Contains swagger.json', filePaths.includes('swagger.json'));
+assertTrue('Contains generated package.json', filePaths.includes('package.json'));
+assertTrue('Contains generated README.md', filePaths.includes('README.md'));
+
+const generatedPackageContent = genResult.files.find(f => f.path === 'package.json').content;
+const generatedPackage = JSON.parse(generatedPackageContent);
+assertEqual('Generated package start script runs server.js', generatedPackage.scripts.start, 'node server.js');
+assertEqual('Generated package declares exactly 3 runtime dependencies', Object.keys(generatedPackage.dependencies).length, 3);
+assertEqual('Generated package declares dotenv version used by APIForge', generatedPackage.dependencies.dotenv, require('../package.json').dependencies.dotenv);
+assertEqual('Generated package declares express version used by APIForge', generatedPackage.dependencies.express, require('../package.json').dependencies.express);
+assertEqual('Generated package declares mysql2 version used by APIForge', generatedPackage.dependencies.mysql2, require('../package.json').dependencies.mysql2);
+assertTrue('Generated package has no dev dependencies', !('devDependencies' in generatedPackage));
+
+const generatedReadmeContent = genResult.files.find(f => f.path === 'README.md').content;
+assertTrue('Generated README documents npm install', generatedReadmeContent.includes('npm install'));
+assertTrue('Generated README documents .env.example', generatedReadmeContent.includes('.env.example'));
+assertTrue('Generated README documents schema import', generatedReadmeContent.includes('database/schema.sql'));
+assertTrue('Generated README labels shell schema import', generatedReadmeContent.includes('Command Prompt, Git Bash, or a Unix shell'));
+assertTrue('Generated README provides PowerShell schema import', generatedReadmeContent.includes('mysql.exe -u root -p apiforge_db -e "source database/schema.sql"'));
+assertTrue('Generated README documents npm start', generatedReadmeContent.includes('npm start'));
+assertTrue('Generated README documents mounted student route', generatedReadmeContent.includes('`/students`'));
+assertTrue('Generated README locates swagger.json', generatedReadmeContent.includes('`swagger.json`'));
 
 
 // ── Codegen Test 17: Invalid IR rejected ──────────────────────
@@ -2583,7 +2606,7 @@ console.log('── Codegen Test 30: Full Generation with Relationships ──')
 
 const fullRelResult = CodeGenerator.generate(m2mIR, false);
 assertTrue('Full generation succeeds with relationships', fullRelResult.success);
-assertTrue('8 files generated for 2 entities', fullRelResult.files.length >= 8);
+assertEqual('13 files generated for 2 entities', fullRelResult.files.length, 13);
 const fullSql = fullRelResult.files.find(f => f.path === 'database/schema.sql').content;
 assertTrue('schema.sql includes Student_Course', fullSql.includes('Student_Course'));
 
@@ -2937,7 +2960,7 @@ assertTrue('E2E M:N creates junction table',      mnRes.schema.includes('CREATE 
 assertTrue('E2E M:N junction composite PK',       mnRes.schema.includes('PRIMARY KEY (student_id, course_id)'));
 assertTrue('E2E M:N junction FK source CASCADE',  mnRes.schema.includes('FOREIGN KEY (student_id) REFERENCES Student(id) ON DELETE CASCADE'));
 assertTrue('E2E M:N junction FK target CASCADE',  mnRes.schema.includes('FOREIGN KEY (course_id) REFERENCES Course(id) ON DELETE CASCADE'));
-assertEqual('E2E M:N generates 11 files',         mnRes.files.length, 11);
+assertEqual('E2E M:N generates 13 files',         mnRes.files.length, 13);
 
 console.log('');
 console.log('── E2E: ONE_TO_MANY foreign key ──');
@@ -2961,7 +2984,7 @@ console.log('── E2E: single-entity file count ──');
 
 const singleRes = e2eCompile('ENTITY Student\nid INT PRIMARY KEY\nname STRING REQUIRED');
 assertTrue('E2E single-entity pipeline is valid', singleRes.valid);
-assertEqual('E2E single entity generates 8 files', singleRes.files.length, 8);
+assertEqual('E2E single entity generates 10 files', singleRes.files.length, 10);
 
 // ── Sample-file coverage ────────────────────────────────────
 currentPhase = 'other';
@@ -2979,7 +3002,7 @@ function readSample(name) {
 const studentSampleRes = e2eCompile(readSample('student.apiforge'));
 assertTrue('sample student.apiforge compiles clean', studentSampleRes.valid);
 assertTrue('sample student.apiforge builds Student table', studentSampleRes.schema.includes('CREATE TABLE Student ('));
-assertEqual('sample student.apiforge generates 8 files', studentSampleRes.files.length, 8);
+assertEqual('sample student.apiforge generates 10 files', studentSampleRes.files.length, 10);
 
 const relSampleRes = e2eCompile(readSample('student_course_rel.apiforge'));
 assertTrue('sample student_course_rel.apiforge compiles clean', relSampleRes.valid);
@@ -3151,6 +3174,8 @@ assertTrue('API has server.js', apiTest1.generatedFiles.some(f => f.path === 'se
 assertTrue('API has Student.js model', apiTest1.generatedFiles.some(f => f.path.includes('Student.js')));
 assertTrue('API has swagger.json', apiTest1.generatedFiles.some(f => f.path === 'swagger.json'));
 assertTrue('API has config/db.js', apiTest1.generatedFiles.some(f => f.path === 'config/db.js'));
+assertTrue('API has generated package.json', apiTest1.generatedFiles.some(f => f.path === 'package.json'));
+assertTrue('API has generated README.md', apiTest1.generatedFiles.some(f => f.path === 'README.md'));
 assertTrue('API files have content', apiTest1.generatedFiles.every(f => typeof f.content === 'string' && f.content.length > 0));
 
 
@@ -3193,7 +3218,7 @@ const filesCount = apiTest1.generatedFiles.length;
 assertTrue('Calculated entities count is 1', entitiesCount === 1);
 assertTrue('Calculated fields count is 5', fieldsCount === 5);
 assertTrue('Calculated optimizations count is 0', optimizationsCount === 0);
-assertTrue('Calculated files count is 8', filesCount === 8);
+assertTrue('Calculated files count is 10', filesCount === 10);
 
 
 // ── API Test 13: Phase statuses on compilation failure ──────
@@ -4973,7 +4998,7 @@ assertTrue('E2E: Optimizer produced valid IR', e2eOpt && e2eOpt.ir.instructions.
 // Phase 6: Code Generation
 const e2eCodegen = CodeGenerator.generate(e2eOpt.ir, false);
 assertTrue('E2E: Code generation succeeded', e2eCodegen.success);
-assertTrue('E2E: 8 files generated', e2eCodegen.files.length === 8);
+assertTrue('E2E: 10 files generated', e2eCodegen.files.length === 10);
 
 const e2eSql = e2eCodegen.files.find(f => f.path === 'database/schema.sql').content;
 assertTrue('E2E SQL: contains age INT', e2eSql.includes('age INT'));

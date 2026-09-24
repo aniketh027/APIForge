@@ -72,6 +72,8 @@ output/
 ├── routes/
 │   └── <entity>Routes.js            # Express router with CRUD & relation routes
 ├── .env.example                     # Environment variable template
+├── package.json                     # Runtime dependencies and npm start script
+├── README.md                        # Generated-project setup guide
 ├── server.js                        # Express server entry point
 └── swagger.json                     # OpenAPI 3.0 API specification
 ```
@@ -638,6 +640,8 @@ The compiler generates a modular Express.js project in `output/`:
 | `output/database/schema.sql` | MySQL DDL table creations, constraints, and relationships. |
 | `output/config/db.js` | MySQL2 connection pool with environment variable fallbacks. |
 | `output/.env.example` | Template for port and database credentials (`DB_HOST`, `DB_USER`, etc.). |
+| `output/package.json` | Generated backend metadata, runtime dependencies, and `npm start` script. |
+| `output/README.md` | Installation, database setup, route, and startup instructions for the generated project. |
 | `output/models/<Entity>.js` | Asynchronous CRUD queries and relationship helper methods. |
 | `output/controllers/<entity>Controller.js` | Express request handlers with automatic `validate<Entity>()` logic. |
 | `output/routes/<entity>Routes.js` | REST routes and relationship sub-routes. |
@@ -904,11 +908,14 @@ Compiles an arbitrary `.apiforge` file into `output/`. Prints phase-by-phase dia
 
 Once you compile a DSL file, follow these steps to run and test the generated backend:
 
-### Step 1: Inspect Generated SQL
-Open `output/database/schema.sql` to verify table definitions, foreign keys, and check constraints.
+### Step 1: Enter the Generated Project and Install Dependencies
+```bash
+cd output
+npm install
+```
 
 ### Step 2: Configure Environment
-Copy `output/.env.example` to `output/.env` and adjust your MySQL credentials:
+Copy `.env.example` to `.env` and adjust your MySQL credentials:
 ```bash
 PORT=3000
 DB_HOST=localhost
@@ -921,13 +928,13 @@ DB_NAME=apiforge_db
 Run the schema script against your MySQL instance:
 ```bash
 mysql -u root -p -e "CREATE DATABASE IF NOT EXISTS apiforge_db;"
-mysql -u root -p apiforge_db < output/database/schema.sql
+mysql -u root -p apiforge_db < database/schema.sql
 ```
 
 ### Step 4: Start the Generated API Server
-Run the generated Express server:
+Run the generated Express server through its package script:
 ```bash
-node output/server.js
+npm start
 ```
 The server starts listening on port 3000:
 ```text
@@ -1003,12 +1010,14 @@ The compiler stops and prints formatted diagnostics:
 - When an error occurs, no output files are written.
 
 ### What gets generated?
-Every successful compilation produces eight core components in `output/`:
+Every successful compilation produces ten core components in `output/`:
 1. `database/schema.sql` (MySQL DDL schema)
 2. `config/db.js` (MySQL connection pool configuration)
 3. `.env.example` (Environment variables template)
-4. `models/<Entity>.js` (Data access objects with SQL queries)
-5. `controllers/<entity>Controller.js` (Request handlers & boundary validation)
-6. `routes/<entity>Routes.js` (Express router endpoints)
-7. `server.js` (Express application entry point)
-8. `swagger.json` (Interactive OpenAPI 3.0 API documentation)
+4. `package.json` (Generated project metadata, runtime dependencies, and start script)
+5. `README.md` (Generated-project setup guide)
+6. `models/<Entity>.js` (Data access objects with SQL queries)
+7. `controllers/<entity>Controller.js` (Request handlers & boundary validation)
+8. `routes/<entity>Routes.js` (Express router endpoints)
+9. `server.js` (Express application entry point)
+10. `swagger.json` (OpenAPI 3.0 API document)

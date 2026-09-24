@@ -33,6 +33,8 @@ Codegen returns or writes:
 database/schema.sql
 config/db.js
 .env.example
+package.json
+README.md
 models/<Entity>.js
 controllers/<entity>Controller.js
 routes/<entity>Routes.js
@@ -40,7 +42,7 @@ server.js
 swagger.json
 ```
 
-It does not currently emit a generated `package.json`.
+Codegen emits seven fixed files plus three files per entity. The generated `package.json` declares `dotenv`, `express`, and `mysql2` with APIForge's own compatible version ranges and starts the root-level `server.js`. The generated `README.md` documents installation, environment configuration, manual MySQL schema import, route mounts, startup, and the location of `swagger.json`. It does not emit a lockfile, `.env`, or database bootstrap.
 
 - Entity CRUD routers expose `GET /`, `GET /:id`, `POST /`, `PUT /:id`, and `DELETE /:id`.
 - The generated server mounts each router directly at a lowercase plural path such as `/students`; it does not add `/api`. The repository development server uses `/api` only for the compiler endpoints (`/api/compile`, `/api/health`).

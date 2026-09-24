@@ -6,12 +6,14 @@ This reference describes current implementation behavior. It is not a promise th
 
 `src/codegen/codegen.js` consumes validated optimized IR. `generate(ir, true)` writes under repository `output/`; `generate(ir, false)` returns the same `{ path, content }` entries without writing. The compiler API uses the in-memory form.
 
-Current generation returns five fixed files plus three files per entity:
+Current generation returns seven fixed files plus three files per entity:
 
 ```text
 database/schema.sql
 config/db.js
 .env.example
+package.json
+README.md
 models/<Entity>.js
 controllers/<entity>Controller.js
 routes/<entity>Routes.js
@@ -22,6 +24,8 @@ swagger.json
 - `database/schema.sql`: MySQL entity tables followed by relationship DDL.
 - `config/db.js`: `mysql2/promise` pool configuration.
 - `.env.example`: environment-variable template.
+- `package.json`: generated-project metadata, `npm start`, and the required runtime dependencies using APIForge-compatible version ranges.
+- `README.md`: concise install, environment, MySQL schema-import, startup, route, and OpenAPI-location instructions.
 - `models/`: parameterized CRUD queries and source-side relationship query helpers.
 - `controllers/`: CRUD handlers, range validation, relationship handlers, and JSON responses.
 - `routes/`: per-entity CRUD and source-side relationship routes.
@@ -38,9 +42,9 @@ Generated runtime code requires:
 - `dotenv`
 - `mysql2` through `mysql2/promise`
 
-No generated `package.json`, lockfile, README, install script, database bootstrap, or `.env` is currently emitted. `.env.example` contains `PORT`, `DB_HOST`, `DB_USER`, `DB_PASSWORD`, and `DB_NAME`, with code fallbacks for local MySQL and database `apiforge_db`.
+The generated `package.json` declares only `express`, `dotenv`, and `mysql2`, using the version ranges from APIForge's own dependency manifest, and defines `npm start` as `node server.js`. No lockfile, database bootstrap, or `.env` is emitted. `.env.example` contains `PORT`, `DB_HOST`, `DB_USER`, `DB_PASSWORD`, and `DB_NAME`, with code fallbacks for local MySQL and database `apiforge_db`.
 
-Therefore the current extracted output/ZIP is not independently installable from its own dependency manifest. Do not call it standalone without additional implementation and end-to-end evidence.
+The generated README documents dependency installation, `.env` creation, MySQL database and schema preparation, startup, mounted route prefixes, and the root-level `swagger.json`. The generated server does not automate database creation or schema import.
 
 ## SQL contract
 
@@ -79,8 +83,8 @@ Path parameter schemas are currently emitted as integers. Verify type fidelity e
 
 The web playground receives `generatedFiles` from `POST /api/compile` and builds `apiforge-project.zip` entirely in the browser. `frontend/app.js` writes a basic uncompressed ZIP whose entries are exactly the returned paths and contents. It does not package the repository's `output/` directory or APIForge development files.
 
-If ZIP construction throws, the browser downloads a single `apiforge-generated-project.txt` concatenation instead. There is no server-side archive endpoint, generated dependency manifest, or current automated ZIP-content test.
+If ZIP construction throws, the browser downloads a single `apiforge-generated-project.txt` concatenation instead. There is no server-side archive endpoint or current automated ZIP-content test.
 
-## Desired future behavior when explicitly requested
+## Standalone verification boundary
 
-A task may make generated projects standalone or expand packaging, but that is not current behavior. Such work must define the artifact contract, emit all installation/startup dependencies and instructions it claims, verify the extracted structure, and execute the consumer workflow through a running generated API before calling the result standalone.
+The generated artifact contains the metadata and instructions needed for `npm install` and `npm start`, but a strict standalone claim still requires verifying the complete consumer workflow: extract the ZIP, install dependencies, configure the environment, prepare MySQL, import the schema, start the server, and exercise the API. The absence of a lockfile means compatible dependency releases may vary between installations.

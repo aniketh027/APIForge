@@ -152,6 +152,8 @@ APIForge/
 │   ├── models/*.js
 │   ├── controllers/*.js
 │   ├── routes/*.js
+│   ├── package.json
+│   ├── README.md
 │   ├── server.js
 │   ├── swagger.json
 │   └── .env.example
@@ -171,13 +173,15 @@ Compiling a `.apiforge` file writes a complete backend into `output/`:
 | `database/schema.sql` | MySQL DDL — tables, primary keys, foreign keys, junction tables |
 | `config/db.js` | `mysql2/promise` connection pool |
 | `.env.example` | Environment-variable template (DB host/user/password/name) |
+| `package.json` | Generated backend metadata, runtime dependencies, and `npm start` script |
+| `README.md` | Generated-project installation and startup guide |
 | `models/<Entity>.js` | Data-access model per entity (parameterized queries + relationship helpers) |
 | `controllers/<entity>Controller.js` | CRUD controller per entity |
 | `routes/<entity>Routes.js` | Express router per entity |
 | `server.js` | Express app that mounts every route |
 | `swagger.json` | OpenAPI 3 specification for the generated API |
 
-> A single-entity DSL produces **8 files**; each additional entity adds its model,
+> A single-entity DSL produces **10 files**; each additional entity adds its model,
 > controller, and routes.
 
 ---
