@@ -102,20 +102,19 @@ const errorLines = new Set();
 let lastCompileResult = null;
 let isCompiling = false;
 
-function emptyState(title = 'No compilation yet', message = 'Write APIForge DSL and press Compile, or load an example.', showMark = true) {
+function emptyState(title = 'No compilation yet', message = 'Write APIForge DSL and press Compile, or load an example.') {
     return `<div class="output-placeholder">
         <div class="empty-state">
-            ${showMark ? '<span class="empty-state-mark" aria-hidden="true">{ }</span>' : ''}
             <strong>${escapeHtml(title)}</strong>
             <span>${escapeHtml(message)}</span>
         </div>
     </div>`;
 }
 
-function resetOutputPanes(title, message, showMark = true) {
+function resetOutputPanes(title, message) {
     TAB_IDS.forEach(id => {
         const pane = document.getElementById('output-' + id);
-        if (pane) pane.innerHTML = emptyState(title, message, showMark);
+        if (pane) pane.innerHTML = emptyState(title, message);
     });
 }
 
@@ -786,7 +785,7 @@ async function compile() {
         resetAllStatus();
         lastCompileResult = null;
         downloadSection.classList.remove('visible');
-        resetOutputPanes('No source to compile', 'Write APIForge DSL or load an example before compiling.', false);
+        resetOutputPanes('No source to compile', 'Write APIForge DSL or load an example before compiling.');
         showError('input', [{ message: 'Please enter some DSL code before compiling.' }]);
         if (pipelineState) pipelineState.textContent = 'No source to compile';
         return;
@@ -848,8 +847,7 @@ async function compile() {
             showError(data.phase || 'unknown', data.errors || [{ message: 'Unknown compilation error.' }]);
             resetOutputPanes(
                 `Unavailable after ${formatPhaseName(data.phase || 'compiler')} failure`,
-                'This output was not produced because compilation stopped earlier.',
-                false
+                'This output was not produced because compilation stopped earlier.'
             );
 
             // Still render partial results if available
@@ -870,7 +868,7 @@ async function compile() {
         setCompilerAvailability(false);
         hideSummary();
         showError('network', [{ message: 'Failed to connect to the compiler server. Make sure it is running.' }]);
-        resetOutputPanes('Compiler unavailable', 'No output was produced because the compiler server could not be reached.', false);
+        resetOutputPanes('Compiler unavailable', 'No output was produced because the compiler server could not be reached.');
         if (pipelineState) pipelineState.textContent = 'Compiler unavailable';
     } finally {
         isCompiling = false;
