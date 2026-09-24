@@ -168,7 +168,7 @@ Identifiers are user-defined names given to entities, fields, and relationships:
 
 ### End of File (EOF) Behavior
 - The compiler expects a clean termination. Trailing comments, blank lines, or whitespace at the end of the file are ignored.
-- Empty files or files without any entity declarations will produce a syntax error.
+- A program must contain at least one `ENTITY`. Empty, whitespace-only, comment-only, and relation-only programs produce a semantic error.
 
 ---
 
@@ -193,7 +193,7 @@ ENTITY Student
 ### Rules & Boundaries
 1. **Naming**: Must be a valid identifier in PascalCase (recommended) or snake_case, and cannot match any reserved word.
 2. **Uniqueness**: Entity names must be unique within the source file. Duplicate entity declarations cause a semantic error.
-3. **Fields Requirement**: Every entity **must contain at least one field**. An empty entity declaration is rejected by the parser and semantic analyzer.
+3. **Fields Requirement**: Every entity **must contain at least one field**. An empty entity declaration is rejected by semantic analysis.
 4. **Boundaries**: An entity declaration begins with the `ENTITY` keyword and continues until the next `ENTITY` keyword, the next `RELATION` keyword, or the end of the file (`EOF`).
 
 ---

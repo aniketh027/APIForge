@@ -12,6 +12,7 @@ RelationDecl := RELATION SourceIdentifier RelationIdentifier TargetIdentifier Ca
 ```
 
 The parser permits zero fields syntactically, but semantic analysis rejects an entity without fields.
+The parser also permits a declaration-free token stream syntactically, but semantic analysis requires every program to contain at least one `ENTITY`.
 
 Example:
 

@@ -38,7 +38,7 @@ router.post('/compile', (req, res) => {
     const source = req.body ? req.body.source : undefined;
 
     // Validate input
-    if (!source || typeof source !== 'string' || source.trim().length === 0) {
+    if (typeof source !== 'string') {
         return res.status(400).json({
             success: false,
             phase: 'input',
@@ -50,7 +50,7 @@ router.post('/compile', (req, res) => {
                 optimizer: false,
                 codegen: false
             },
-            errors: [{ message: 'Source code is required and must be a non-empty string.' }]
+            errors: [{ message: 'Source code is required and must be a string.' }]
         });
     }
 

@@ -21,23 +21,24 @@
  * 
  * ── Semantic Rules Enforced ──
  * 
- * 1. Entity names must be unique.
- * 2. Field names must be unique within an entity.
- * 3. Data types must be valid (INT, STRING, FLOAT, BOOLEAN).
- * 4. Every entity must have at least one field.
- * 5. At most one PRIMARY_KEY per entity.
- * 6. PRIMARY_KEY is only allowed on INT or STRING fields.
- * 7. Entity/field/relation names must not be reserved keywords or types.
- * 8. Source and target entities in relationships must exist.
- * 9. Relationship names must be unique across the program.
- * 10. Relationship types must be valid (ONE_TO_ONE, ONE_TO_MANY, MANY_TO_ONE, MANY_TO_MANY).
- * 11. Self-referential relationships are rejected.
- * 12. MIN / MAX validations are only allowed on numeric types (INT, FLOAT).
- * 13. MIN_LENGTH / MAX_LENGTH validations are only allowed on STRING.
- * 14. Length values must be non-negative integers and ranges must be ordered.
- * 15. Default value type must be compatible with field data type.
- * 16. Defaults must satisfy applicable numeric or string-length validations.
- * 17. Duplicate validation or DEFAULT declarations on the same field are rejected.
+ * 1. A program must contain at least one entity.
+ * 2. Entity names must be unique.
+ * 3. Field names must be unique within an entity.
+ * 4. Data types must be valid (INT, STRING, FLOAT, BOOLEAN).
+ * 5. Every entity must have at least one field.
+ * 6. At most one PRIMARY_KEY per entity.
+ * 7. PRIMARY_KEY is only allowed on INT or STRING fields.
+ * 8. Entity/field/relation names must not be reserved keywords or types.
+ * 9. Source and target entities in relationships must exist.
+ * 10. Relationship names must be unique across the program.
+ * 11. Relationship types must be valid (ONE_TO_ONE, ONE_TO_MANY, MANY_TO_ONE, MANY_TO_MANY).
+ * 12. Self-referential relationships are rejected.
+ * 13. MIN / MAX validations are only allowed on numeric types (INT, FLOAT).
+ * 14. MIN_LENGTH / MAX_LENGTH validations are only allowed on STRING.
+ * 15. Length values must be non-negative integers and ranges must be ordered.
+ * 16. Default value type must be compatible with field data type.
+ * 17. Defaults must satisfy applicable numeric or string-length validations.
+ * 18. Duplicate validation or DEFAULT declarations on the same field are rejected.
  * 
  * ── Symbol Table ──
  * 
@@ -150,8 +151,13 @@ class SemanticAnalyzer {
      * `column` is optional; when present it lets the CLI and the
      * web UI render a caret under the offending token.
      */
-    addError(message, line, column) {
-        this.errors.push({ message, line, column });
+    addError(message, line, column, code) {
+        const error = { message, line, column };
+        if (code) {
+            error.code = code;
+            error.userMessage = message;
+        }
+        this.errors.push(error);
     }
 
     // ════════════════════════════════════════════════════════
@@ -175,6 +181,18 @@ class SemanticAnalyzer {
      * @returns {Object}   - Analysis result
      */
     analyze(ast) {
+        // A declaration-free token stream is syntactically well-formed, but it
+        // cannot describe a backend. Keep this language-level rule here so all
+        // compiler entry points reject the same empty ProgramNode.
+        if (!ast.entities || !Array.isArray(ast.entities) || ast.entities.length === 0) {
+            this.addError(
+                'APIForge programs must contain at least one ENTITY.',
+                1,
+                1,
+                'MISSING_ENTITY_DECLARATION'
+            );
+        }
+
         // Step 1: Check each entity
         if (ast.entities && Array.isArray(ast.entities)) {
             for (const entity of ast.entities) {

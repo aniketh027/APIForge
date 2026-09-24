@@ -13,7 +13,7 @@ Treat these as implementation facts to verify when the relevant code changes, no
 - Keywords/modifiers/types/cardinalities/boolean literals are case-sensitive uppercase; identifiers are case-sensitive.
 - Only `//` line comments are supported.
 - Newlines are discarded by the lexer. They are readable conventions, not required field separators.
-- The parser accepts an empty token stream as an empty `Program`, and semantic analysis currently considers that empty AST valid. The HTTP compiler API independently rejects missing, blank, or non-string source before lexing. Do not assume all entry points handle empty input identically.
+- The parser accepts an empty token stream as an empty `Program`, but semantic analysis rejects any program without at least one `ENTITY`. The HTTP compiler API reserves input-level 400 responses for missing or non-string source; empty, whitespace-only, and comment-only strings reach semantic analysis and return 422.
 - An entity with no fields parses but fails semantic analysis.
 - A relation declaration has exactly four operands after `RELATION`: source entity, relation name, target entity, and cardinality.
 

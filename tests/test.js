@@ -529,7 +529,7 @@ assertEqual('Field 5: cgpa type is FLOAT',           p7.entities[0].fields[4].da
 
 
 // ── Parser Test 8: Empty program ────────────────────────────
-// An empty source file (just EOF) is valid — zero entities.
+// An empty source file (just EOF) is syntactically accepted — zero entities.
 
 console.log('');
 console.log('── Parser Test 8: Empty program ──');
@@ -1006,6 +1006,29 @@ assertTrue('Valid Student passes',       s1.valid);
 assertTrue('No errors',                  s1.errors.length === 0);
 assertTrue('Symbol table has Student',   'Student' in s1.symbolTable);
 assertTrue('Student has 5 fields',       Object.keys(s1.symbolTable['Student'].fields).length === 5);
+
+
+// ── Semantic Test: Programs require at least one ENTITY ─────
+
+console.log('');
+console.log('── Semantic Test: Programs require at least one ENTITY ──');
+
+const noEntitySources = [
+    ['empty', ''],
+    ['whitespace-only', ' \t\r\n  '],
+    ['comment-only', '// no entities']
+];
+
+for (const [label, source] of noEntitySources) {
+    const result = lexParseAnalyze(source);
+    assertTrue(`${label} program fails semantic analysis`, !result.valid);
+    assertEqual(`${label} program error code`, result.errors[0].code, 'MISSING_ENTITY_DECLARATION');
+    assertEqual(`${label} program user-facing message`, result.errors[0].userMessage,
+        'APIForge programs must contain at least one ENTITY.');
+}
+
+const singleEntity = lexParseAnalyze('ENTITY Only\nid INT');
+assertTrue('Single-entity program remains valid', singleEntity.valid);
 
 
 // ── Semantic Test 2: Multiple valid entities ────────────────
@@ -1644,6 +1667,14 @@ const invalidSemanticResult = { valid: false, errors: [{ message: 'Fake error', 
 assertThrows(
     'Throws error when semantic analysis failed',
     () => IRGenerator.generate(ir1_ast, invalidSemanticResult),
+    'Semantic analysis failed'
+);
+
+const emptyProgramAst = lexAndParse('');
+const emptyProgramSem = SemanticAnalyzer.analyze(emptyProgramAst);
+assertThrows(
+    'Empty program cannot proceed from semantics to IR',
+    () => IRGenerator.generate(emptyProgramAst, emptyProgramSem),
     'Semantic analysis failed'
 );
 
@@ -2814,6 +2845,8 @@ function simulateGet(routePath) {
 const ErrUtil = require('../src/utils/errors');
 const nodeFs = require('fs');
 const nodePath = require('path');
+const nodeOs = require('os');
+const { spawnSync } = require('child_process');
 
 const DT_CANDIDATES = ['INT', 'STRING', 'FLOAT', 'BOOLEAN'];
 const RT_CANDIDATES = ['ONE_TO_ONE', 'ONE_TO_MANY', 'MANY_TO_ONE', 'MANY_TO_MANY'];
@@ -4957,7 +4990,42 @@ console.log('── API Test: Empty source string ──');
 
 const emptySourceResult = await simulatePost('/compile', { source: '' });
 assertTrue('API empty source returns success false', emptySourceResult.success === false);
-assertTrue('API empty source returns 400', emptySourceResult._statusCode === 400);
+assertTrue('API empty source returns 422', emptySourceResult._statusCode === 422);
+assertTrue('API empty source fails in semantic phase', emptySourceResult.phase === 'semantic');
+assertEqual('API empty source error code', emptySourceResult.errors[0].code, 'MISSING_ENTITY_DECLARATION');
+
+// ── API Test: Whitespace/comment-only sources ───────────────
+console.log('');
+console.log('── API Test: Whitespace/comment-only sources ──');
+
+for (const [label, source] of [['whitespace-only', ' \t\r\n  '], ['comment-only', '// no entities']]) {
+    const result = await simulatePost('/compile', { source });
+    assertTrue(`API ${label} source returns 422`, result._statusCode === 422);
+    assertTrue(`API ${label} source fails in semantic phase`, result.phase === 'semantic');
+    assertEqual(`API ${label} source error code`, result.errors[0].code, 'MISSING_ENTITY_DECLARATION');
+    assertTrue(`API ${label} source produces no generated files`, result.generatedFiles === undefined);
+}
+
+// ── CLI Test: Empty program stops before code generation ───
+console.log('');
+console.log('── CLI Test: Empty program stops before code generation ──');
+
+const cliTempDir = nodeFs.mkdtempSync(nodePath.join(nodeOs.tmpdir(), 'apiforge-empty-cli-'));
+try {
+    const emptyCliSource = nodePath.join(cliTempDir, 'empty.apiforge');
+    nodeFs.writeFileSync(emptyCliSource, '', 'utf8');
+    const cliResult = spawnSync(process.execPath, [nodePath.resolve(__dirname, '..', 'index.js'), emptyCliSource], {
+        cwd: cliTempDir,
+        encoding: 'utf8'
+    });
+    assertTrue('CLI empty program exits nonzero', cliResult.status !== 0);
+    assertTrue('CLI empty program reports the language rule',
+        cliResult.stdout.includes('APIForge programs must contain at least one ENTITY.'));
+    assertTrue('CLI empty program produces no output directory',
+        !nodeFs.existsSync(nodePath.join(cliTempDir, 'output')));
+} finally {
+    nodeFs.rmSync(cliTempDir, { recursive: true, force: true });
+}
 
 // ── API Test: Non-string source ─────────────────────────────
 console.log('');
