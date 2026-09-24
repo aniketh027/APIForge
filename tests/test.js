@@ -2726,6 +2726,13 @@ assertEqual('Relationship source parameter name remains id', mixedRelationshipPa
 assertEqual('Relationship target parameter name identifies StringEntity', mixedRelationshipParams[1].name, 'stringEntityId');
 assertEqual('Relationship target STRING PK parameter type is string', mixedRelationshipParams[1].schema.type, 'string');
 
+const implicitPkResult = e2eCompile('ENTITY ImplicitEntity\nname STRING');
+assertTrue('Entity without explicit PK compiles successfully', implicitPkResult.valid);
+const implicitPkSwaggerFile = implicitPkResult.files.find(f => f.path === 'swagger.json');
+assertTrue('Entity without explicit PK generates swagger.json', Boolean(implicitPkSwaggerFile));
+const implicitPkSwagger = JSON.parse(implicitPkSwaggerFile.content);
+assertEqual('Implicit PK CRUD path parameter type is integer', implicitPkSwagger.paths['/implicitentities/{id}'].parameters[0].schema.type, 'integer');
+
 // ── Codegen Test: Model update handles empty payload ──
 console.log('');
 console.log('── Codegen Test: Model update handles empty payload ──');
