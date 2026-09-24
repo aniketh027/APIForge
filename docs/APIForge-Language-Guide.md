@@ -555,7 +555,7 @@ RELATION Student ENROLLS_IN Course MANY_TO_MANY
 
 ## 12. Complete DSL Example
 
-Below is a complete, realistic DSL file demonstrating entities, primitive types, constraints, numeric validations, default values, and relationships.
+Below is a complete, realistic DSL file demonstrating entities, primitive types, constraints, numeric and STRING-length validations, default values, and relationships.
 
 ```apiforge
 // ============================================
@@ -570,7 +570,7 @@ ENTITY Department
 
 ENTITY Student
     id INT PRIMARY KEY
-    fullName STRING REQUIRED
+    fullName STRING REQUIRED MIN_LENGTH 2 MAX_LENGTH 80
     email STRING REQUIRED UNIQUE
     age INT MIN 17 MAX 65 DEFAULT 20
     gpa FLOAT MIN 0.0 MAX 4.0 DEFAULT 3.0
@@ -595,7 +595,7 @@ RELATION Student ENROLLS_IN Course MANY_TO_MANY
    - `budget`: Float with minimum budget validation ($10,000.00) and a default of $50,000.00.
 2. **Student Entity**:
    - `id`: Integer primary key with auto-increment.
-   - `fullName`: Mandatory text string.
+   - `fullName`: Mandatory text string between 2 and 80 Unicode code points.
    - `email`: Mandatory and unique string.
    - `age`: Integer with bounded range (`MIN 17 MAX 65`) and default of 20.
    - `gpa`: Decimal with grade scale bounds (`MIN 0.0 MAX 4.0`) and default of 3.0.
@@ -616,7 +616,7 @@ RELATION Student ENROLLS_IN Course MANY_TO_MANY
 When you run `node index.js university.apiforge`, the compiler processes the file through all six phases:
 
 ### Step 1: Lexical Analysis
-The lexer converts the character stream into 55 tokens. Whitespace and comments are stripped.
+The lexer converts the character stream into 85 tokens, including the final EOF token. Whitespace and comments are stripped.
 
 ```text
   ┌───────┬──────────────┬──────────────┬──────┬────────┐
@@ -640,7 +640,7 @@ Program
 │   └── Field: budget (FLOAT) [MIN 10000, DEFAULT 50000]
 ├── Entity: "Student"
 │   ├── Field: id (INT) [PRIMARY_KEY]
-│   ├── Field: fullName (STRING) [REQUIRED]
+│   ├── Field: fullName (STRING) [REQUIRED] [MIN_LENGTH 2, MAX_LENGTH 80]
 │   ├── Field: email (STRING) [REQUIRED, UNIQUE]
 │   ├── Field: age (INT) [MIN 17, MAX 65, DEFAULT 20]
 │   ├── Field: gpa (FLOAT) [MIN 0, MAX 4, DEFAULT 3]
@@ -659,7 +659,8 @@ The analyzer checks:
 - Entity and field names are unique and non-reserved.
 - Primary keys are valid and unique per entity.
 - `MIN` and `MAX` boundaries are numerically consistent (`17 <= 65`, `0.0 <= 4.0`, `1 <= 6`).
-- Defaults are type-compatible and fall inside `[MIN, MAX]`.
+- `MIN_LENGTH` and `MAX_LENGTH` boundaries are non-negative integers in a consistent range (`2 <= 80`).
+- Defaults are type-compatible and satisfy applicable numeric and STRING-length validations.
 - Relationship source and target entities exist without self-references.
 - Populates the global Symbol Table.
 
