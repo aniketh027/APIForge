@@ -619,12 +619,85 @@ function renderOptimizedIR(data) {
 // RENDER: SQL
 // ═════════════════════════════════════════════════════════════
 
+const COPY_ICON_SVG = `<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+    <rect x="8" y="8" width="11" height="11" rx="2"></rect>
+    <path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"></path>
+</svg>`;
+
+const CHECK_ICON_SVG = `<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+    <path d="m5 12 4 4L19 6"></path>
+</svg>`;
+
+const copyResetTimers = new WeakMap();
+
+function renderCopyControl(label) {
+    const safeLabel = escapeHtml(label);
+    return `<button class="copy-control" type="button" data-copy-label="${safeLabel}" aria-label="Copy ${safeLabel}" title="Copy">
+        ${COPY_ICON_SVG}
+    </button>`;
+}
+
+function resetCopyControl(button) {
+    const label = button.dataset.copyLabel || 'generated code';
+    button.classList.remove('copied', 'copy-failed');
+    button.setAttribute('aria-label', `Copy ${label}`);
+    button.setAttribute('title', 'Copy');
+    button.innerHTML = COPY_ICON_SVG;
+    copyResetTimers.delete(button);
+}
+
+function showCopyFeedback(button, state) {
+    const existingTimer = copyResetTimers.get(button);
+    if (existingTimer) clearTimeout(existingTimer);
+
+    const label = button.dataset.copyLabel || 'generated code';
+    if (state === 'copied') {
+        button.classList.add('copied');
+        button.classList.remove('copy-failed');
+        button.setAttribute('aria-label', `Copied ${label}`);
+        button.setAttribute('title', 'Copied');
+        button.innerHTML = CHECK_ICON_SVG;
+    } else {
+        button.classList.add('copy-failed');
+        button.classList.remove('copied');
+        button.setAttribute('aria-label', `Copy failed for ${label}`);
+        button.setAttribute('title', 'Copy failed');
+    }
+
+    copyResetTimers.set(button, setTimeout(() => resetCopyControl(button), 1300));
+}
+
+async function copyGeneratedCode(button) {
+    const copyScope = button.closest('[data-copy-scope]');
+    const source = copyScope && copyScope.querySelector('[data-copy-source]');
+    if (!source) return;
+
+    try {
+        if (!navigator.clipboard || typeof navigator.clipboard.writeText !== 'function') {
+            throw new Error('Clipboard API unavailable');
+        }
+        await navigator.clipboard.writeText(source.textContent);
+        showCopyFeedback(button, 'copied');
+    } catch (error) {
+        showCopyFeedback(button, 'failed');
+    }
+}
+
 function renderSQL(files) {
     const sqlFile = files.find(f => f.path.endsWith('.sql'));
     if (!sqlFile) return '<p class="output-placeholder">No SQL generated.</p>';
 
     const highlighted = highlightSQL(sqlFile.content);
-    return `<div class="code-file-header"><span>${escapeHtml(sqlFile.path)}</span><span class="code-file-meta">Generated SQL</span></div><pre>${highlighted}</pre>`;
+    return `<div class="generated-code-block" data-copy-scope>
+        <div class="code-file-header">
+            <span>${escapeHtml(sqlFile.path)}</span>
+            <span class="code-file-actions">
+                <span class="code-file-meta">Generated SQL</span>
+                ${renderCopyControl(sqlFile.path)}
+            </span>
+        </div>
+        <pre data-copy-source>${highlighted}</pre>
+    </div>`;
 }
 
 function highlightSQL(sql) {
@@ -675,8 +748,12 @@ function renderAPIFiles(files) {
                 <span>${escapeHtml(file.path)}</span>
                 <span class="toggle-icon">${i === 0 ? '▾' : '▸'}</span>
             </button>
-            <div class="api-file-content${i === 0 ? ' expanded' : ''}">
-                <pre>${escapeHtml(file.content)}</pre>
+            <div class="api-file-content${i === 0 ? ' expanded' : ''}" data-copy-scope>
+                <div class="api-file-toolbar">
+                    <span class="code-file-meta">Generated file</span>
+                    ${renderCopyControl(file.path)}
+                </div>
+                <pre data-copy-source>${escapeHtml(file.content)}</pre>
             </div>
         </div>`;
     }).join('');
@@ -716,7 +793,16 @@ function renderSwagger(files) {
         // use as-is
     }
 
-    return `<div class="code-file-header"><span>swagger.json</span><span class="code-file-meta">OpenAPI specification</span></div><pre>${escapeHtml(content)}</pre>`;
+    return `<div class="generated-code-block" data-copy-scope>
+        <div class="code-file-header">
+            <span>swagger.json</span>
+            <span class="code-file-actions">
+                <span class="code-file-meta">OpenAPI specification</span>
+                ${renderCopyControl('swagger.json')}
+            </span>
+        </div>
+        <pre data-copy-source>${escapeHtml(content)}</pre>
+    </div>`;
 }
 
 // ═════════════════════════════════════════════════════════════
@@ -1057,6 +1143,11 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('output-api').addEventListener('click', (event) => {
         const header = event.target.closest('.api-file-header');
         if (header) toggleApiFile(header);
+    });
+
+    document.querySelector('.output-content').addEventListener('click', (event) => {
+        const copyControl = event.target.closest('.copy-control');
+        if (copyControl) copyGeneratedCode(copyControl);
     });
 
     // Clickable status bar phases

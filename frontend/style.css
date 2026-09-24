@@ -971,14 +971,64 @@ textarea:focus-visible,
     font-size: 11px;
 }
 
-.code-file-header + pre {
+.generated-code-block > pre {
     border-radius: 0 0 var(--radius-md) var(--radius-md);
+}
+
+.code-file-actions,
+.api-file-toolbar {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
 }
 
 .code-file-meta {
     color: var(--text-subtle);
     font-family: var(--font-ui);
     font-size: 10px;
+}
+
+.copy-control {
+    display: inline-grid;
+    place-items: center;
+    width: 26px;
+    height: 26px;
+    flex: 0 0 26px;
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: color var(--transition), background var(--transition), border-color var(--transition);
+}
+
+.copy-control:hover {
+    border-color: var(--border);
+    background: var(--surface-hover);
+    color: var(--text);
+}
+
+.copy-control:focus-visible {
+    outline-offset: 1px;
+}
+
+.copy-control.copied {
+    color: var(--success);
+}
+
+.copy-control.copy-failed {
+    color: var(--danger);
+}
+
+.copy-control svg {
+    width: 15px;
+    height: 15px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
 }
 
 .api-file {
@@ -1027,6 +1077,14 @@ textarea:focus-visible,
 
 .api-file-content.expanded {
     display: block;
+}
+
+.api-file-toolbar {
+    justify-content: flex-end;
+    min-height: 35px;
+    padding: 4px 8px 4px 11px;
+    border-top: 1px solid var(--border);
+    background: var(--surface-1);
 }
 
 .api-file-content pre {
