@@ -250,6 +250,18 @@ function getPrimaryKeyField(entity) {
     return pk || { name: 'id', dataType: 'INT' };
 }
 
+/**
+ * Gets the OpenAPI schema type for an entity identifier.
+ * Entities without an explicit primary key use the generated INT id column.
+ *
+ * @param {Object} entity - Entity definition object
+ * @returns {string} - OpenAPI schema type
+ */
+function getPrimaryKeySwaggerType(entity) {
+    const primaryKey = getPrimaryKeyField(entity);
+    return SWAGGER_TYPE_MAP[primaryKey.dataType] || 'string';
+}
+
 // ════════════════════════════════════════════════════════════
 // TARGET ARTIFACT GENERATORS
 // ════════════════════════════════════════════════════════════
@@ -1000,6 +1012,7 @@ function generateServer(entities) {
 function generateSwagger(entities, relations = []) {
     const paths = {};
     const schemas = {};
+    const entityMap = new Map(entities.map(entity => [entity.name, entity]));
 
     entities.forEach(entity => {
         const plural = pluralize(entity.name);
@@ -1008,7 +1021,7 @@ function generateSwagger(entities, relations = []) {
                 name: "id",
                 in: "path",
                 required: true,
-                schema: { type: "integer" },
+                schema: { type: getPrimaryKeySwaggerType(entity) },
                 description: `ID of the ${entity.name}`
             }
         ];
@@ -1081,12 +1094,14 @@ function generateSwagger(entities, relations = []) {
         const sourcePlural = pluralize(rel.sourceEntity);
         const targetPlural = pluralize(rel.targetEntity);
         const targetParam = `${lowerFirst(rel.targetEntity)}Id`;
+        const sourceEntity = entityMap.get(rel.sourceEntity);
+        const targetEntity = entityMap.get(rel.targetEntity);
         const idParam = [
             {
                 name: "id",
                 in: "path",
                 required: true,
-                schema: { type: "integer" },
+                schema: { type: getPrimaryKeySwaggerType(sourceEntity) },
                 description: `ID of the ${rel.sourceEntity}`
             }
         ];
@@ -1118,7 +1133,7 @@ function generateSwagger(entities, relations = []) {
                         name: targetParam,
                         in: "path",
                         required: true,
-                        schema: { type: "integer" },
+                        schema: { type: getPrimaryKeySwaggerType(targetEntity) },
                         description: `ID of the ${rel.targetEntity}`
                     }
                 ],

@@ -77,7 +77,7 @@ Relationship SQL:
 
 `swagger.json` uses OpenAPI 3.0.0. It describes CRUD and generated relationship paths without an `/api` prefix, maps DSL field types to JSON Schema types, marks `REQUIRED` fields, and includes numeric minimum/maximum and default metadata. The generated server does not currently serve Swagger UI or the JSON file.
 
-Path parameter schemas are currently emitted as integers. Verify type fidelity explicitly when entities use non-integer primary keys.
+Path parameter schemas derive from the owning entity's primary-key datatype. Entities without an explicit primary key use the generated integer `id` column.
 
 ## Download packaging
 

@@ -2688,8 +2688,43 @@ const swaggerGenerated = JSON.parse(CodeGenerator.generateSwagger([
 assertTrue('Path /students/{id} has parameters', Array.isArray(swaggerGenerated.paths['/students/{id}'].parameters));
 assertEqual('Path parameter name is id', swaggerGenerated.paths['/students/{id}'].parameters[0].name, 'id');
 assertEqual('Path parameter in is path', swaggerGenerated.paths['/students/{id}'].parameters[0].in, 'path');
+assertEqual('INT primary key path parameter type is integer', swaggerGenerated.paths['/students/{id}'].parameters[0].schema.type, 'integer');
 assertTrue('Schema has required array', Array.isArray(swaggerGenerated.components.schemas.Student.required));
 assertTrue('Schema required includes name', swaggerGenerated.components.schemas.Student.required.includes('name'));
+
+// ── Codegen Test: OpenAPI path parameters follow entity PK types ──
+console.log('');
+console.log('── Codegen Test: OpenAPI primary-key path parameter types ──');
+const mixedPkSwagger = JSON.parse(CodeGenerator.generateSwagger([
+    {
+        name: 'IntEntity',
+        fields: [
+            { name: 'id', dataType: 'INT', constraints: ['PRIMARY_KEY'] },
+            { name: 'name', dataType: 'STRING', constraints: [] }
+        ]
+    },
+    {
+        name: 'StringEntity',
+        fields: [
+            { name: 'code', dataType: 'STRING', constraints: ['PRIMARY_KEY'] },
+            { name: 'name', dataType: 'STRING', constraints: [] }
+        ]
+    }
+], [
+    { sourceEntity: 'IntEntity', relationName: 'LINKS', targetEntity: 'StringEntity', relationType: 'MANY_TO_MANY' },
+    { sourceEntity: 'StringEntity', relationName: 'OWNS', targetEntity: 'IntEntity', relationType: 'ONE_TO_MANY' }
+]));
+const intCrudPath = mixedPkSwagger.paths['/intentities/{id}'];
+const stringCrudPath = mixedPkSwagger.paths['/stringentities/{id}'];
+assertEqual('INT PK CRUD path parameter type is integer', intCrudPath.parameters[0].schema.type, 'integer');
+assertEqual('STRING PK CRUD path parameter type is string', stringCrudPath.parameters[0].schema.type, 'string');
+assertTrue('STRING PK path parameter applies to GET, PUT, and DELETE', Boolean(stringCrudPath.get && stringCrudPath.put && stringCrudPath.delete));
+assertEqual('Relationship source INT PK parameter type is integer', mixedPkSwagger.paths['/intentities/{id}/stringentities'].parameters[0].schema.type, 'integer');
+assertEqual('Relationship source STRING PK parameter type is string', mixedPkSwagger.paths['/stringentities/{id}/intentities'].parameters[0].schema.type, 'string');
+const mixedRelationshipParams = mixedPkSwagger.paths['/intentities/{id}/stringentities/{stringEntityId}'].parameters;
+assertEqual('Relationship source parameter name remains id', mixedRelationshipParams[0].name, 'id');
+assertEqual('Relationship target parameter name identifies StringEntity', mixedRelationshipParams[1].name, 'stringEntityId');
+assertEqual('Relationship target STRING PK parameter type is string', mixedRelationshipParams[1].schema.type, 'string');
 
 // ── Codegen Test: Model update handles empty payload ──
 console.log('');
