@@ -53,7 +53,9 @@ const VALID_RELATION_TYPES = new Set([
 
 const VALID_VALIDATION_TYPES = new Set([
     'MIN',
-    'MAX'
+    'MAX',
+    'MIN_LENGTH',
+    'MAX_LENGTH'
 ]);
 
 const VALID_DEFAULT_TYPES = new Set([
@@ -127,10 +129,12 @@ function validate(ir) {
                                 return;
                             }
                             if (!v.type || !VALID_VALIDATION_TYPES.has(v.type)) {
-                                errors.push(`Validation at index ${vIdx} in ADD_FIELD instruction at index ${index} has invalid type '${v.type}'. Expected 'MIN' or 'MAX'.`);
+                                errors.push(`Validation at index ${vIdx} in ADD_FIELD instruction at index ${index} has invalid type '${v.type}'. Expected 'MIN', 'MAX', 'MIN_LENGTH', or 'MAX_LENGTH'.`);
                             }
                             if (typeof v.value !== 'number' || Number.isNaN(v.value)) {
                                 errors.push(`Validation at index ${vIdx} in ADD_FIELD instruction at index ${index} must have a numeric 'value'.`);
+                            } else if ((v.type === 'MIN_LENGTH' || v.type === 'MAX_LENGTH') && (!Number.isInteger(v.value) || v.value < 0)) {
+                                errors.push(`Validation '${v.type}' at index ${vIdx} in ADD_FIELD instruction at index ${index} must have a non-negative integer 'value'.`);
                             }
                         });
                     }

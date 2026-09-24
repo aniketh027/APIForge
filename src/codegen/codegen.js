@@ -16,7 +16,7 @@
  * 7. Express Controllers → output/controllers/<entity>Controller.js (with input validation)
  * 8. Express Routes      → output/routes/<entity>Routes.js
  * 9. Express Server      → output/server.js
- * 10. OpenAPI / Swagger  → output/swagger.json (with min/max/default schema metadata)
+ * 10. OpenAPI / Swagger  → output/swagger.json (with range/length/default schema metadata)
  * 
  * ── Architectural Rule ──
  * This module ONLY consumes the validated IR. It does NOT parse
@@ -320,10 +320,12 @@ function generateSQL(ir) {
                 parts.push('UNIQUE');
             }
 
-            // CHECK constraint for MIN / MAX validations
+            // CHECK constraints for numeric range and string-length validations
             if (Array.isArray(field.validations) && field.validations.length > 0) {
                 const minV = field.validations.find(v => v.type === 'MIN');
                 const maxV = field.validations.find(v => v.type === 'MAX');
+                const minLengthV = field.validations.find(v => v.type === 'MIN_LENGTH');
+                const maxLengthV = field.validations.find(v => v.type === 'MAX_LENGTH');
 
                 if (minV && maxV) {
                     parts.push(`CHECK (${quoteIdentifier(field.name)} >= ${minV.value} AND ${quoteIdentifier(field.name)} <= ${maxV.value})`);
@@ -331,6 +333,14 @@ function generateSQL(ir) {
                     parts.push(`CHECK (${quoteIdentifier(field.name)} >= ${minV.value})`);
                 } else if (maxV) {
                     parts.push(`CHECK (${quoteIdentifier(field.name)} <= ${maxV.value})`);
+                }
+
+                if (minLengthV && maxLengthV) {
+                    parts.push(`CHECK (CHAR_LENGTH(${quoteIdentifier(field.name)}) >= ${minLengthV.value} AND CHAR_LENGTH(${quoteIdentifier(field.name)}) <= ${maxLengthV.value})`);
+                } else if (minLengthV) {
+                    parts.push(`CHECK (CHAR_LENGTH(${quoteIdentifier(field.name)}) >= ${minLengthV.value})`);
+                } else if (maxLengthV) {
+                    parts.push(`CHECK (CHAR_LENGTH(${quoteIdentifier(field.name)}) <= ${maxLengthV.value})`);
                 }
             }
 
@@ -700,12 +710,14 @@ function generateController(entityName, fieldsOrRelations = [], maybeRelations =
     const modelVar = `${entityName}Model`;
     const getPluralFn = `get${pluralName.charAt(0).toUpperCase() + pluralName.slice(1)}`;
 
-    // Build validation checks for fields with MIN and/or MAX
+    // Build validation checks for fields with numeric or string-length validations
     const validationCheckLines = [];
     (fields || []).forEach(f => {
         if (Array.isArray(f.validations) && f.validations.length > 0) {
             const minV = f.validations.find(v => v.type === 'MIN');
             const maxV = f.validations.find(v => v.type === 'MAX');
+            const minLengthV = f.validations.find(v => v.type === 'MIN_LENGTH');
+            const maxLengthV = f.validations.find(v => v.type === 'MAX_LENGTH');
 
             if (minV) {
                 validationCheckLines.push(
@@ -718,6 +730,22 @@ function generateController(entityName, fieldsOrRelations = [], maybeRelations =
                 validationCheckLines.push(
                     `    if (data.${f.name} !== undefined && data.${f.name} !== null && data.${f.name} > ${maxV.value}) {\n` +
                     `        return "Field '${f.name}' must be <= ${maxV.value}.";\n` +
+                    `    }`
+                );
+            }
+            if (minLengthV || maxLengthV) {
+                validationCheckLines.push(
+                    `    if (data.${f.name} !== undefined && data.${f.name} !== null) {\n` +
+                    `        if (typeof data.${f.name} !== 'string') {\n` +
+                    `            return "Field '${f.name}' must be a string.";\n` +
+                    `        }\n` +
+                    `        const ${f.name}Length = Array.from(data.${f.name}).length;\n` +
+                    (minLengthV
+                        ? `        if (${f.name}Length < ${minLengthV.value}) {\n            return "Field '${f.name}' length must be >= ${minLengthV.value}.";\n        }\n`
+                        : '') +
+                    (maxLengthV
+                        ? `        if (${f.name}Length > ${maxLengthV.value}) {\n            return "Field '${f.name}' length must be <= ${maxLengthV.value}.";\n        }\n`
+                        : '') +
                     `    }`
                 );
             }
@@ -1003,7 +1031,7 @@ function generateServer(entities) {
 /**
  * PART 8: Swagger / OpenAPI Spec Generation
  * Generates OpenAPI 3.0.0 JSON specification for all entities and relationships,
- * including minimum, maximum, and default property values.
+ * including numeric ranges, string lengths, and default property values.
  * 
  * @param {Array<Object>} entities - List of entity objects
  * @param {Array<Object>} [relations=[]] - List of relationship objects
@@ -1063,12 +1091,16 @@ function generateSwagger(entities, relations = []) {
         entity.fields.forEach(f => {
             const prop = { type: SWAGGER_TYPE_MAP[f.dataType] || 'string' };
 
-            // Add minimum and maximum if validations exist
+            // Add numeric and string-length bounds if validations exist
             if (Array.isArray(f.validations)) {
                 const minV = f.validations.find(v => v.type === 'MIN');
                 const maxV = f.validations.find(v => v.type === 'MAX');
+                const minLengthV = f.validations.find(v => v.type === 'MIN_LENGTH');
+                const maxLengthV = f.validations.find(v => v.type === 'MAX_LENGTH');
                 if (minV) prop.minimum = minV.value;
                 if (maxV) prop.maximum = maxV.value;
+                if (minLengthV) prop.minLength = minLengthV.value;
+                if (maxLengthV) prop.maxLength = maxLengthV.value;
             }
 
             // Add default if defaultValue exists

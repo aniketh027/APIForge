@@ -35,7 +35,8 @@
  * 
  * KEYWORD         → ENTITY, RELATION
  * DATATYPE        → INT, STRING, FLOAT, BOOLEAN
- * MODIFIER        → PRIMARY, KEY, REQUIRED, UNIQUE, MIN, MAX, DEFAULT
+ * MODIFIER        → PRIMARY, KEY, REQUIRED, UNIQUE, MIN, MAX,
+ *                   MIN_LENGTH, MAX_LENGTH, DEFAULT
  * RELATION_TYPE   → ONE_TO_ONE, ONE_TO_MANY, MANY_TO_ONE, MANY_TO_MANY
  * IDENTIFIER      → any user-defined name (e.g., Student, age)
  * NUMBER          → numeric literals (e.g., 17, 8.5)
@@ -104,7 +105,7 @@ const DATA_TYPES = new Set([
  * Field modifiers / constraints.
  * PRIMARY and KEY are separate tokens — the parser
  * will later combine them into a single PRIMARY KEY constraint.
- * MIN, MAX, and DEFAULT are validation/default modifiers —
+ * MIN, MAX, MIN_LENGTH, MAX_LENGTH, and DEFAULT are validation/default modifiers —
  * the parser reads a following value token for each.
  */
 const MODIFIERS = new Set([
@@ -114,6 +115,8 @@ const MODIFIERS = new Set([
     'UNIQUE',
     'MIN',
     'MAX',
+    'MIN_LENGTH',
+    'MAX_LENGTH',
     'DEFAULT'
 ]);
 
@@ -280,7 +283,7 @@ function tokenize(sourceCode) {
             //   2. Check if it's a relation type (e.g., ONE_TO_ONE, MANY_TO_MANY)
             //   3. Check if it's a data type (e.g., INT, STRING)
             //   4. Check if it's a boolean literal (TRUE, FALSE)
-            //   5. Check if it's a modifier  (e.g., PRIMARY, REQUIRED, MIN, MAX, DEFAULT)
+            //   5. Check if it's a modifier  (e.g., PRIMARY, REQUIRED, MIN, MIN_LENGTH, DEFAULT)
             //   6. Otherwise, it's an identifier (e.g., Student, ENROLLS_IN)
 
             let type;
@@ -305,7 +308,7 @@ function tokenize(sourceCode) {
 
         // ── Case 5: Number literal ──────────────────────────
         // Read an integer or decimal number (e.g., 17, -5, 8.5, -3.14).
-        // Used as values for MIN, MAX, and DEFAULT modifiers.
+        // Used as values for MIN, MAX, MIN_LENGTH, MAX_LENGTH, and DEFAULT modifiers.
         if (isDigit(ch) || (ch === '-' && pos + 1 < sourceCode.length && isDigit(sourceCode[pos + 1]))) {
             const startColumn = column;
             let numStr = '';

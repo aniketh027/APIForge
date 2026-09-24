@@ -31,6 +31,8 @@
  *               | 'UNIQUE'
  *               | 'MIN' NUMBER
  *               | 'MAX' NUMBER
+ *               | 'MIN_LENGTH' NUMBER
+ *               | 'MAX_LENGTH' NUMBER
  *               | 'DEFAULT' Value
  * Value         → NUMBER | STRING_LITERAL | BOOLEAN_LITERAL
  * 
@@ -345,6 +347,7 @@ class Parser {
      *   name STRING REQUIRED
      *   id   INT    PRIMARY KEY
      *   age  INT    MIN 17 MAX 60
+     *   name STRING MIN_LENGTH 3 MAX_LENGTH 60
      *   status STRING DEFAULT "active"
      * 
      * @returns {FieldNode}
@@ -401,6 +404,7 @@ class Parser {
     //
     // Constraint  → 'PRIMARY' 'KEY' | 'REQUIRED' | 'UNIQUE'
     // Validation  → 'MIN' NUMBER | 'MAX' NUMBER
+    //             | 'MIN_LENGTH' NUMBER | 'MAX_LENGTH' NUMBER
     // Default     → 'DEFAULT' Value
     // Value       → NUMBER | STRING_LITERAL | BOOLEAN_LITERAL
     // ════════════════════════════════════════════════════════
@@ -522,6 +526,58 @@ class Parser {
                         err.line = valToken.line;
                         err.column = valToken.column;
                         err.code = 'MISSING_MAX_VALUE';
+                        err.userMessage = userMessage;
+                        throw err;
+                    }
+                    break;
+                }
+
+                case 'MIN_LENGTH': {
+                    this.advance(); // consume MIN_LENGTH
+                    const valToken = this.current();
+
+                    if (valToken.type === 'NUMBER') {
+                        this.advance();
+                        validations.push({ type: 'MIN_LENGTH', value: parseFloat(valToken.value) });
+                    } else {
+                        const isEof = valToken.type === 'EOF';
+                        const userMessage = isEof
+                            ? `Missing value after MIN_LENGTH.\nExpected a non-negative integer.`
+                            : `Missing value after MIN_LENGTH.\nExpected a non-negative integer but found ${valToken.type} "${valToken.value}".`;
+                        const messageDesc = `Expected NUMBER after MIN_LENGTH but found ${valToken.type} "${valToken.value}".`;
+
+                        const err = new Error(
+                            `Syntax Error at line ${valToken.line}, column ${valToken.column}: ${messageDesc}`
+                        );
+                        err.line = valToken.line;
+                        err.column = valToken.column;
+                        err.code = 'MISSING_MIN_LENGTH_VALUE';
+                        err.userMessage = userMessage;
+                        throw err;
+                    }
+                    break;
+                }
+
+                case 'MAX_LENGTH': {
+                    this.advance(); // consume MAX_LENGTH
+                    const valToken = this.current();
+
+                    if (valToken.type === 'NUMBER') {
+                        this.advance();
+                        validations.push({ type: 'MAX_LENGTH', value: parseFloat(valToken.value) });
+                    } else {
+                        const isEof = valToken.type === 'EOF';
+                        const userMessage = isEof
+                            ? `Missing value after MAX_LENGTH.\nExpected a non-negative integer.`
+                            : `Missing value after MAX_LENGTH.\nExpected a non-negative integer but found ${valToken.type} "${valToken.value}".`;
+                        const messageDesc = `Expected NUMBER after MAX_LENGTH but found ${valToken.type} "${valToken.value}".`;
+
+                        const err = new Error(
+                            `Syntax Error at line ${valToken.line}, column ${valToken.column}: ${messageDesc}`
+                        );
+                        err.line = valToken.line;
+                        err.column = valToken.column;
+                        err.code = 'MISSING_MAX_LENGTH_VALUE';
                         err.userMessage = userMessage;
                         throw err;
                     }

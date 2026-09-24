@@ -11,7 +11,7 @@
  * - A Program node contains lists of Entity nodes and Relation nodes.
  * - An Entity node contains its name and a list of Field nodes.
  * - A Field node contains its name, data type, constraints,
- *   validations (MIN/MAX), and an optional default value.
+ *   validations (MIN/MAX/MIN_LENGTH/MAX_LENGTH), and an optional default value.
  * - A Relation node contains source entity, relation name, target entity, and cardinality.
  * 
  * ── Node Hierarchy ──
@@ -59,13 +59,15 @@ class EntityNode {
  * FieldNode - Represents a single field inside an entity.
  * e.g., name STRING REQUIRED
  *       age INT MIN 17 MAX 60
+ *       username STRING MIN_LENGTH 3 MAX_LENGTH 20
  *       status STRING DEFAULT "active"
  * 
  * After parsing, constraints are combined forms:
  *   "PRIMARY_KEY", "REQUIRED", "UNIQUE"
  * 
- * Validations hold MIN/MAX rules:
+ * Validations hold numeric and string-length rules:
  *   [{ type: "MIN", value: 17 }, { type: "MAX", value: 60 }]
+ *   [{ type: "MIN_LENGTH", value: 3 }, { type: "MAX_LENGTH", value: 20 }]
  * 
  * Default value holds a typed literal or null:
  *   { type: "STRING", value: "active" }

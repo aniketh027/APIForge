@@ -17,7 +17,7 @@
  *    Removes exact duplicate validation objects on each field.
  * 
  * 3. Validation Order Normalization
- *    Sorts validations deterministically (MIN before MAX).
+ *    Sorts validations deterministically (MIN, MAX, MIN_LENGTH, MAX_LENGTH).
  * 
  * 4. Duplicate Entity Elimination
  *    Removes redundant CREATE_ENTITY instructions for the same entity.
@@ -49,7 +49,9 @@ const CONSTRAINT_PRIORITY = {
  */
 const VALIDATION_PRIORITY = {
     'MIN': 1,
-    'MAX': 2
+    'MAX': 2,
+    'MIN_LENGTH': 3,
+    'MAX_LENGTH': 4
 };
 
 /**
@@ -164,7 +166,7 @@ function eliminateDuplicateValidations(instructions) {
 
 /**
  * Pass 3: Validation Order Normalization
- * Normalizes the order of validations on each ADD_FIELD instruction to MIN then MAX.
+ * Normalizes validation order to MIN, MAX, MIN_LENGTH, then MAX_LENGTH.
  * 
  * @param {Array} instructions - Array of IR instructions
  * @returns {Object} - { instructions: Array, modifiedCount: number }

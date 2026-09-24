@@ -33,11 +33,11 @@
  * 10. Relationship types must be valid (ONE_TO_ONE, ONE_TO_MANY, MANY_TO_ONE, MANY_TO_MANY).
  * 11. Self-referential relationships are rejected.
  * 12. MIN / MAX validations are only allowed on numeric types (INT, FLOAT).
- * 13. Validation values (MIN, MAX) must be numeric.
- * 14. If both MIN and MAX exist, MIN must be <= MAX.
+ * 13. MIN_LENGTH / MAX_LENGTH validations are only allowed on STRING.
+ * 14. Length values must be non-negative integers and ranges must be ordered.
  * 15. Default value type must be compatible with field data type.
- * 16. If default value exists on numeric field with MIN/MAX, it must fall within range.
- * 17. Duplicate MIN, MAX, or DEFAULT declarations on the same field are rejected.
+ * 16. Defaults must satisfy applicable numeric or string-length validations.
+ * 17. Duplicate validation or DEFAULT declarations on the same field are rejected.
  * 
  * ── Symbol Table ──
  * 
@@ -85,7 +85,7 @@ const RESERVED_WORDS = new Set([
     // Data types
     'INT', 'STRING', 'FLOAT', 'BOOLEAN',
     // Modifiers
-    'PRIMARY', 'KEY', 'REQUIRED', 'UNIQUE', 'MIN', 'MAX', 'DEFAULT',
+    'PRIMARY', 'KEY', 'REQUIRED', 'UNIQUE', 'MIN', 'MAX', 'MIN_LENGTH', 'MAX_LENGTH', 'DEFAULT',
     // Boolean literals
     'TRUE', 'FALSE',
     // Relation types
@@ -369,6 +369,8 @@ class SemanticAnalyzer {
             const validations = field.validations || [];
             const minList = validations.filter(v => v.type === 'MIN');
             const maxList = validations.filter(v => v.type === 'MAX');
+            const minLengthList = validations.filter(v => v.type === 'MIN_LENGTH');
+            const maxLengthList = validations.filter(v => v.type === 'MAX_LENGTH');
 
             // 1. Duplicate MIN validations
             if (minList.length > 1) {
@@ -388,12 +390,37 @@ class SemanticAnalyzer {
                 );
             }
 
+            if (minLengthList.length > 1) {
+                this.addError(
+                    `Duplicate MIN_LENGTH validation for field '${field.name}'.`,
+                    field.line,
+                    field.nameColumn
+                );
+            }
+
+            if (maxLengthList.length > 1) {
+                this.addError(
+                    `Duplicate MAX_LENGTH validation for field '${field.name}'.`,
+                    field.line,
+                    field.nameColumn
+                );
+            }
+
             // 3. Validation value sanity (numeric check)
             for (const val of validations) {
                 if (val.type === 'MIN' || val.type === 'MAX') {
                     if (typeof val.value !== 'number' || Number.isNaN(val.value)) {
                         this.addError(
                             `Validation '${val.type}' value on field '${field.name}' must be a number.`,
+                            field.line,
+                            field.nameColumn
+                        );
+                    }
+                }
+                if (val.type === 'MIN_LENGTH' || val.type === 'MAX_LENGTH') {
+                    if (typeof val.value !== 'number' || !Number.isInteger(val.value) || val.value < 0) {
+                        this.addError(
+                            `Validation '${val.type}' value on field '${field.name}' must be a non-negative integer.`,
                             field.line,
                             field.nameColumn
                         );
@@ -422,6 +449,22 @@ class SemanticAnalyzer {
                 }
             }
 
+            if (minLengthList.length > 0 && field.dataType !== 'STRING') {
+                this.addError(
+                    `Validation 'MIN_LENGTH' is only allowed for STRING fields.`,
+                    field.line,
+                    field.typeColumn || field.nameColumn
+                );
+            }
+
+            if (maxLengthList.length > 0 && field.dataType !== 'STRING') {
+                this.addError(
+                    `Validation 'MAX_LENGTH' is only allowed for STRING fields.`,
+                    field.line,
+                    field.typeColumn || field.nameColumn
+                );
+            }
+
             // 5. Range consistency (MIN <= MAX)
             if (minList.length >= 1 && maxList.length >= 1) {
                 const minVal = minList[0].value;
@@ -434,6 +477,18 @@ class SemanticAnalyzer {
                             field.nameColumn
                         );
                     }
+                }
+            }
+
+            if (minLengthList.length >= 1 && maxLengthList.length >= 1) {
+                const minLength = minLengthList[0].value;
+                const maxLength = maxLengthList[0].value;
+                if (Number.isInteger(minLength) && Number.isInteger(maxLength) && minLength >= 0 && maxLength >= 0 && minLength > maxLength) {
+                    this.addError(
+                        `MIN_LENGTH value ${minLength} cannot be greater than MAX_LENGTH value ${maxLength}.`,
+                        field.line,
+                        field.nameColumn
+                    );
                 }
             }
 
@@ -542,6 +597,36 @@ class SemanticAnalyzer {
                         } else if (hasMax) {
                             this.addError(
                                 `Default value ${def.value} is greater than MAX value ${maxVal}.`,
+                                field.line,
+                                field.nameColumn
+                            );
+                        }
+                    }
+                }
+
+                if (def.type === 'STRING' && typeof def.value === 'string') {
+                    const defaultLength = Array.from(def.value).length;
+                    const hasMinLength = minLengthList.length === 1 && Number.isInteger(minLengthList[0].value) && minLengthList[0].value >= 0;
+                    const hasMaxLength = maxLengthList.length === 1 && Number.isInteger(maxLengthList[0].value) && maxLengthList[0].value >= 0;
+                    const minLength = hasMinLength ? minLengthList[0].value : null;
+                    const maxLength = hasMaxLength ? maxLengthList[0].value : null;
+
+                    if ((hasMinLength && defaultLength < minLength) || (hasMaxLength && defaultLength > maxLength)) {
+                        if (hasMinLength && hasMaxLength) {
+                            this.addError(
+                                `Default value for field '${field.name}' has length ${defaultLength}, outside the allowed range [${minLength}, ${maxLength}].`,
+                                field.line,
+                                field.nameColumn
+                            );
+                        } else if (hasMinLength) {
+                            this.addError(
+                                `Default value for field '${field.name}' has length ${defaultLength}, less than MIN_LENGTH value ${minLength}.`,
+                                field.line,
+                                field.nameColumn
+                            );
+                        } else if (hasMaxLength) {
+                            this.addError(
+                                `Default value for field '${field.name}' has length ${defaultLength}, greater than MAX_LENGTH value ${maxLength}.`,
                                 field.line,
                                 field.nameColumn
                             );
