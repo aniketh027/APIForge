@@ -27,7 +27,7 @@ swagger.json
 - `package.json`: generated-project metadata, `npm start`, and the required runtime dependencies using APIForge-compatible version ranges.
 - `README.md`: concise install, environment, MySQL schema-import, startup, route, and OpenAPI-location instructions.
 - `models/`: parameterized CRUD queries and source-side relationship query helpers.
-- `controllers/`: CRUD handlers, range validation, relationship handlers, and JSON responses.
+- `controllers/`: CRUD handlers, numeric and STRING-length validation, relationship handlers, and JSON responses.
 - `routes/`: per-entity CRUD and source-side relationship routes.
 - `server.js`: dotenv loading, JSON middleware, route mounts, `/health`, global error handler, and startup.
 - `swagger.json`: OpenAPI 3.0.0 paths and component schemas.
@@ -50,7 +50,7 @@ The generated README documents dependency installation, `.env` creation, MySQL d
 
 - Types map as `INT -> INT`, `STRING -> VARCHAR(255)`, `FLOAT -> FLOAT`, and `BOOLEAN -> BOOLEAN`.
 - An explicit `INT` primary key without a default is auto-incremented. A primary key with a default omits auto-increment. If no primary key is declared, SQL prepends `id INT PRIMARY KEY AUTO_INCREMENT`.
-- `REQUIRED`, `UNIQUE`, typed defaults, and numeric `MIN`/`MAX` become `NOT NULL`, `UNIQUE`, `DEFAULT`, and `CHECK` clauses as applicable.
+- `REQUIRED`, `UNIQUE`, typed defaults, numeric `MIN`/`MAX`, and STRING `MIN_LENGTH`/`MAX_LENGTH` become `NOT NULL`, `UNIQUE`, `DEFAULT`, and `CHECK` clauses as applicable. STRING-length checks use `CHAR_LENGTH`.
 - String defaults escape single quotes by doubling them. MySQL reserved or otherwise unsafe identifiers are backtick-quoted by the general identifier helper.
 - Entity tables are emitted before relationship DDL.
 
@@ -68,14 +68,14 @@ Relationship SQL:
 - Models use promise-based MySQL queries with value placeholders and `INSERT/UPDATE ... SET ?` payload binding.
 - Models select the declared primary key for record lookup; without one, current model generation falls back to the first declared field even though SQL injects an `id`. Verify no-primary-key cases explicitly.
 - Controllers return `201` for create, `200` for successful reads/updates/deletes, `404` for missing CRUD or singular related records, `400` for generated validation failures, and `500` for caught database/runtime errors.
-- Generated request validation currently enforces `MIN`/`MAX` only when a value is present. SQL enforces `NOT NULL`, uniqueness, defaults, and checks; OpenAPI marks `REQUIRED` fields and exposes ranges/defaults.
+- Generated request validation enforces `MIN`/`MAX` and `MIN_LENGTH`/`MAX_LENGTH` only when a value is present and non-null. STRING-length validation rejects non-string supplied values and counts Unicode code points with `Array.from(value).length`. SQL enforces `NOT NULL`, uniqueness, defaults, and checks; OpenAPI marks `REQUIRED` fields and exposes ranges, lengths, and defaults.
 - Per-entity routers expose `GET /`, `GET /:id`, `POST /`, `PUT /:id`, and `DELETE /:id`.
 - The generated server mounts routers directly at lowercase plural paths such as `/students`, without an `/api` prefix, and exposes `/health`.
 - Relationship model/controller/routes are generated on the source entity. `MANY_TO_MANY` supports list/add/remove; `ONE_TO_MANY` supports list; `MANY_TO_ONE` and `ONE_TO_ONE` support singular lookup.
 
 ## OpenAPI contract
 
-`swagger.json` uses OpenAPI 3.0.0. It describes CRUD and generated relationship paths without an `/api` prefix, maps DSL field types to JSON Schema types, marks `REQUIRED` fields, and includes numeric minimum/maximum and default metadata. The generated server does not currently serve Swagger UI or the JSON file.
+`swagger.json` uses OpenAPI 3.0.0. It describes CRUD and generated relationship paths without an `/api` prefix, maps DSL field types to JSON Schema types, marks `REQUIRED` fields, and includes numeric minimum/maximum, STRING minLength/maxLength, and default metadata. The generated server does not currently serve Swagger UI or the JSON file.
 
 Path parameter schemas derive from the owning entity's primary-key datatype. Entities without an explicit primary key use the generated integer `id` column.
 

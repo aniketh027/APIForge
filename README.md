@@ -104,8 +104,8 @@ passes to the IR and reports which ones fired:
 | Pass | What it does |
 |------|--------------|
 | **Constraint Normalization** | De-duplicates and canonically orders each field's constraints |
-| **Duplicate Validation Elimination** | Removes redundant MIN/MAX validation rules on the same field |
-| **Validation Order Normalization** | Canonically orders validations (MIN before MAX) for consistency |
+| **Duplicate Validation Elimination** | Removes redundant numeric and STRING-length validation rules on the same field |
+| **Validation Order Normalization** | Canonically orders `MIN`, `MAX`, `MIN_LENGTH`, and `MAX_LENGTH` for consistency |
 | **Duplicate Entity Elimination** | Removes repeated `CREATE_ENTITY` instructions |
 | **Duplicate Field Elimination** | Removes repeated fields (and flags conflicting re-declarations) |
 | **Duplicate Relationship Elimination** | Removes identical `CREATE_RELATION` instructions |
@@ -125,6 +125,7 @@ APIForge/
 │   ├── student.apiforge          #   Single-entity example
 │   ├── student_course_rel.apiforge  # MANY_TO_MANY relationship example
 │   ├── student_validation.apiforge  # MIN, MAX, and DEFAULT validations example
+│   ├── string_length_validation.apiforge # STRING length validation example
 │   ├── one_to_one.apiforge       #   ONE_TO_ONE relationship example
 │   ├── one_to_many.apiforge      #   ONE_TO_MANY relationship example
 │   ├── dup_rel.apiforge          #   Duplicate-relationship (semantic error demo)
@@ -223,6 +224,8 @@ CREATE TABLE Student_Course (
 | `UNIQUE`    | Field must have unique values                  |
 | `MIN`       | Minimum numeric value constraint (`CHECK (col >= val)`) |
 | `MAX`       | Maximum numeric value constraint (`CHECK (col <= val)`) |
+| `MIN_LENGTH` | Minimum STRING length (`CHAR_LENGTH(col) >= val`) |
+| `MAX_LENGTH` | Maximum STRING length (`CHAR_LENGTH(col) <= val`) |
 | `DEFAULT`   | Default column value (`DEFAULT val`)          |
 
 ## 📊 Supported Data Types
@@ -240,16 +243,16 @@ CREATE TABLE Student_Course (
 
 ## 🛡 Field Validations & Default Values
 
-Fields can declare numeric boundary constraints and default values:
+Fields can declare numeric bounds, STRING length bounds, and default values:
 
 ```
 ENTITY Student
 
     id      INT      PRIMARY KEY
-    name    STRING   REQUIRED
+    name    STRING   REQUIRED MIN_LENGTH 2 MAX_LENGTH 80
     age     INT      MIN 18 MAX 60 DEFAULT 25
     cgpa    FLOAT    MIN 0.0 MAX 10.0 DEFAULT 8.5
-    status  STRING   DEFAULT "active"
+    status  STRING   DEFAULT "active" MIN_LENGTH 3 MAX_LENGTH 20
     active  BOOLEAN  DEFAULT TRUE
 ```
 
@@ -259,9 +262,14 @@ ENTITY Student
   - Generates SQL `CHECK (age >= 18 AND age <= 60)` table constraints.
   - Adds OpenAPI `minimum` and `maximum` properties in `swagger.json`.
   - Generates input validation logic in Express controllers (`validateStudent(data)`).
+- **`MIN_LENGTH <integer>`** & **`MAX_LENGTH <integer>`**:
+  - Allowed only for `STRING` fields; values must be non-negative integers.
+  - May be used independently or together; when combined, `MIN_LENGTH <= MAX_LENGTH` is required.
+  - Generates MySQL `CHAR_LENGTH` checks, Unicode-aware Express validation, and OpenAPI `minLength` / `maxLength` metadata.
+  - STRING defaults are checked against the declared length bounds during semantic analysis.
 - **`DEFAULT <literal>`**:
   - Type-checked against field data type (integers for `INT`, numbers for `FLOAT`, quoted strings for `STRING`, `TRUE`/`FALSE` for `BOOLEAN`).
-  - Semantic analysis verifies default values fall within `[MIN, MAX]` boundaries.
+  - Semantic analysis verifies default values satisfy applicable numeric or STRING-length boundaries.
   - Generates SQL `DEFAULT` clauses and OpenAPI `default` properties.
 
 ---

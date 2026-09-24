@@ -1,0 +1,11 @@
+// ============================================
+// APIForge DSL - STRING Length Validation
+// File: string_length_validation.apiforge
+// ============================================
+
+ENTITY User
+
+    id       INT    PRIMARY KEY
+    username STRING REQUIRED UNIQUE MIN_LENGTH 3 MAX_LENGTH 20
+    bio      STRING MAX_LENGTH 500
+    role     STRING DEFAULT "student" MIN_LENGTH 3 MAX_LENGTH 20

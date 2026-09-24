@@ -34,13 +34,13 @@ RELATION Student ENROLLS_IN Course MANY_TO_MANY
 |---|---|
 | Data types | `INT`, `STRING`, `FLOAT`, `BOOLEAN` |
 | Constraints | `PRIMARY KEY`, `REQUIRED`, `UNIQUE` |
-| Validations | `MIN <number>`, `MAX <number>` |
+| Validations | `MIN <number>`, `MAX <number>`, `MIN_LENGTH <number>`, `MAX_LENGTH <number>` |
 | Default | `DEFAULT <number>`, `DEFAULT "text"`, `DEFAULT TRUE`, `DEFAULT FALSE` |
 | Cardinality | `ONE_TO_ONE`, `ONE_TO_MANY`, `MANY_TO_ONE`, `MANY_TO_MANY` |
 
 `PRIMARY` and `KEY` are separate adjacent tokens and must appear together in that order. Modifiers may be combined after a field type.
 
-`MIN` and `MAX` apply only to numeric fields. `INT` bounds and defaults must be integers; `FLOAT` accepts numeric literals. A default must match the field type, satisfy its range, and occur at most once.
+`MIN` and `MAX` apply only to numeric fields. `INT` bounds and defaults must be integers; `FLOAT` accepts numeric literals. `MIN_LENGTH` and `MAX_LENGTH` apply only to `STRING`, require non-negative integer values, and require `MIN_LENGTH <= MAX_LENGTH` when combined. A default must match the field type, satisfy applicable numeric or STRING-length bounds, and occur at most once. Each validation modifier may appear at most once per field.
 
 ## Lexical and declaration behavior
 

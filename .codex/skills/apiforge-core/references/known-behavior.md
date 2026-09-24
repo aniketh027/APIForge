@@ -21,6 +21,7 @@ Treat these as implementation facts to verify when the relevant code changes, no
 
 - Defaults are typed AST/IR values: `NUMBER`, `STRING`, or `BOOLEAN`. Duplicate defaults and type/range mismatches are semantic errors.
 - `MIN`/`MAX` are numeric-only; `INT` bounds must be integers; `MIN` cannot exceed `MAX`.
+- `MIN_LENGTH`/`MAX_LENGTH` are STRING-only non-negative integer bounds; `MIN_LENGTH` cannot exceed `MAX_LENGTH`, and STRING defaults must satisfy the declared length range.
 - Semantic analysis does not require an explicit primary key. During SQL generation, an entity without one receives `id INT PRIMARY KEY AUTO_INCREMENT`; the source AST/IR is not rewritten to add that field.
 - `INT PRIMARY KEY` normally becomes `PRIMARY KEY AUTO_INCREMENT`. With an explicit default, such as `INT PRIMARY KEY DEFAULT 1`, codegen omits `AUTO_INCREMENT` and emits the default.
 - `STRING` primary keys are allowed and are not auto-incremented. `FLOAT` and `BOOLEAN` primary keys are rejected.
@@ -45,6 +46,7 @@ swagger.json
 Codegen emits seven fixed files plus three files per entity. The generated `package.json` declares `dotenv`, `express`, and `mysql2` with APIForge's own compatible version ranges and starts the root-level `server.js`. The generated `README.md` documents installation, environment configuration, manual MySQL schema import, route mounts, startup, and the location of `swagger.json`. It does not emit a lockfile, `.env`, or database bootstrap.
 
 - Entity CRUD routers expose `GET /`, `GET /:id`, `POST /`, `PUT /:id`, and `DELETE /:id`.
+- Generated request validation enforces numeric and STRING-length bounds when a value is present and non-null. STRING lengths use Unicode code-point counting. SQL emits `CHAR_LENGTH` checks, and OpenAPI exposes `minLength`/`maxLength` on the shared entity request schema.
 - The generated server mounts each router directly at a lowercase plural path such as `/students`; it does not add `/api`. The repository development server uses `/api` only for the compiler endpoints (`/api/compile`, `/api/health`).
 - Relationship endpoints are generated on the source entity router. `MANY_TO_MANY` gets list/add/remove routes; `ONE_TO_MANY` gets a list route; `MANY_TO_ONE` and `ONE_TO_ONE` get a singular target route.
 - SQL relationship layout is target-specific: junction table for `MANY_TO_MANY`, target-side foreign key for `ONE_TO_MANY` and `ONE_TO_ONE`, and source-side foreign key for `MANY_TO_ONE`.

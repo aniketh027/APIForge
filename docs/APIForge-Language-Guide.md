@@ -160,7 +160,7 @@ Identifiers are user-defined names given to entities, fields, and relationships:
 - **All language keywords, data types, modifiers, relation types, and boolean literals are strictly UPPERCASE**:
   - Keywords: `ENTITY`, `RELATION`
   - Data Types: `INT`, `STRING`, `FLOAT`, `BOOLEAN`
-  - Modifiers: `PRIMARY`, `KEY`, `REQUIRED`, `UNIQUE`, `MIN`, `MAX`, `DEFAULT`
+  - Modifiers: `PRIMARY`, `KEY`, `REQUIRED`, `UNIQUE`, `MIN`, `MAX`, `MIN_LENGTH`, `MAX_LENGTH`, `DEFAULT`
   - Relation Types: `ONE_TO_ONE`, `ONE_TO_MANY`, `MANY_TO_ONE`, `MANY_TO_MANY`
   - Boolean Literals: `TRUE`, `FALSE`
 - Typing keywords in lowercase (e.g., `entity`, `int`, `string`) will cause the lexer to treat them as identifiers, resulting in syntax errors.
@@ -283,30 +283,32 @@ ENTITY User
 
 ## 9. Validation Rules
 
-APIForge supports compile-time and runtime numeric boundary validations using the `MIN` and `MAX` modifiers.
+APIForge supports numeric value bounds and STRING length bounds. These are separate modifier pairs: `MIN` / `MAX` for numeric fields, and `MIN_LENGTH` / `MAX_LENGTH` for STRING fields.
 
-### Syntax
+### Numeric Value Validation: MIN / MAX
+
+#### Syntax
 ```apiforge
 <fieldName> <DataType> MIN <number>
 <fieldName> <DataType> MAX <number>
 <fieldName> <DataType> MIN <number> MAX <number>
 ```
 
-### Allowed Data Types
+#### Allowed Data Types
 - `MIN` and `MAX` are **only allowed on numeric data types**: `INT` and `FLOAT`.
 - Applying `MIN` or `MAX` to `STRING` or `BOOLEAN` fields produces a semantic error.
 
-### Numeric Rules
+#### Numeric Rules
 - **For `INT` fields**: The validation value **must be an integer** (e.g., `MIN 18`). Decimal bounds (such as `MIN 18.5`) on `INT` fields are rejected with a semantic error.
 - **For `FLOAT` fields**: The validation value may be an integer or decimal (e.g., `MIN 0.0 MAX 10.0`).
 - **Negative Numbers**: Negative numbers are fully supported (e.g., `MIN -50 MAX -10`).
 
-### Range Consistency
+#### Range Consistency
 - When both `MIN` and `MAX` are specified on the same field, the compiler enforces that **`MIN <= MAX`**.
 - If `MIN > MAX` (e.g., `MIN 60 MAX 18`), the semantic analyzer raises an error.
 - Duplicate `MIN` or duplicate `MAX` modifiers on the same field are rejected.
 
-### Code Generation Effects
+#### Code Generation Effects
 1. **MySQL DDL**: Generates an SQL table check constraint:
    ```sql
    CHECK (age >= 18 AND age <= 60)
@@ -319,7 +321,7 @@ APIForge supports compile-time and runtime numeric boundary validations using th
    ```
 3. **OpenAPI / Swagger**: Populates `minimum` and `maximum` properties in `swagger.json`.
 
-### Valid Examples
+#### Valid Examples
 ```apiforge
 age INT MIN 18 MAX 65
 score FLOAT MIN 0.0 MAX 100.0
@@ -327,7 +329,7 @@ offset INT MIN -100 MAX 100
 temperature FLOAT MIN -40.0
 ```
 
-### Invalid Examples (Compiler Rejections)
+#### Invalid Examples (Compiler Rejections)
 ```apiforge
 // ✗ Error: MIN not allowed on STRING
 name STRING MIN 5
@@ -340,6 +342,55 @@ discount INT MIN 50 MAX 10
 
 // ✗ Error: Duplicate MIN modifier
 level INT MIN 1 MIN 5
+```
+
+### STRING Length Validation: MIN_LENGTH / MAX_LENGTH
+
+Use `MIN_LENGTH` and `MAX_LENGTH` to constrain the number of Unicode characters in a `STRING` value:
+
+```apiforge
+<fieldName> STRING MIN_LENGTH <non-negative-integer>
+<fieldName> STRING MAX_LENGTH <non-negative-integer>
+<fieldName> STRING MIN_LENGTH <non-negative-integer> MAX_LENGTH <non-negative-integer>
+```
+
+The modifiers may appear independently or together and may be combined with `REQUIRED`, `UNIQUE`, `PRIMARY KEY`, and `DEFAULT`. Each modifier may appear at most once per field. Values must be non-negative integers; when both are present, `MIN_LENGTH <= MAX_LENGTH` is required.
+
+For a STRING field with `DEFAULT`, semantic analysis counts Unicode code points in the default and requires its length to satisfy all declared bounds. Generated Express validation uses the same code-point counting behavior for supplied non-null values. Omitted fields and `null` keep the existing runtime behavior, allowing database defaults and constraints to apply.
+
+Code generation maps the rules consistently:
+
+- MySQL uses `CHECK (CHAR_LENGTH(column) ...)` expressions.
+- Express returns HTTP 400 through the existing generated validation path when a supplied value is not a string or violates a bound.
+- OpenAPI uses `minLength` and `maxLength` on the entity schema referenced by generated `POST` and `PUT` request bodies.
+
+Valid examples:
+
+```apiforge
+username STRING REQUIRED MIN_LENGTH 3 MAX_LENGTH 20
+bio STRING MAX_LENGTH 500
+role STRING DEFAULT "student" MIN_LENGTH 3 MAX_LENGTH 20
+nickname STRING MIN_LENGTH 0
+```
+
+Invalid examples:
+
+```apiforge
+// ✗ Length validation applies only to STRING
+age INT MIN_LENGTH 2
+
+// ✗ Length values cannot be negative or fractional
+name STRING MIN_LENGTH -1
+alias STRING MAX_LENGTH 2.5
+
+// ✗ MIN_LENGTH cannot exceed MAX_LENGTH
+code STRING MIN_LENGTH 5 MAX_LENGTH 3
+
+// ✗ Each length modifier may appear only once
+name STRING MIN_LENGTH 3 MIN_LENGTH 4
+
+// ✗ The default is shorter than MIN_LENGTH
+status STRING MIN_LENGTH 3 DEFAULT "ok"
 ```
 
 ---
@@ -365,7 +416,7 @@ Every default value must match the data type of the field:
 
 ### Semantic Rules
 1. **Type Compatibility**: The default value literal must strictly match the field's declared type. Declaring `age INT DEFAULT "young"` or `active BOOLEAN DEFAULT 1` produces a semantic error.
-2. **Range Conformance**: When a numeric field specifies `MIN` and/or `MAX`, the default value must fall inside the allowed boundary (`MIN <= DEFAULT <= MAX`).
+2. **Validation Conformance**: Numeric defaults must satisfy `MIN` / `MAX`; STRING defaults must satisfy `MIN_LENGTH` / `MAX_LENGTH`.
 3. **Single Default**: A field can have at most one `DEFAULT` clause. Duplicate defaults on the same field are rejected.
 4. **String Escaping**: Single quotes inside string defaults are safely escaped by doubling them (`''`) in generated SQL to prevent injection.
 
@@ -377,7 +428,7 @@ In MySQL, columns marked with `AUTO_INCREMENT` cannot have an explicit `DEFAULT`
 ### Valid Examples
 ```apiforge
 age INT MIN 18 MAX 60 DEFAULT 25
-status STRING DEFAULT "pending"
+status STRING DEFAULT "pending" MIN_LENGTH 3 MAX_LENGTH 20
 rating FLOAT MIN 0.0 MAX 5.0 DEFAULT 5.0
 isVerified BOOLEAN DEFAULT FALSE
 ```
@@ -395,6 +446,9 @@ total INT DEFAULT "zero"
 
 // ✗ Error: Duplicate DEFAULT clause
 status STRING DEFAULT "draft" DEFAULT "published"
+
+// ✗ Error: STRING default is shorter than MIN_LENGTH
+role STRING MIN_LENGTH 3 DEFAULT "ok"
 ```
 
 ---
@@ -680,11 +734,11 @@ Depending on the cardinality, relationship endpoints are automatically appended 
 ### Validation Behavior
 When a `POST` or `PUT` request is made:
 1. The controller invokes `validate<Entity>(req.body)`.
-2. If any field violates `MIN` or `MAX` bounds, the API immediately returns:
+2. If any field violates numeric or STRING length bounds, the API immediately returns:
    ```json
    {
        "success": false,
-       "error": "Field 'age' must be >= 18."
+       "error": "Field 'username' length must be >= 3."
    }
    ```
    with an **HTTP 400 Bad Request** status code.
@@ -712,7 +766,7 @@ CREATE TABLE `Department` (
 
 CREATE TABLE `Student` (
     `id` INT PRIMARY KEY AUTO_INCREMENT,
-    `fullName` VARCHAR(255) NOT NULL,
+    `fullName` VARCHAR(255) NOT NULL CHECK (CHAR_LENGTH(`fullName`) >= 2 AND CHAR_LENGTH(`fullName`) <= 80),
     `email` VARCHAR(255) NOT NULL UNIQUE,
     `age` INT DEFAULT 20 CHECK (`age` >= 17 AND `age` <= 65),
     `gpa` FLOAT DEFAULT 3 CHECK (`gpa` >= 0 AND `gpa` <= 4),
@@ -747,7 +801,7 @@ CREATE TABLE `Student_Course` (
 ### Key SQL Characteristics:
 - **MySQL Reserved Words**: Identifiers matching MySQL keywords (e.g. `Order`, `Group`, `Key`) are quoted with backticks.
 - **Foreign Key Constraints**: Formed using deterministic naming (`fk_<target>_<source>`).
-- **Check Constraints**: Synthesized from `MIN` and `MAX` modifiers.
+- **Check Constraints**: Numeric checks are synthesized from `MIN` / `MAX`; STRING checks use `CHAR_LENGTH` for `MIN_LENGTH` / `MAX_LENGTH`.
 
 ---
 
@@ -765,6 +819,7 @@ APIForge generates an OpenAPI 3.0.0 specification in `output/swagger.json`.
    - `FLOAT` maps to `type: "number"`.
    - `BOOLEAN` maps to `type: "boolean"`.
    - `MIN` / `MAX` map to `minimum` and `maximum` properties.
+   - `MIN_LENGTH` / `MAX_LENGTH` map to `minLength` and `maxLength` properties.
    - `DEFAULT` maps to the `default` property.
    - `REQUIRED` populates the schema's `required: [...]` array.
 
@@ -824,6 +879,9 @@ Here are frequent mistakes and how the compiler responds:
 | **Non-Existent Relation Target** | `RELATION Student IN Class ONE_TO_ONE` | `Target entity 'Class' in relationship 'IN' does not exist.` | Declare the `ENTITY Class` before referencing it. |
 | **Float Bound on INT** | `age INT MIN 18.5` | `Validation 'MIN' value for INT field 'age' must be an integer, but found 18.5.` | Use integer values for INT bounds (`MIN 18`). |
 | **Inverted MIN/MAX** | `age INT MIN 65 MAX 18` | `MIN value 65 cannot be greater than MAX value 18.` | Ensure `MIN <= MAX`. |
+| **Length Rule on Non-STRING** | `age INT MIN_LENGTH 2` | `Validation 'MIN_LENGTH' is only allowed for STRING fields.` | Use `MIN_LENGTH` / `MAX_LENGTH` only on `STRING`; use `MIN` / `MAX` for numeric fields. |
+| **Negative STRING Length** | `name STRING MIN_LENGTH -1` | `Validation 'MIN_LENGTH' value on field 'name' must be a non-negative integer.` | Use zero or a positive integer. |
+| **Inverted STRING Length** | `name STRING MIN_LENGTH 5 MAX_LENGTH 3` | `MIN_LENGTH value 5 cannot be greater than MAX_LENGTH value 3.` | Ensure `MIN_LENGTH <= MAX_LENGTH`. |
 | **Default Outside Bounds** | `age INT MIN 18 MAX 60 DEFAULT 12` | `Default value 12 is less than MIN value 18.` | Choose a default value within `[MIN, MAX]`. |
 | **Multiple Primary Keys** | `id INT PRIMARY KEY`<br>`uuid STRING PRIMARY KEY` | `Entity 'User' cannot have multiple primary keys.` | Use at most one primary key per entity. |
 | **Duplicate Fields** | `email STRING`<br>`email STRING` | `Duplicate field 'email' in entity 'User'.` | Remove the duplicate field name. |
