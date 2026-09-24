@@ -205,7 +205,7 @@ APIForge supports four built-in primitive data types. Every field must declare e
 | DSL Data Type | Description | MySQL Column Type | OpenAPI / Swagger Type |
 |:---|:---|:---|:---|
 | `INT` | 32-bit signed integer numbers | `INT` | `integer` |
-| `STRING` | Text string up to 255 characters | `VARCHAR(255)` | `string` |
+| `STRING` | Text string | `VARCHAR(255)` by default; widened when a declared length bound exceeds 255 | `string` |
 | `FLOAT` | Floating-point decimal numbers | `FLOAT` | `number` |
 | `BOOLEAN` | Logical boolean flag (`TRUE` or `FALSE`) | `BOOLEAN` | `boolean` |
 
@@ -360,7 +360,7 @@ For a STRING field with `DEFAULT`, semantic analysis counts Unicode code points 
 
 Code generation maps the rules consistently:
 
-- MySQL uses `CHECK (CHAR_LENGTH(column) ...)` expressions.
+- MySQL uses `CHECK (CHAR_LENGTH(column) ...)` expressions and widens the default `VARCHAR(255)` capacity when a declared bound exceeds 255.
 - Express returns HTTP 400 through the existing generated validation path when a supplied value is not a string or violates a bound.
 - OpenAPI uses `minLength` and `maxLength` on the entity schema referenced by generated `POST` and `PUT` request bodies.
 

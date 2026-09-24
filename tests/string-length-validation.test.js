@@ -217,7 +217,13 @@ phase('codegen', () => {
     test('generates combined and one-sided MySQL CHAR_LENGTH checks', () => {
         assert(sql.includes('CHECK (CHAR_LENGTH(username) >= 3 AND CHAR_LENGTH(username) <= 20)'));
         assert(sql.includes('CHECK (CHAR_LENGTH(tag) >= 2)'));
-        assert(sql.includes('CHECK (CHAR_LENGTH(bio) <= 500)'));
+        assert(sql.includes('bio VARCHAR(500) CHECK (CHAR_LENGTH(bio) <= 500)'));
+    });
+
+    test('widens MySQL STRING capacity only when declared length bounds require it', () => {
+        assert(sql.includes('username VARCHAR(255)'));
+        assert(sql.includes('bio VARCHAR(500)'));
+        assert(sql.includes('role VARCHAR(255)'));
     });
 
     test('uses existing identifier quoting inside string-length checks', () => {

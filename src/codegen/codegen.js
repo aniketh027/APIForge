@@ -108,6 +108,27 @@ const MYSQL_TYPE_MAP = {
 };
 
 /**
+ * Resolves a field's MySQL column type. STRING keeps the legacy VARCHAR(255)
+ * capacity unless a declared length bound requires a wider column.
+ *
+ * @param {Object} field - Field definition extracted from IR
+ * @returns {string} - MySQL column type
+ */
+function getMySQLColumnType(field) {
+    if (!field || field.dataType !== 'STRING') {
+        return MYSQL_TYPE_MAP[field && field.dataType] || (field && field.dataType);
+    }
+
+    const declaredLengths = Array.isArray(field.validations)
+        ? field.validations
+            .filter(v => (v.type === 'MIN_LENGTH' || v.type === 'MAX_LENGTH') && Number.isInteger(v.value) && v.value >= 0)
+            .map(v => v.value)
+        : [];
+    const capacity = Math.max(255, ...declaredLengths);
+    return `VARCHAR(${capacity})`;
+}
+
+/**
  * Maps APIForge DSL data types to OpenAPI / Swagger JSON Schema types.
  */
 const SWAGGER_TYPE_MAP = {
@@ -284,7 +305,7 @@ function generateSQL(ir) {
     const tableStatements = entities.map(entity => {
         const hasPk = entity.fields.some(f => f.constraints && f.constraints.includes('PRIMARY_KEY'));
         const columnDefs = entity.fields.map(field => {
-            const mysqlType = MYSQL_TYPE_MAP[field.dataType] || field.dataType;
+            const mysqlType = getMySQLColumnType(field);
             const isPk = field.constraints.includes('PRIMARY_KEY');
             const isRequired = field.constraints.includes('REQUIRED');
             const isUnique = field.constraints.includes('UNIQUE');
@@ -368,8 +389,8 @@ function generateSQL(ir) {
         const targetPk = getPrimaryKeyField(targetEntity);
         const sourceFkCol = `${lowerFirst(sourceEntity.name)}_${sourcePk.name}`;
         const targetFkCol = `${lowerFirst(targetEntity.name)}_${targetPk.name}`;
-        const sourceFkType = MYSQL_TYPE_MAP[sourcePk.dataType] || 'INT';
-        const targetFkType = MYSQL_TYPE_MAP[targetPk.dataType] || 'INT';
+        const sourceFkType = getMySQLColumnType(sourcePk) || 'INT';
+        const targetFkType = getMySQLColumnType(targetPk) || 'INT';
 
         const sourceTable = quoteIdentifier(sourceEntity.name);
         const targetTable = quoteIdentifier(targetEntity.name);

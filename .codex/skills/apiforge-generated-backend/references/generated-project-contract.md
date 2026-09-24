@@ -48,7 +48,7 @@ The generated README documents dependency installation, `.env` creation, MySQL d
 
 ## SQL contract
 
-- Types map as `INT -> INT`, `STRING -> VARCHAR(255)`, `FLOAT -> FLOAT`, and `BOOLEAN -> BOOLEAN`.
+- Types map as `INT -> INT`, `STRING -> VARCHAR(255)` by default, `FLOAT -> FLOAT`, and `BOOLEAN -> BOOLEAN`. A STRING length bound above 255 widens the generated `VARCHAR` capacity to that bound; relationship foreign-key types use the same resolution when the primary key is a STRING.
 - An explicit `INT` primary key without a default is auto-incremented. A primary key with a default omits auto-increment. If no primary key is declared, SQL prepends `id INT PRIMARY KEY AUTO_INCREMENT`.
 - `REQUIRED`, `UNIQUE`, typed defaults, numeric `MIN`/`MAX`, and STRING `MIN_LENGTH`/`MAX_LENGTH` become `NOT NULL`, `UNIQUE`, `DEFAULT`, and `CHECK` clauses as applicable. STRING-length checks use `CHAR_LENGTH`.
 - String defaults escape single quotes by doubling them. MySQL reserved or otherwise unsafe identifiers are backtick-quoted by the general identifier helper.

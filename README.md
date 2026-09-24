@@ -233,7 +233,7 @@ CREATE TABLE Student_Course (
 | Type      | Maps to MySQL     | Description              |
 |-----------|-------------------|--------------------------|
 | `INT`     | `INT`             | Integer numbers          |
-| `STRING`  | `VARCHAR(255)`    | Text strings             |
+| `STRING`  | `VARCHAR(255)` by default | Text strings; widened when a declared length bound exceeds 255 |
 | `FLOAT`   | `FLOAT`           | Decimal numbers          |
 | `BOOLEAN` | `BOOLEAN`         | True/false values        |
 
@@ -265,7 +265,7 @@ ENTITY Student
 - **`MIN_LENGTH <integer>`** & **`MAX_LENGTH <integer>`**:
   - Allowed only for `STRING` fields; values must be non-negative integers.
   - May be used independently or together; when combined, `MIN_LENGTH <= MAX_LENGTH` is required.
-  - Generates MySQL `CHAR_LENGTH` checks, Unicode-aware Express validation, and OpenAPI `minLength` / `maxLength` metadata.
+  - Generates MySQL `CHAR_LENGTH` checks (and widens `VARCHAR` capacity when a bound exceeds 255), Unicode-aware Express validation, and OpenAPI `minLength` / `maxLength` metadata.
   - STRING defaults are checked against the declared length bounds during semantic analysis.
 - **`DEFAULT <literal>`**:
   - Type-checked against field data type (integers for `INT`, numbers for `FLOAT`, quoted strings for `STRING`, `TRUE`/`FALSE` for `BOOLEAN`).
