@@ -32,7 +32,7 @@ swagger.json
 - `server.js`: dotenv loading, JSON middleware, route mounts, `/health`, global error handler, and startup.
 - `swagger.json`: OpenAPI 3.0.0 paths and component schemas.
 
-Disk generation creates directories and overwrites emitted files but does not clean old files from `output/`; inspect the returned file list when an exact current generation set matters.
+After writing the complete new file collection, disk generation removes files not in that collection from the generator-owned `models/`, `controllers/`, `routes/`, `config/`, and `database/` directories. Those subdirectories are reserved for generated artifacts. Root-level files that APIForge does not generate, including a user-created `.env`, are preserved, as are files outside `output/`. Invalid IR and content-generation failures occur before disk output is written or reconciled.
 
 ## Dependencies and environment
 

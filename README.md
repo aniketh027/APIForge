@@ -185,6 +185,11 @@ Compiling a `.apiforge` file writes a complete backend into `output/`:
 > A single-entity DSL produces **10 files**; each additional entity adds its model,
 > controller, and routes.
 
+Each successful CLI compilation reconciles the generator-owned `models/`,
+`controllers/`, `routes/`, `config/`, and `database/` directories with the latest
+project, so entity artifacts from older compilations do not remain. Root-level
+user files that APIForge does not generate, such as `output/.env`, are preserved.
+
 ---
 
 ## 🔗 Relationships
