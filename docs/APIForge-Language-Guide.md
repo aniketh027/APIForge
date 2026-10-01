@@ -768,11 +768,50 @@ For each declared entity, APIForge generates standard RESTful CRUD endpoints und
 
 | HTTP Method | Route Path | Description | Success Code | Error Codes |
 |:---|:---|:---|:---:|:---:|
-| `GET` | `/api/<plural>` | Fetch all records | `200 OK` | `500 Internal Error` |
-| `GET` | `/api/<plural>/:id` | Fetch single record by ID | `200 OK` | `404 Not Found`, `500` |
-| `POST` | `/api/<plural>` | Create new record | `201 Created` | `400 Bad Request`, `500` |
-| `PUT` | `/api/<plural>/:id` | Update record by ID | `200 OK` | `400 Bad Request`, `404`, `500` |
-| `DELETE` | `/api/<plural>/:id` | Delete record by ID | `200 OK` | `404 Not Found`, `500` |
+| `GET` | `/<plural>` | Fetch records with optional collection query options | `200 OK` | `400 Bad Request`, `500 Internal Error` |
+| `GET` | `/<plural>/:id` | Fetch single record by ID | `200 OK` | `404 Not Found`, `500` |
+| `POST` | `/<plural>` | Create new record | `201 Created` | `400 Bad Request`, `500` |
+| `PUT` | `/<plural>/:id` | Update record by ID | `200 OK` | `400 Bad Request`, `404`, `500` |
+| `DELETE` | `/<plural>/:id` | Delete record by ID | `200 OK` | `404 Not Found`, `500` |
+
+### Collection query options
+
+These are generated API query parameters, with no new DSL syntax. Collection
+responses keep the existing JSON body `{ "success": true, "data": [...] }`,
+including when paginated.
+
+```text
+GET /students?age=21
+GET /students?sort=name&order=asc
+GET /students?page=2&limit=20
+GET /students?status=active&age=21&sort=name&order=desc&page=2&limit=10
+```
+
+Exact equality filters use known entity fields, including generated implicit `id`,
+and combine with AND in declaration order. INT accepts signed safe integers;
+FLOAT accepts finite decimal/exponent numbers; BOOLEAN accepts only lowercase
+`true`/`false`; STRING uses raw text (including empty strings); ENUM requires exact
+declared membership. No NULL, wildcard, range, or OR syntax exists. Equality follows
+the generated MySQL column's comparison behavior; STRING collation is unchanged.
+
+`sort=<field>` accepts known fields and `order=asc|desc` defaults to `asc`.
+`order` without `sort` is invalid. Pagination is opt-in through either `page` or
+`limit`, with defaults 1/20 and a maximum limit of 100. Page and limit must be
+positive decimal integers without leading zeros; unsafe integers/offsets are
+rejected. Without pagination, results remain unbounded and no COUNT query runs.
+Paginated queries order by primary key when no sort is provided, and add primary
+key ASC as a tie-breaker when sorting a different field.
+
+Paginated responses include `X-Total-Count`, `X-Page`, `X-Limit`, and
+`X-Total-Pages` headers. Count uses the same filters. No matches means total pages
+0; pages beyond the last yield empty `data`. Reserved parameters are `page`,
+`limit`, `sort`, `order`; fields with these names cannot filter, but can sort.
+Unknown fields, repeated/non-string values, invalid typed filters, invalid sorting,
+and malformed/out-of-range pagination return `{ success: false, error: "..." }`
+with HTTP 400 before database access. Collection database errors return a sanitized
+500 response. Item GET, POST/PUT/DELETE, and relationship routes do not gain these
+query options. Values and LIMIT/OFFSET are bound parameters; SQL identifiers and
+order tokens come from generated whitelists.
 
 ### Relationship Endpoints
 
@@ -780,12 +819,12 @@ Depending on the cardinality, relationship endpoints are automatically appended 
 
 | Cardinality | Method & Path | Description | Status Code |
 |:---|:---|:---|:---:|
-| **MANY_TO_MANY** | `GET /api/<sources>/:id/<targets>` | List associated target records | `200 OK` |
-| **MANY_TO_MANY** | `POST /api/<sources>/:id/<targets>/:<target>Id` | Link target record to source | `201 Created` |
-| **MANY_TO_MANY** | `DELETE /api/<sources>/:id/<targets>/:<target>Id` | Unlink target record from source | `200 OK` |
-| **ONE_TO_MANY** | `GET /api/<sources>/:id/<targets>` | List children associated with source | `200 OK` |
-| **MANY_TO_ONE** | `GET /api/<sources>/:id/<target>` | Get parent associated with source | `200 OK` / `404` |
-| **ONE_TO_ONE** | `GET /api/<sources>/:id/<target>` | Get single related target record | `200 OK` / `404` |
+| **MANY_TO_MANY** | `GET /<sources>/:id/<targets>` | List associated target records | `200 OK` |
+| **MANY_TO_MANY** | `POST /<sources>/:id/<targets>/:<target>Id` | Link target record to source | `201 Created` |
+| **MANY_TO_MANY** | `DELETE /<sources>/:id/<targets>/:<target>Id` | Unlink target record from source | `200 OK` |
+| **ONE_TO_MANY** | `GET /<sources>/:id/<targets>` | List children associated with source | `200 OK` |
+| **MANY_TO_ONE** | `GET /<sources>/:id/<target>` | Get parent associated with source | `200 OK` / `404` |
+| **ONE_TO_ONE** | `GET /<sources>/:id/<target>` | Get single related target record | `200 OK` / `404` |
 
 ### Validation Behavior
 When a `POST` or `PUT` request is made:

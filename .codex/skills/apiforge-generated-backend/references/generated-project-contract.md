@@ -82,7 +82,48 @@ Relationship SQL:
   The offline ENUM tests execute real emitted routers with mocked model methods;
   the opt-in MySQL harness also verifies native ENUM values, defaults and rejection.
 
-## OpenAPI contract
+## Collection GET contract
+
+Only entity collection GET gains query support. Its body remains
+`{ success: true, data: [...] }` with or without pagination. Item GET,
+POST/PUT/DELETE, relationship methods/routes, and their response shapes are unchanged.
+
+- Filters use exact SQL equality joined with AND in entity declaration order.
+  Implicit `id` is exposed as INT through target-only metadata, without changing IR.
+  Explicit STRING primary keys retain STRING parsing and ordering.
+- INT requires a signed digit representation and a safe integer; FLOAT requires a
+  finite decimal/exponent representation; BOOLEAN accepts exactly `true`/`false`;
+  STRING retains raw text; ENUM requires exact declared membership, including an
+  empty string only when declared. No special NULL filtering exists. STRING equality
+  follows the existing SQL column collation. Write bounds are not reapplied to filters.
+- `sort` accepts a known field. `order` accepts lowercase `asc`/`desc`, defaults
+  to `asc`, and requires sort. Pagination without sort uses primary key ASC;
+  non-primary sorting with pagination adds primary key ASC as a tie-breaker.
+- `page` or `limit` enables SQL pagination with defaults 1/20 and maximum limit
+  100. Both require positive decimal integers without leading zeros. Page, limit,
+  and `(page - 1) * limit` must be safe integers. Without either parameter,
+  collection behavior remains unbounded, with no automatic ordering or COUNT query.
+- Paginated results include `X-Total-Count`, `X-Page`, `X-Limit`, `X-Total-Pages`.
+  `COUNT(*)` reuses identical filters/parameters. Zero matches yields zero total
+  pages; requests beyond the last page return empty data. Data and count are separate
+  SQL reads, so concurrent writes can change the count between reads.
+- `page`, `limit`, `sort`, `order` are reserved. Fields with those names can sort
+  but cannot filter. Unknown parameters and repeated/non-string values return 400,
+  as do invalid typed values, sort/order, pagination, and overflow. Validation occurs
+  before any DB call, using the existing `{ success: false, error }` style.
+  Collection DB errors are sanitized to `Unable to retrieve collection.`
+- The controller invokes the model's `parseQuery` once and passes typed options.
+  Model-owned `QUERY_FIELDS` metadata supplies trusted SQL columns; filter values,
+  LIMIT, and OFFSET use mysql2 `pool.query` placeholders. Fixed ASC/DESC strings
+  supply ordering. Data/count share `filterQuery`; no dependency is added.
+
+## OpenAPI collection documentation
+
+Collection GET includes optional page/limit/sort/order and non-reserved field filter
+parameters, implicit id, proper scalar types and ENUM members, sort field enum,
+lowercase order enum, pagination defaults/bounds, conditional metadata headers,
+and 400 responses. Empty STRING and declared empty ENUM values set allowEmptyValue.
+The existing component schemas and other operations are unchanged.
 
 `swagger.json` uses OpenAPI 3.0.0. It describes CRUD and generated relationship paths without an `/api` prefix, maps DSL field types to JSON Schema types, marks `REQUIRED` fields, and includes numeric minimum/maximum, STRING minLength/maxLength, and default metadata. The generated server does not currently serve Swagger UI or the JSON file.
 
@@ -92,7 +133,7 @@ Path parameter schemas derive from the owning entity's primary-key datatype. Ent
 
 The web playground receives `generatedFiles` from `POST /api/compile` and builds `apiforge-project.zip` entirely in the browser. `frontend/app.js` writes a basic uncompressed ZIP whose entries are exactly the returned paths and contents. It does not package the repository's `output/` directory or APIForge development files.
 
-If ZIP construction throws, the browser downloads a single `apiforge-generated-project.txt` concatenation instead. There is no server-side archive endpoint or current automated ZIP-content test.
+If ZIP construction throws, the browser downloads a single `apiforge-generated-project.txt` concatenation instead. There is no server-side archive endpoint. Offline warning and collection tests execute the frontend ZIP writer and compare its entry names and contents to the current generation result.
 
 ## Standalone verification boundary
 

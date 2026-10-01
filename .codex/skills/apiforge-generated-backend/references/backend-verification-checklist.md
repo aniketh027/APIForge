@@ -30,7 +30,16 @@ Use only the sections affected by the change.
 - [ ] Compare route modules with server mount paths.
 - [ ] Verify update and omitted-field behavior relevant to the change.
 
-## Validation and defaults
+## Collection queries
+
+- [ ] Preserve the current collection body with and without pagination.
+- [ ] Validate all five filter types, implicit/STRING keys, reserved-name collisions, and repeated/unknown parameters before DB access.
+- [ ] Assert trusted identifiers/fixed sort tokens, bound values/LIMIT/OFFSET, deterministic WHERE order, safe integers/offsets, and stable page ordering.
+- [ ] Verify opt-in pagination, default/max limit, identical filtered count predicates, zero matches, and beyond-last-page metadata.
+- [ ] Check SQL injection field/order rejection, literal bound STRING attacks, and live table/row integrity in an isolated DB.
+- [ ] Compare OpenAPI parameters/headers and README behavior; preserve item/write/relationship methods, schema, and dependencies.
+
+## Field validation and defaults
 
 - [ ] Compare DSL meaning with SQL, Express runtime behavior, and OpenAPI.
 - [ ] Test present, omitted, boundary, below-range, and above-range values as applicable.

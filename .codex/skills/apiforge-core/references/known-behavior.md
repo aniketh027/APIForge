@@ -51,6 +51,7 @@ swagger.json
 Codegen emits seven fixed files plus three files per entity. The generated `package.json` declares `dotenv`, `express`, and `mysql2` with APIForge's own compatible version ranges and starts the root-level `server.js`. The generated `README.md` documents installation, environment configuration, manual MySQL schema import, route mounts, startup, and the location of `swagger.json`. It does not emit a lockfile, `.env`, or database bootstrap.
 
 - Entity CRUD routers expose `GET /`, `GET /:id`, `POST /`, `PUT /:id`, and `DELETE /:id`.
+- Entity collection GET supports typed exact filters, whitelisted sort/order, and opt-in page/limit (defaults 1/20, maximum 100). It preserves `{ success: true, data: [...] }`; pagination headers carry filtered counts. Unknown/repeated/invalid parameters return 400 before DB access. Query options do not extend to item, write, or relationship routes. See the generated-backend contract for parsing and reserved-name details.
 - Generated request validation enforces numeric and STRING-length bounds when a value is present and non-null. STRING lengths use Unicode code-point counting. SQL emits `CHAR_LENGTH` checks, and OpenAPI exposes `minLength`/`maxLength` on the shared entity request schema.
 - The generated server mounts each router directly at a lowercase plural path such as `/students`; it does not add `/api`. The repository development server uses `/api` only for the compiler endpoints (`/api/compile`, `/api/health`).
 - Relationship endpoints are generated on the source entity router. `MANY_TO_MANY` gets list/add/remove routes; `ONE_TO_MANY` gets a list route; `MANY_TO_ONE` and `ONE_TO_ONE` get a singular target route.
@@ -70,7 +71,7 @@ Codegen emits seven fixed files plus three files per entity. The generated `pack
 | Malformed JSON body (existing global handler) | 500 |
 | Successful compilation | 200 |
 
-The current Language Guide's generated CRUD examples include an `/api/<plural>` prefix, but generated `output/server.js` mounts `/<plural>` directly. Follow the implementation and tests unless a task explicitly changes that contract.
+The Language Guide and generated server use `/<plural>` directly for generated CRUD and relationship routes. `/api` belongs to the repository's compiler HTTP endpoints.
 
 ## Structured diagnostics
 

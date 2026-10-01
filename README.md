@@ -192,6 +192,41 @@ user files that APIForge does not generate, such as `output/.env`, are preserved
 
 ---
 
+## Collection query options
+
+Generated collection GET endpoints preserve `{ success: true, data: [...] }`.
+For an entity with these fields, examples include:
+
+```text
+GET /students?age=21
+GET /students?sort=name&order=asc
+GET /students?page=2&limit=20
+GET /students?status=active&sort=name&order=desc&page=1&limit=10
+```
+
+- Filters use SQL equality on declared fields, including implicit `id`: INT requires
+  a safe integer, FLOAT a finite decimal/exponent number, BOOLEAN exactly `true` or
+  `false`, STRING raw text, and ENUM an exact declared member. Multiple filters use AND.
+- `sort` accepts known fields; `order` accepts lowercase `asc` or `desc`, defaults
+  to `asc`, and requires `sort`.
+- Pagination starts only when `page` or `limit` is supplied. Defaults are page 1,
+  limit 20; maximum limit is 100. Both require positive decimal integers without
+  leading zeros, and the computed offset must be safe. Otherwise results remain
+  unbounded with no COUNT query. Pagination uses primary-key ordering/tie-breaking.
+- Paginated responses add `X-Total-Count`, `X-Page`, `X-Limit`, and `X-Total-Pages`
+  headers. Counts apply the same filters; no matches means zero total pages, and
+  pages beyond the last return an empty data array.
+- `page`, `limit`, `sort`, and `order` are reserved. Fields with these names can be
+  sorted but cannot be filtered. Unknown, repeated/non-scalar, or invalid query
+  values return 400 before DB access. No special null-filter syntax exists.
+
+Values, LIMIT, and OFFSET are bound SQL parameters; identifiers and ordering come
+from trusted generated metadata. Item GET, write, and relationship routes retain
+their existing behavior. Generated OpenAPI and README document this contract.
+See [verification and compatibility evidence](docs/collection-query-verification.md).
+
+---
+
 ## 🔗 Relationships
 
 APIForge supports all four cardinalities. Each maps to a specific SQL shape:
