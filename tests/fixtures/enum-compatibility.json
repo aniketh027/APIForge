@@ -1,0 +1,154 @@
+{
+  "sources": {
+    "int": "ENTITY User\nid INT PRIMARY KEY\nname STRING REQUIRED",
+    "string": "ENTITY User\nkey STRING PRIMARY KEY\nname STRING",
+    "implicit": "ENTITY Item\nname STRING",
+    "relationship": "// APIForge DSL Sample with Relationship\n// Demonstrates entities and relationship declaration\n\nENTITY Student\n\nid INT PRIMARY KEY\nname STRING REQUIRED\n\nENTITY Course\n\nid INT PRIMARY KEY\ntitle STRING REQUIRED\n\nRELATION Student ENROLLS_IN Course MANY_TO_MANY\n",
+    "length": "// ============================================\n// APIForge DSL - STRING Length Validation\n// File: string_length_validation.apiforge\n// ============================================\n\nENTITY User\n\n    id       INT    PRIMARY KEY\n    username STRING REQUIRED UNIQUE MIN_LENGTH 3 MAX_LENGTH 20\n    bio      STRING MAX_LENGTH 500\n    role     STRING DEFAULT \"student\" MIN_LENGTH 3 MAX_LENGTH 20\n"
+  },
+  "codes": {
+    "lexer": {
+      "UNEXPECTED_CHARACTER": "LEX001",
+      "INVALID_IDENTIFIER": "LEX002",
+      "UNTERMINATED_STRING": "LEX003",
+      "MALFORMED_NUMBER": "LEX004"
+    },
+    "parser": {
+      "EXPECTED_TOKEN": "PAR001",
+      "MISSING_ENTITY_NAME": "PAR002",
+      "MISSING_SOURCE_ENTITY": "PAR003",
+      "MISSING_RELATION_NAME": "PAR004",
+      "MISSING_TARGET_ENTITY": "PAR005",
+      "MISSING_IDENTIFIER": "PAR006",
+      "EXPECTED_ENTITY_DECLARATION": "PAR007",
+      "MISSING_FIELD_NAME": "PAR008",
+      "INVALID_FIELD_TOKEN": "PAR009",
+      "MISSING_RELATION_TYPE": "PAR010",
+      "INVALID_RELATION_TYPE": "PAR011",
+      "MISSING_DATATYPE": "PAR012",
+      "INVALID_DATATYPE": "PAR013",
+      "MISSING_KEY_AFTER_PRIMARY": "PAR014",
+      "STANDALONE_KEY": "PAR015",
+      "MISSING_MIN_VALUE": "PAR016",
+      "MISSING_MAX_VALUE": "PAR017",
+      "MISSING_MIN_LENGTH_VALUE": "PAR018",
+      "MISSING_MAX_LENGTH_VALUE": "PAR019",
+      "MISSING_DEFAULT_VALUE": "PAR020",
+      "UNKNOWN_MODIFIER": "PAR021"
+    },
+    "semantic": {
+      "MISSING_ENTITY_DECLARATION": "SEM001",
+      "DUPLICATE_ENTITY": "SEM002",
+      "RESERVED_ENTITY_NAME": "SEM003",
+      "EMPTY_ENTITY": "SEM004",
+      "DUPLICATE_FIELD": "SEM005",
+      "RESERVED_FIELD_NAME": "SEM006",
+      "INVALID_DATATYPE": "SEM007",
+      "INVALID_CONSTRAINT": "SEM008",
+      "DUPLICATE_CONSTRAINT": "SEM009",
+      "MULTIPLE_PRIMARY_KEYS": "SEM010",
+      "INVALID_PRIMARY_KEY_TYPE": "SEM011",
+      "DUPLICATE_VALIDATION": "SEM012",
+      "INVALID_NUMERIC_BOUND": "SEM013",
+      "INVALID_LENGTH_BOUND": "SEM014",
+      "NUMERIC_MODIFIER_TYPE_MISMATCH": "SEM015",
+      "LENGTH_MODIFIER_TYPE_MISMATCH": "SEM016",
+      "MIN_EXCEEDS_MAX": "SEM017",
+      "MIN_LENGTH_EXCEEDS_MAX_LENGTH": "SEM018",
+      "NON_INTEGER_BOUND": "SEM019",
+      "DUPLICATE_DEFAULT": "SEM020",
+      "INVALID_DEFAULT_TYPE": "SEM021",
+      "DEFAULT_OUT_OF_RANGE": "SEM022",
+      "DEFAULT_LENGTH_OUT_OF_RANGE": "SEM023",
+      "DUPLICATE_RELATION": "SEM024",
+      "RESERVED_RELATION_NAME": "SEM025",
+      "INVALID_RELATION_TYPE": "SEM026",
+      "SELF_RELATION": "SEM027",
+      "UNKNOWN_SOURCE_ENTITY": "SEM028",
+      "UNKNOWN_TARGET_ENTITY": "SEM029"
+    },
+    "input": {
+      "INVALID_SOURCE": "INP001",
+      "MALFORMED_JSON": "INP002"
+    },
+    "internal": {
+      "FAILURE": "INT001"
+    }
+  },
+  "warnings": {
+    "semantic": {
+      "IMPLICIT_PRIMARY_KEY": "WRN001"
+    },
+    "optimizer": {
+      "CONFLICTING_FIELD": "WRN002",
+      "CONFLICTING_RELATION_TYPE": "WRN003",
+      "CONFLICTING_RELATION_ENDPOINTS": "WRN004",
+      "INVALID_IR": "WRN005"
+    }
+  },
+  "projects": {
+    "int": {
+      "database/schema.sql": "6e19af9a6ddf2e2f9b0e9a48910172d088a536db54f97f5e1b46d0cf14a451da",
+      "config/db.js": "eb0676c33db434bd7361c6a6f6b89855f34432bbb999fe14324fbb0d66109569",
+      ".env.example": "bfcc5a50359e88d9127a837568cfe7a19657f52ef65614b16e95556aa54dba07",
+      "package.json": "a53032414a3b6f14d05096213a0e4308ee7ac5ec5db0c31f5b941b90945e8894",
+      "README.md": "44592100430cf685e7554a21fbc2bbea231c4f5030b688da06f0e4beeade0a88",
+      "models/User.js": "a59a51e071a73621f4597e485a7936eedb878d23dbd0e51ce01e52920b90d38b",
+      "controllers/userController.js": "6a2643138dd01f098e0aa970d972c5ad74468cac5a452b3c090cfad7f11dce5c",
+      "routes/userRoutes.js": "deabaa4d52a0357ff0111b7289e12d4546bd7c436ad7e938cb86fccff3a80aa3",
+      "server.js": "7b34917fb984cf2e825082ee20b9003e8abe7b27fcea32b5df8c1f475dd281bb",
+      "swagger.json": "7b3cfc9beea7bc49569dcf74a2731014e858427a741de555bfdb74d0362be81f"
+    },
+    "string": {
+      "database/schema.sql": "952ed1247abf36fd15aec98d84d7f8bee84c268f53383dfdd3e7271f2eae0431",
+      "config/db.js": "eb0676c33db434bd7361c6a6f6b89855f34432bbb999fe14324fbb0d66109569",
+      ".env.example": "bfcc5a50359e88d9127a837568cfe7a19657f52ef65614b16e95556aa54dba07",
+      "package.json": "a53032414a3b6f14d05096213a0e4308ee7ac5ec5db0c31f5b941b90945e8894",
+      "README.md": "44592100430cf685e7554a21fbc2bbea231c4f5030b688da06f0e4beeade0a88",
+      "models/User.js": "2a52950427269eb175696164d246949a2d8bf0692e642835fea4cca898d1ca9c",
+      "controllers/userController.js": "6a2643138dd01f098e0aa970d972c5ad74468cac5a452b3c090cfad7f11dce5c",
+      "routes/userRoutes.js": "deabaa4d52a0357ff0111b7289e12d4546bd7c436ad7e938cb86fccff3a80aa3",
+      "server.js": "7b34917fb984cf2e825082ee20b9003e8abe7b27fcea32b5df8c1f475dd281bb",
+      "swagger.json": "02a2e7d153feae20dcf1bafd0aef80db115f3e1e097fa3f0ff72f383bfa96388"
+    },
+    "implicit": {
+      "database/schema.sql": "ba4ff80da0a0a9c99cb15cc61a251cc691d3220a27930cbc3605b327e5030b9f",
+      "config/db.js": "eb0676c33db434bd7361c6a6f6b89855f34432bbb999fe14324fbb0d66109569",
+      ".env.example": "bfcc5a50359e88d9127a837568cfe7a19657f52ef65614b16e95556aa54dba07",
+      "package.json": "a53032414a3b6f14d05096213a0e4308ee7ac5ec5db0c31f5b941b90945e8894",
+      "README.md": "c5f88c7cc41c1a59517e5b7a97b1fdce378796969bc834171cd327170d92d69f",
+      "models/Item.js": "6a1fa01d0018e918c105eab18fd0965bb03f394980668e010b98e3d9dd09100a",
+      "controllers/itemController.js": "de9f82550512f07097dade4811a8cc45c99317b965b4bf231193b3e35774380c",
+      "routes/itemRoutes.js": "663f1bdcfc36733e724a19d79a2a41e0c2da92f7850ea6803c94a0d6f85180b9",
+      "server.js": "c92f5cdf1183a6684dbc09355de07b79a11d8b06da61ad101ea22cf1597dd5ef",
+      "swagger.json": "feeedd3912dc7266454cdfa3f8de4d91ed4fbdad540f65dd45bbcac975b575b2"
+    },
+    "relationship": {
+      "database/schema.sql": "58e31f48ebdffa788e968349f3b5e173e77abf133be0aec5cd68bf98155cb6d9",
+      "config/db.js": "eb0676c33db434bd7361c6a6f6b89855f34432bbb999fe14324fbb0d66109569",
+      ".env.example": "bfcc5a50359e88d9127a837568cfe7a19657f52ef65614b16e95556aa54dba07",
+      "package.json": "a53032414a3b6f14d05096213a0e4308ee7ac5ec5db0c31f5b941b90945e8894",
+      "README.md": "a51f2365e9b0184d1a54ed749478989b691f321d283b0a3b97c0c502bea4b8ae",
+      "models/Student.js": "c62ce9ef9d891a5a68fa1860d9ee5caf61c54a969926e036981b8bce8a636ef0",
+      "controllers/studentController.js": "37bd2c6c19694f3447e7c374b0d88b2b8d0a3dc94b01dc4f8234baabc999d98e",
+      "routes/studentRoutes.js": "79cd22391f53e338ca6d72d5a9327263acecc333c7e8efa1471721e3f88dcd7d",
+      "models/Course.js": "f00bec4a3ca90802c8217bf0efccd732d578cfcc1a3277ca818f4ee4142dcaa6",
+      "controllers/courseController.js": "6c7e2016f92292854bb623c3ff0cbe2e84a178521d079f9acebf03f2418cf6d8",
+      "routes/courseRoutes.js": "1a33c97daa3d235ab7dc16ddf5ae0caf7a7977b3ab0f53c0de2a8161b28d13e9",
+      "server.js": "569a67694e3c5470485eda3b980a094a491ea8ddde5dd95c7950fa116cf03914",
+      "swagger.json": "076e7314e95fd74a08d194886edfc26280deaf525d36da7aee8403de49a4fbe0"
+    },
+    "length": {
+      "database/schema.sql": "dec391a793255e2210357518fa81e7a531be230da0295fa08a02a2e3063d4120",
+      "config/db.js": "eb0676c33db434bd7361c6a6f6b89855f34432bbb999fe14324fbb0d66109569",
+      ".env.example": "bfcc5a50359e88d9127a837568cfe7a19657f52ef65614b16e95556aa54dba07",
+      "package.json": "a53032414a3b6f14d05096213a0e4308ee7ac5ec5db0c31f5b941b90945e8894",
+      "README.md": "44592100430cf685e7554a21fbc2bbea231c4f5030b688da06f0e4beeade0a88",
+      "models/User.js": "966f8ca95fe2eb9756a74cc5cebd70b92f3afc183ce5bed872a8d26656f89b80",
+      "controllers/userController.js": "eb9f18253bdd37cb2b36220db0d99a9e61c051dd1f4f54847ab2cb17068acb2d",
+      "routes/userRoutes.js": "deabaa4d52a0357ff0111b7289e12d4546bd7c436ad7e938cb86fccff3a80aa3",
+      "server.js": "7b34917fb984cf2e825082ee20b9003e8abe7b27fcea32b5df8c1f475dd281bb",
+      "swagger.json": "cc9b66c45b002f1f79fc698243011fbd5822a880edb9e3eab8d21b75a37c4bcd"
+    }
+  }
+}

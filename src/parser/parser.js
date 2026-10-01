@@ -50,7 +50,7 @@ const { attachDiagnostic } = require('../utils/diagnostics');
 const { didYouMeanSuffix } = require('../utils/errors');
 
 // ── Candidate lists for "did you mean?" suggestions ─────────
-const DATA_TYPES = ['INT', 'STRING', 'FLOAT', 'BOOLEAN'];
+const DATA_TYPES = ['INT', 'STRING', 'FLOAT', 'BOOLEAN', 'ENUM'];
 const RELATION_TYPES = ['ONE_TO_ONE', 'ONE_TO_MANY', 'MANY_TO_ONE', 'MANY_TO_MANY'];
 
 // ── Value token types that can follow MIN, MAX, DEFAULT ─────
@@ -368,10 +368,10 @@ class Parser {
             const isEof = typeToken.type === 'EOF';
             const suffix = isEof ? '' : didYouMeanSuffix(typeToken.value, DATA_TYPES);
             const userMessage = isEof
-                ? `Missing data type for field '${nameToken.value}'.\nExpected one of: INT, STRING, FLOAT, BOOLEAN.`
+                ? `Missing data type for field '${nameToken.value}'.\nExpected one of: INT, STRING, FLOAT, BOOLEAN, ENUM.`
                 : `Expected DATATYPE but found ${typeToken.type} "${typeToken.value}".${suffix}`;
             const messageDesc = isEof
-                ? `Missing data type for field '${nameToken.value}'. Expected DATATYPE (one of: INT, STRING, FLOAT, BOOLEAN) but found EOF "EOF".`
+                ? `Missing data type for field '${nameToken.value}'. Expected DATATYPE (one of: INT, STRING, FLOAT, BOOLEAN, ENUM) but found EOF "EOF".`
                 : `Expected DATATYPE but found ${typeToken.type} "${typeToken.value}".${suffix}`;
 
             const err = new Error(
@@ -385,10 +385,37 @@ class Parser {
         }
         const dataTypeToken = this.advance();
 
+        // ENUM is a datatype specification; its ordered strings precede modifiers.
+        let enumValues;
+        const enumLocations = [];
+        if (dataTypeToken.value === 'ENUM') {
+            this.expect('LPAREN');
+            enumValues = [];
+            do {
+                const value = this.expect('STRING_LITERAL');
+                enumValues.push(value.value);
+                enumLocations.push(value);
+                if (this.current().type === 'RPAREN') break;
+                if (this.current().type !== 'COMMA') {
+                    const token = this.current();
+                    const err = new Error('Expected comma or closing parenthesis after ENUM value.');
+                    err.code = 'EXPECTED_ENUM_DELIMITER';
+                    err.userMessage = err.message;
+                    err.line = token.line;
+                    err.column = token.column;
+                    throw attachDiagnostic(err, 'parser', token, err.code,
+                        'Separate quoted ENUM values with commas and finish with ).');
+                }
+                this.advance();
+            } while (true);
+            this.expect('RPAREN');
+        }
+
         // Step 3: Parse zero or more field modifiers (constraints, validations, defaults)
         const modifierStart = this.pos;
         const { constraints, validations, defaultValue, defaultValues } = this.parseFieldModifiers();
         const sourceLocations = { name: [nameToken], type: [dataTypeToken] };
+        if (enumValues) sourceLocations.enumValues = enumLocations;
         for (let i = modifierStart; i < this.pos; i++) {
             const token = this.tokens[i];
             if (token.type !== 'MODIFIER' || token.value === 'KEY') continue;
@@ -413,6 +440,7 @@ class Parser {
             fieldNode.defaultValues = defaultValues;
         }
 
+        if (enumValues) fieldNode.enumValues = enumValues;
         Object.defineProperty(fieldNode, 'sourceLocations', { value: sourceLocations });
         return fieldNode;
     }

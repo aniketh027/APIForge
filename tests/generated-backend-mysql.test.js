@@ -37,6 +37,9 @@ const testDsl = [
     'name STRING REQUIRED UNIQUE MIN_LENGTH 2 MAX_LENGTH 12',
     'age INT REQUIRED MIN 18 MAX 60',
     'active BOOLEAN DEFAULT TRUE',
+    `status ENUM("active", "ACTIVE", "inactive", "O'Reilly", "C:\\folder") DEFAULT "active"`,
+    `signature ENUM("O'Reilly") DEFAULT "O'Reilly"`,
+    `folder ENUM("C:\\folder") DEFAULT "C:\\folder"`,
     '',
     'ENTITY Course',
     'id INT PRIMARY KEY',
@@ -265,6 +268,10 @@ async function verifyImportedSchema(connection, databaseName) {
 }
 
 async function exerciseGeneratedApi(connection, port) {
+    currentPhase = 'runtime ENUM validation';
+    for (const status of ['deleted', 'Active', 1, true]) {
+        assertResponse(await requestHttp(port, 'POST', '/students', { name: 'Valid', age: 20, status }), 400, 'Invalid ENUM POST');
+    }
     currentPhase = 'runtime numeric validation';
     const invalidAge = await requestHttp(port, 'POST', '/students', { name: 'Adult', age: 17 });
     assertResponse(invalidAge, 400, 'Invalid Student age');
@@ -295,6 +302,27 @@ async function exerciseGeneratedApi(connection, port) {
     assert.strictEqual(Number(createdRows[0].age), 20);
     assert.strictEqual(Number(createdRows[0].active), 1, 'Omitted active field should receive its MySQL default');
 
+    assert.strictEqual(createdRows[0].status, 'active', 'Omitted ENUM receives database default');
+    assert.strictEqual(createdRows[0].signature, "O'Reilly", 'Apostrophe ENUM default round-trips');
+    assert.strictEqual(createdRows[0].folder, 'C:\\folder', 'Backslash ENUM default round-trips');
+    for (const status of ['deleted', 1, true]) {
+        assertResponse(await requestHttp(port, 'PUT', `/students/${studentId}`, { status }), 400, 'Invalid ENUM PUT');
+    }
+    for (const status of ['ACTIVE', "O'Reilly", 'C:\\folder', 'inactive']) {
+        const response = await requestHttp(port, 'PUT', `/students/${studentId}`, { status });
+        assertResponse(response, 200, 'Valid ENUM PUT');
+        assert.strictEqual(response.json.data.status, status);
+    }
+    for (const status of ['active', 'ACTIVE', "O'Reilly", 'C:\\folder']) {
+        const response = await requestHttp(port, 'POST', '/students', { name: 'EnumTest', age: 20, status });
+        assertResponse(response, 201, 'Valid ENUM POST');
+        const [rows] = await connection.query('SELECT status FROM Student WHERE id = ?', [response.json.data.id]);
+        assert.strictEqual(rows[0].status, status);
+        await connection.query('DELETE FROM Student WHERE id = ?', [response.json.data.id]);
+    }
+    for (const status of ['deleted', 'Active']) {
+        await assert.rejects(connection.query('UPDATE Student SET status = ? WHERE id = ?', [status, studentId]));
+    }
     currentPhase = 'Student GET collection and item';
     const collection = await requestHttp(port, 'GET', '/students');
     const collectionBody = assertResponse(collection, 200, 'Student collection GET');
@@ -457,6 +485,9 @@ async function main() {
         assert.ok(swagger.paths['/students/{id}/courses/{courseId}'].post, 'OpenAPI should describe relationship POST');
         assert.ok(swagger.paths['/students/{id}/courses/{courseId}'].delete, 'OpenAPI should describe relationship DELETE');
 
+        assert.deepStrictEqual(swagger.components.schemas.Student.properties.status, {
+            type: 'string', enum: ['active', 'ACTIVE', 'inactive', "O'Reilly", 'C:\\folder'], default: 'active'
+        });
         currentPhase = 'generated dependency installation';
         const install = npmInvocation(['install', '--no-audit', '--no-fund', '--loglevel=error']);
         const installResult = await runCommand(install.command, install.args, {

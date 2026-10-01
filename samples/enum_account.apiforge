@@ -1,0 +1,6 @@
+// ENUM values are case-sensitive strings in declaration order.
+ENTITY Account
+id INT PRIMARY KEY
+email STRING REQUIRED UNIQUE
+status ENUM("active", "suspended", "closed") DEFAULT "active"
+role ENUM("student", "faculty", "admin") REQUIRED

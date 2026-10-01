@@ -3333,7 +3333,7 @@ assertTrue('Missing datatype throws error', !!errMissingType);
 assertEqual('Missing datatype error code', errMissingType.code, 'MISSING_DATATYPE');
 assertEqual('Missing datatype line is 4', errMissingType.line, 4);
 assertEqual('Missing datatype column is 5', errMissingType.column, 5);
-assertEqual('Missing datatype userMessage', errMissingType.userMessage, "Missing data type for field 'name'.\nExpected one of: INT, STRING, FLOAT, BOOLEAN.");
+assertEqual('Missing datatype userMessage', errMissingType.userMessage, "Missing data type for field 'name'.\nExpected one of: INT, STRING, FLOAT, BOOLEAN, ENUM.");
 assertTrue('Missing datatype contains Expected DATATYPE for compatibility', errMissingType.message.includes('Expected DATATYPE'));
 
 // ── User-Facing Test 2: Missing KEY after PRIMARY at EOF ─────
@@ -3404,7 +3404,7 @@ console.log('');
 console.log('── User-Facing: formatUserFacingError helper ──');
 
 const { formatUserFacingError } = require('../src/utils/errors');
-assertEqual('formatUserFacingError uses userMessage', formatUserFacingError(errMissingType), "Missing data type for field 'name'.\nExpected one of: INT, STRING, FLOAT, BOOLEAN.");
+assertEqual('formatUserFacingError uses userMessage', formatUserFacingError(errMissingType), "Missing data type for field 'name'.\nExpected one of: INT, STRING, FLOAT, BOOLEAN, ENUM.");
 assertEqual('formatUserFacingError cleans raw prefix', formatUserFacingError({ message: 'Syntax Error at line 1, column 2: Some error' }), 'Some error');
 
 // ── User-Facing Test 7: API /compile returns userMessage and code ──
@@ -3420,7 +3420,7 @@ assertEqual('API error phase is parser', apiUserFacingTest.phase, 'parser');
 assertEqual('API error code is MISSING_DATATYPE', apiUserFacingTest.errors[0].code, 'MISSING_DATATYPE');
 assertEqual('API error line is 4', apiUserFacingTest.errors[0].line, 4);
 assertEqual('API error column is 5', apiUserFacingTest.errors[0].column, 5);
-assertEqual('API error userMessage matches', apiUserFacingTest.errors[0].userMessage, "Missing data type for field 'name'.\nExpected one of: INT, STRING, FLOAT, BOOLEAN.");
+assertEqual('API error userMessage matches', apiUserFacingTest.errors[0].userMessage, "Missing data type for field 'name'.\nExpected one of: INT, STRING, FLOAT, BOOLEAN, ENUM.");
 
 
 

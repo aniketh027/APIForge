@@ -24,7 +24,7 @@
  * 1. A program must contain at least one entity.
  * 2. Entity names must be unique.
  * 3. Field names must be unique within an entity.
- * 4. Data types must be valid (INT, STRING, FLOAT, BOOLEAN).
+ * 4. Data types must be valid (INT, STRING, FLOAT, BOOLEAN, ENUM).
  * 5. Every entity must have at least one field.
  * 6. At most one PRIMARY_KEY per entity.
  * 7. PRIMARY_KEY is only allowed on INT or STRING fields.
@@ -85,7 +85,7 @@ const RESERVED_WORDS = new Set([
     // Keywords
     'ENTITY', 'RELATION',
     // Data types
-    'INT', 'STRING', 'FLOAT', 'BOOLEAN',
+    'INT', 'STRING', 'FLOAT', 'BOOLEAN', 'ENUM',
     // Modifiers
     'PRIMARY', 'KEY', 'REQUIRED', 'UNIQUE', 'MIN', 'MAX', 'MIN_LENGTH', 'MAX_LENGTH', 'DEFAULT',
     // Boolean literals
@@ -97,7 +97,7 @@ const RESERVED_WORDS = new Set([
 // ── Valid Data Types ────────────────────────────────────────
 
 const VALID_DATA_TYPES = new Set([
-    'INT', 'STRING', 'FLOAT', 'BOOLEAN'
+    'INT', 'STRING', 'FLOAT', 'BOOLEAN', 'ENUM'
 ]);
 
 // ── Types Allowed for PRIMARY KEY ───────────────────────────
@@ -323,6 +323,7 @@ class SemanticAnalyzer {
                 // Register the field in the field table (only first declaration)
                 fieldTable[field.name] = {
                     dataType: field.dataType,
+                    ...(field.dataType === 'ENUM' ? { enumValues: Array.isArray(field.enumValues) ? [...field.enumValues] : [] } : {}),
                     constraints: field.constraints || [],
                     validations: field.validations || [],
                     defaultValue: field.defaultValue || null,
@@ -342,11 +343,28 @@ class SemanticAnalyzer {
             // ── Rule: Valid data type ───────────────────────
             if (!VALID_DATA_TYPES.has(field.dataType)) {
                 this.addError(
-                    `Invalid data type '${field.dataType}' for field '${field.name}' in entity '${entity.name}'. Allowed types: INT, STRING, FLOAT, BOOLEAN.` +
+                    `Invalid data type '${field.dataType}' for field '${field.name}' in entity '${entity.name}'. Allowed types: INT, STRING, FLOAT, BOOLEAN, ENUM.` +
                         didYouMeanSuffix(field.dataType, Array.from(VALID_DATA_TYPES)),
                     locate(field, 'type', field.typeColumn),
                     'INVALID_DATATYPE'
                 );
+            }
+
+            if (field.dataType === 'ENUM') {
+                if (!Array.isArray(field.enumValues) || field.enumValues.length === 0 ||
+                    Array.from(field.enumValues).some(value => typeof value !== 'string')) {
+                    this.addError(`ENUM field '${field.name}' requires at least one string value.`,
+                        locate(field, 'type', field.typeColumn), 'INVALID_ENUM_VALUES');
+                } else {
+                    const seenValues = new Set();
+                    field.enumValues.forEach((value, index) => {
+                        if (seenValues.has(value)) {
+                            this.addError(`Duplicate ENUM value ${JSON.stringify(value)} for field '${field.name}'.`,
+                                locate(field, 'enumValues', field.typeColumn, index), 'DUPLICATE_ENUM_VALUE');
+                        }
+                        seenValues.add(value);
+                    });
+                }
             }
 
             // ── Rule: Constraint validity & duplicates ───────
@@ -593,6 +611,18 @@ class SemanticAnalyzer {
                             locate(field, 'DEFAULT', field.nameColumn, Math.max(0, (field.sourceLocations?.DEFAULT?.length || 1) - 1)),
                             'INVALID_DEFAULT_TYPE'
                         );
+                    }
+                } else if (field.dataType === 'ENUM') {
+                    const location = locate(field, 'DEFAULT', field.nameColumn,
+                        Math.max(0, (field.sourceLocations?.DEFAULT?.length || 1) - 1));
+                    if (def.type !== 'STRING' || typeof def.value !== 'string') {
+                        this.addError(`Default value for ENUM field '${field.name}' must be a string.`,
+                            location, 'INVALID_DEFAULT_TYPE');
+                    } else if (Array.isArray(field.enumValues) && !field.enumValues.includes(def.value)) {
+                        const preview = field.enumValues.slice(0, 5).map(value => JSON.stringify(value)).join(', ');
+                        this.addError(`DEFAULT ${JSON.stringify(def.value)} is not one of the declared ENUM values.`,
+                            location, 'INVALID_ENUM_DEFAULT',
+                            `Use one of: ${preview.slice(0, 200)}${field.enumValues.length > 5 || preview.length > 200 ? ', ...' : ''}.`);
                     }
                 } else if (field.dataType === 'BOOLEAN') {
                     if (def.type !== 'BOOLEAN') {

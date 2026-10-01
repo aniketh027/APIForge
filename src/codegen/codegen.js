@@ -153,10 +153,13 @@ function upperFirst(str) {
  * @param {Object} defaultValue - { type: 'NUMBER'|'STRING'|'BOOLEAN', value: any }
  * @returns {string} - SQL literal representation
  */
-function formatSQLLiteral(defaultValue) {
+function formatSQLLiteral(defaultValue, enumLiteral = false) {
     if (!defaultValue) return '';
     if (defaultValue.type === 'STRING') {
-        const escaped = String(defaultValue.value).replace(/'/g, "''");
+        const value = String(defaultValue.value);
+        // DSL backslashes are literal. Preserve them under MySQL's default
+        // backslash escaping for ENUM; keep legacy STRING output unchanged.
+        const escaped = (enumLiteral ? value.replace(/\\/g, '\\\\') : value).replace(/'/g, "''");
         return `'${escaped}'`;
     }
     if (defaultValue.type === 'NUMBER') {
@@ -186,6 +189,9 @@ const MYSQL_TYPE_MAP = {
  * @returns {string} - MySQL column type
  */
 function getMySQLColumnType(field) {
+    if (field?.dataType === 'ENUM') {
+        return `ENUM(${field.enumValues.map(value => formatSQLLiteral({ type: 'STRING', value }, true)).join(', ')}) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin`;
+    }
     if (!field || field.dataType !== 'STRING') {
         return MYSQL_TYPE_MAP[field && field.dataType] || (field && field.dataType);
     }
@@ -206,7 +212,8 @@ const SWAGGER_TYPE_MAP = {
     'INT': 'integer',
     'STRING': 'string',
     'FLOAT': 'number',
-    'BOOLEAN': 'boolean'
+    'BOOLEAN': 'boolean',
+    'ENUM': 'string'
 };
 
 /**
@@ -289,6 +296,7 @@ function extractEntitiesFromIR(ir) {
             entity.fields.push({
                 name: inst.field,
                 dataType: inst.dataType,
+                ...(inst.dataType === 'ENUM' ? { enumValues: [...inst.enumValues] } : {}),
                 constraints: inst.constraints || [],
                 validations: inst.validations || [],
                 defaultValue: inst.defaultValue || null,
@@ -403,7 +411,7 @@ function generateSQL(ir) {
 
             // DEFAULT clause
             if (hasDefault) {
-                const sqlVal = formatSQLLiteral(field.defaultValue);
+                const sqlVal = formatSQLLiteral(field.defaultValue, field.dataType === 'ENUM');
                 parts.push(`DEFAULT ${sqlVal}`);
             }
 
@@ -807,6 +815,17 @@ function generateController(entityName, fieldsOrRelations = [], maybeRelations =
     // Build validation checks for fields with numeric or string-length validations
     const validationCheckLines = [];
     (fields || []).forEach(f => {
+        if (f.dataType === 'ENUM') {
+            const access = `data[${JSON.stringify(f.name)}]`;
+            const required = f.constraints?.includes('REQUIRED');
+            const message = `Field '${f.name}' must be one of: ${f.enumValues.join(', ')}.`;
+            validationCheckLines.push(
+                `    if (${access} !== undefined && (${required ? '' : `${access} !== null && `}` +
+                `(typeof ${access} !== 'string' || !${JSON.stringify(f.enumValues)}.includes(${access})))) {\n` +
+                `        return ${JSON.stringify(message)};\n` +
+                `    }`
+            );
+        }
         if (Array.isArray(f.validations) && f.validations.length > 0) {
             const minV = f.validations.find(v => v.type === 'MIN');
             const maxV = f.validations.find(v => v.type === 'MAX');
@@ -1184,6 +1203,7 @@ function generateSwagger(entities, relations = []) {
         const properties = {};
         entity.fields.forEach(f => {
             const prop = { type: SWAGGER_TYPE_MAP[f.dataType] || 'string' };
+            if (f.dataType === 'ENUM') prop.enum = [...f.enumValues];
 
             // Add numeric and string-length bounds if validations exist
             if (Array.isArray(f.validations)) {

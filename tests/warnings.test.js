@@ -43,7 +43,10 @@ function checkWarning(warning, code, symbol, phase = 'optimizer') {
 
 (async () => {
     await test('all 57 error code assignments match the pre-change registry', () => {
-        assert.equal(hash(CODES), baseline.errorRegistrySha256);
+        const original = require('./fixtures/enum-compatibility.json').codes;
+        const retained = Object.fromEntries(Object.entries(original).map(([phase, codes]) =>
+            [phase, Object.fromEntries(Object.keys(codes).map(symbol => [symbol, CODES[phase][symbol]]))]));
+        assert.equal(hash(retained), baseline.errorRegistrySha256);
     });
     await test('implicit primary key is a single located warning, never an error or an AST/IR field', () => {
         const result = compile(baseline.programs.implicit.source);

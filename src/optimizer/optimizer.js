@@ -271,11 +271,12 @@ function removeDuplicateFields(instructions) {
         } else {
             const prevInst = seenFields.get(key);
             const sameType = prevInst.dataType === inst.dataType;
+            const sameEnumValues = JSON.stringify(prevInst.enumValues) === JSON.stringify(inst.enumValues);
             const sameConstraints = JSON.stringify(prevInst.constraints) === JSON.stringify(inst.constraints);
             const sameValidations = JSON.stringify(prevInst.validations || []) === JSON.stringify(inst.validations || []);
             const sameDefault = JSON.stringify(prevInst.defaultValue || null) === JSON.stringify(inst.defaultValue || null);
 
-            if (sameType && sameConstraints && sameValidations && sameDefault) {
+            if (sameType && sameEnumValues && sameConstraints && sameValidations && sameDefault) {
                 // Exact duplicate — eliminate
                 removedCount++;
             } else {

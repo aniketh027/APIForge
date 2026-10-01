@@ -54,7 +54,11 @@ age INT MIN 18 MAX 60 DEFAULT 25
 status STRING DEFAULT "active" MIN_LENGTH 3 MAX_LENGTH 20
 cgpa FLOAT MIN 0.0 MAX 10.0 DEFAULT 8.5
 active BOOLEAN DEFAULT TRUE`
-    }
+    },
+    { name: 'ENUM Account', code: `ENTITY Account
+id INT PRIMARY KEY
+email STRING REQUIRED UNIQUE
+status ENUM("active", "suspended", "closed") DEFAULT "active"` }
 ];
 
 let currentExampleIndex = 0;
@@ -492,7 +496,7 @@ function renderAST(ast) {
                 const defVal = typeof field.defaultValue.value === 'string' ? `"${field.defaultValue.value}"` : field.defaultValue.value;
                 defStr = ` <span class="symbol-default">[DEFAULT ${escapeHtml(String(defVal))}]</span>`;
             }
-            html += `<div class="ast-node">${childPrefix}${fPrefix}Field: <span class="ast-field">${escapeHtml(field.name)}</span> (<span class="ast-type">${escapeHtml(field.dataType)}</span>)${constraints}${valStr}${defStr}</div>`;
+            html += `<div class="ast-node">${childPrefix}${fPrefix}Field: <span class="ast-field">${escapeHtml(field.name)}</span> (<span class="ast-type">${escapeHtml(displayDataType(field))}</span>)${constraints}${valStr}${defStr}</div>`;
         });
     });
 
@@ -511,6 +515,12 @@ function renderAST(ast) {
 // ═════════════════════════════════════════════════════════════
 // RENDER: SYMBOL TABLE
 // ═════════════════════════════════════════════════════════════
+
+function displayDataType(field) {
+    return field.dataType === 'ENUM'
+        ? `ENUM(${field.enumValues.map(value => JSON.stringify(value)).join(', ')})`
+        : field.dataType;
+}
 
 function renderSymbolTable(symbolTable) {
     if (!symbolTable || Object.keys(symbolTable).length === 0) {
@@ -537,7 +547,7 @@ function renderSymbolTable(symbolTable) {
             rows += `<tr>
                 <td class="symbol-entity">${fIdx === 0 ? escapeHtml(entityName) : ''}</td>
                 <td class="symbol-field">${escapeHtml(fieldName)}</td>
-                <td class="symbol-type">${escapeHtml(field.dataType)}</td>
+                <td class="symbol-type">${escapeHtml(displayDataType(field))}</td>
                 <td>${constraints}</td>
                 <td class="symbol-validation">${escapeHtml(validations)}</td>
                 <td class="symbol-default">${escapeHtml(defaultVal)}</td>
@@ -580,7 +590,7 @@ function renderIR(ir, label) {
                 const defVal = typeof inst.defaultValue.value === 'string' ? `"${inst.defaultValue.value}"` : inst.defaultValue.value;
                 dStr = ` <span class="ir-default">[DEFAULT ${escapeHtml(String(defVal))}]</span>`;
             }
-            html += `<div class="ir-instruction">${num}<div class="ir-content"><span class="ir-op">ADD_FIELD</span> <span class="ir-entity">${escapeHtml(inst.entity)}</span>.<span class="ir-field">${escapeHtml(inst.field)}</span> <span class="ir-type">${escapeHtml(inst.dataType)}</span>${cStr}${vStr}${dStr}</div></div>`;
+            html += `<div class="ir-instruction">${num}<div class="ir-content"><span class="ir-op">ADD_FIELD</span> <span class="ir-entity">${escapeHtml(inst.entity)}</span>.<span class="ir-field">${escapeHtml(inst.field)}</span> <span class="ir-type">${escapeHtml(displayDataType(inst))}</span>${cStr}${vStr}${dStr}</div></div>`;
         } else if (inst.op === 'CREATE_RELATION') {
             html += `<div class="ir-instruction">${num}<div class="ir-content"><span class="ir-op">CREATE_RELATION</span> <span class="ir-entity">${escapeHtml(inst.sourceEntity)}</span> <span class="ir-field">${escapeHtml(inst.relationName)}</span> <span class="ir-entity">${escapeHtml(inst.targetEntity)}</span> <span class="ir-constraint">[${escapeHtml(inst.relationType)}]</span></div></div>`;
         }
@@ -701,7 +711,7 @@ function highlightSQL(sql) {
         'FOREIGN', 'REFERENCES', 'CHECK', 'CASCADE', 'ON', 'AND',
         'ALTER', 'ADD', 'COLUMN', 'CONSTRAINT'
     ];
-    const types = ['INT', 'VARCHAR', 'FLOAT', 'BOOLEAN', 'TEXT', 'DATE', 'DATETIME'];
+    const types = ['INT', 'VARCHAR', 'FLOAT', 'BOOLEAN', 'ENUM', 'TEXT', 'DATE', 'DATETIME'];
 
     let result = escapeHtml(sql);
 

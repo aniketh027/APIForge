@@ -34,7 +34,8 @@
  * ── Token Types ──
  * 
  * KEYWORD         → ENTITY, RELATION
- * DATATYPE        → INT, STRING, FLOAT, BOOLEAN
+ * DATATYPE        → INT, STRING, FLOAT, BOOLEAN, ENUM
+ * LPAREN / RPAREN / COMMA → (, ), , (ENUM value delimiters)
  * MODIFIER        → PRIMARY, KEY, REQUIRED, UNIQUE, MIN, MAX,
  *                   MIN_LENGTH, MAX_LENGTH, DEFAULT
  * RELATION_TYPE   → ONE_TO_ONE, ONE_TO_MANY, MANY_TO_ONE, MANY_TO_MANY
@@ -73,6 +74,8 @@ const KEYWORDS = new Set([
     'RELATION'
 ]);
 
+const PUNCTUATION = { '(': 'LPAREN', ')': 'RPAREN', ',': 'COMMA' };
+
 /**
  * Supported relationship types.
  * Defines the cardinality between entities:
@@ -100,7 +103,8 @@ const DATA_TYPES = new Set([
     'INT',
     'STRING',
     'FLOAT',
-    'BOOLEAN'
+    'BOOLEAN',
+    'ENUM'
 ]);
 
 /**
@@ -234,6 +238,13 @@ function tokenize(sourceCode) {
 
     while (pos < sourceCode.length) {
         const ch = sourceCode[pos];
+
+        if (PUNCTUATION[ch]) {
+            tokens.push(createToken(PUNCTUATION[ch], ch, line, column, column + 1));
+            pos++;
+            column++;
+            continue;
+        }
 
         // ── Case 1: Newline ─────────────────────────────────
         // When we hit a newline, move to the next line and

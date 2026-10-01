@@ -118,6 +118,21 @@ function validate(ir) {
                     errors.push(`ADD_FIELD instruction at index ${index} must have a 'constraints' array.`);
                 }
 
+                if (inst.dataType === 'ENUM') {
+                    if (!Array.isArray(inst.enumValues) || inst.enumValues.length === 0 ||
+                        Array.from(inst.enumValues).some(value => typeof value !== 'string') ||
+                        new Set(inst.enumValues).size !== inst.enumValues.length) {
+                        errors.push(`ENUM field at index ${index} requires a non-empty array of unique strings in 'enumValues'.`);
+                    }
+                    if (inst.defaultValue && (inst.defaultValue.type !== 'STRING' ||
+                        !Array.isArray(inst.enumValues) || !inst.enumValues.includes(inst.defaultValue.value))) {
+                        errors.push(`ENUM default at index ${index} must be a declared string value.`);
+                    }
+                    if ((Array.isArray(inst.constraints) && inst.constraints.includes('PRIMARY_KEY')) || inst.validations?.length) {
+                        errors.push(`ENUM field at index ${index} cannot have PRIMARY_KEY or bound validations.`);
+                    }
+                }
+
                 // Validation of 'validations' array if present
                 if (inst.validations !== undefined) {
                     if (!Array.isArray(inst.validations)) {
@@ -238,11 +253,16 @@ function generate(ast, semanticResult = null) {
                 entity: entity.name,
                 field: field.name,
                 dataType: field.dataType,
+                ...(field.dataType === 'ENUM' ? { enumValues: [...field.enumValues] } : {}),
                 constraints: [...(field.constraints || [])],
                 validations,
                 defaultValue,
                 line: field.line
             });
+            if (field.dataType === 'ENUM' && field.sourceLocations) {
+                Object.defineProperty(instructions[instructions.length - 1], 'sourceLocations',
+                    { value: field.sourceLocations });
+            }
         }
     }
 
