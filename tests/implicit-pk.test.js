@@ -14,6 +14,7 @@ const Codegen = require('../src/codegen/codegen');
 const { CODES, WARNING_CODES } = require('../src/utils/diagnostics');
 const { hash } = require('./collection-query-test-helpers');
 const baseline = require('./fixtures/implicit-pk-compatibility.json');
+const { projectWriteChanges } = require('./request-validation-test-helpers');
 const root = path.resolve(__dirname, '..');
 let passed = 0;
 async function test(name, fn) { await fn(); passed++; console.log(`  ✓ ${name}`); }
@@ -86,13 +87,13 @@ function zipEntries(bytes) {
             assert.equal(swagger.paths['/items/{id}'].parameters[0].schema.type, 'string');
         }
     });
-    await test('15 before/after programs preserve source phases; all explicit files and implicit SQL stay byte-identical', () => {
+    await test('15 before/after programs preserve source phases; all unaffected generated sections and implicit SQL stay byte-identical', () => {
         for (const [name, source] of Object.entries(baseline.sources)) {
             const result = compile(source);
             assert.equal(hash({ ast: result.ast, symbols: result.semantic.symbolTable, ir: result.ir,
                 optimized: result.optimized, warnings: result.semantic.warnings }), baseline.programs[name].phases, name);
             assert.deepEqual(result.files.map(f => f.path), Object.keys(baseline.programs[name].files));
-            const changed = result.files.filter(f => hash(f.content) !== baseline.programs[name].files[f.path]).map(f => f.path);
+            const changed = projectWriteChanges(result.files, source).filter(f => hash(f.content) !== baseline.programs[name].files[f.path]).map(f => f.path);
             assert.deepEqual(changed, name === 'implicit' ? ['models/Student.js', 'swagger.json'] : [], name);
             for (const f of result.files.filter(f => f.path.endsWith('.js'))) new vm.Script(f.content, { filename: f.path });
         }

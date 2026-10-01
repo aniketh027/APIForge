@@ -13,6 +13,7 @@ const { CODES, WARNING_CODES } = require('../src/utils/diagnostics');
 const { compileProject } = require('./generated-backend-test-helpers');
 const { hash, protectedSections } = require('./collection-query-test-helpers');
 const baseline = require('./fixtures/collection-query-compatibility.json');
+const { projectWriteChanges } = require('./request-validation-test-helpers');
 let passed = 0;
 async function test(name, fn) { await fn(); passed++; console.log(`  ✓ ${name}`); }
 function load(source, requireImpl) {
@@ -166,7 +167,7 @@ const fail = query => assert.throws(() => parse(query), error => error.statusCod
             assert.equal(hash({ tokens, ast, symbols: semantic.symbolTable, ir, optimized }), baseline.programs[name].phases, name);
             const generated = Codegen.generate(optimized, false).files;
             assert.deepEqual(generated.map(f => f.path), baseline.programs[name].paths);
-            for (const f of generated) {
+            for (const f of projectWriteChanges(generated, source)) {
                 if (f.path === 'README.md') { assert(f.content.includes('Collection query options')); continue; }
                 // Keep the old fixture frozen. Project only the two approved
                 // implicit-identity changes back to their legacy representation

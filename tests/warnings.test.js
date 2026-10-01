@@ -14,6 +14,7 @@ const Codegen = require('../src/codegen/codegen');
 const { CODES, COMPILER_PHASES, createWarningDiagnostic, sortDiagnostics } = require('../src/utils/diagnostics');
 const { sourceFrame } = require('../src/utils/source-frame');
 const baseline = require('./fixtures/warning-artifact-baseline.json');
+const { projectWriteChanges } = require('./request-validation-test-helpers');
 const { stableArtifacts } = require('./collection-query-test-helpers');
 const app = require('../server');
 const root = path.resolve(__dirname, '..');
@@ -105,7 +106,7 @@ function checkWarning(warning, code, symbol, phase = 'optimizer') {
             assert.equal(hash(result.ir), program.irSha256);
             assert.equal(hash(result.optimized.ir), program.optimizedIRSha256);
             assert.deepEqual(result.files.map(f => f.path), program.files.map(f => f.path));
-            assert.deepEqual(stableArtifacts(result.files).map(f => ({ path: f.path, sha256: hash(f.content) })), stableArtifacts(program.files));
+            assert.deepEqual(stableArtifacts(projectWriteChanges(result.files, program.source)).map(f => ({ path: f.path, sha256: hash(f.content) })), stableArtifacts(program.files));
         });
     }
     await test('optimizer removes exact duplicates and preserves conflicts with structured field warnings', () => {
@@ -216,7 +217,7 @@ function checkWarning(warning, code, symbol, phase = 'optimizer') {
             const result = await post(baseline.programs.implicit.source);
             checkSuccess(result);
             assert.deepEqual(result.data.warnings, compile(baseline.programs.implicit.source).semantic.warnings);
-            assert.deepEqual(stableArtifacts(result.data.generatedFiles).map(f => ({ path: f.path, sha256: hash(f.content) })), stableArtifacts(baseline.programs.implicit.files));
+            assert.deepEqual(stableArtifacts(projectWriteChanges(result.data.generatedFiles, baseline.programs.implicit.source)).map(f => ({ path: f.path, sha256: hash(f.content) })), stableArtifacts(baseline.programs.implicit.files));
         });
         await test('HTTP combines semantic and optimizer warnings once in phase order', async () => {
             // DSL conflicts are rejected earlier. Inject real direct-IR optimizer diagnostics

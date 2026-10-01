@@ -238,15 +238,14 @@ phase('codegen', () => {
     });
 
     test('generates Unicode-aware Express length validation with omitted/null behavior preserved', () => {
-        const match = controller.match(/function validateUser\(data\) \{[\s\S]*?\n\}/);
-        assert(match);
-        const validate = new Function('data', match[0].replace('function validateUser(data) {', '').replace(/\n\}$/, ''));
+        const validate = require('./request-validation-test-helpers').load(controller, () => ({})).validateUser;
         assert.strictEqual(validate({ username: 'ab' }), "Field 'username' length must be >= 3.");
         assert.strictEqual(validate({ username: 'abcdefghijklmnopqrstu' }), "Field 'username' length must be <= 20.");
         assert.strictEqual(validate({ username: 'abc' }), null);
         assert.strictEqual(validate({ tag: '😀😀' }), null);
         assert.strictEqual(validate({}), null);
-        assert.strictEqual(validate({ username: null }), null);
+        assert.strictEqual(validate({ username: null }), "Field 'username' cannot be null.");
+        assert.strictEqual(validate({ tag: null }), null);
         assert.strictEqual(validate({ username: 123 }), "Field 'username' must be a string.");
     });
 

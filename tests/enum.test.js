@@ -15,6 +15,7 @@ const Codegen = require('../src/codegen/codegen');
 const { CODES, WARNING_CODES } = require('../src/utils/diagnostics');
 const { compileProject, snapshotDirectory } = require('./generated-backend-test-helpers');
 const baseline = require('./fixtures/enum-compatibility.json');
+const { projectWriteChanges } = require('./request-validation-test-helpers');
 const { queryArtifact } = require('./collection-query-test-helpers');
 const prefix = 'ENTITY User\nid INT PRIMARY KEY\nstatus ';
 const parse = source => Parser.parse(Lexer.tokenize(source));
@@ -169,7 +170,8 @@ async function close(server) { await new Promise(resolve => server.close(resolve
         } finally { await close(server); }
         const requiredController = loadModule(compileProject(prefix + 'ENUM("a") REQUIRED').find(f => f.path.includes('Controller')).content, () => model);
         assert(requiredController.validateUser({ status: null }));
-        assert.equal(requiredController.validateUser({}), null); // Existing omission semantics remain database-enforced.
+        assert.equal(requiredController.validateUser({}), null); // Default direct validation mode is partial update.
+        assert.equal(requiredController.validateUser({}, 'create'), "Field 'status' is required.");
     });
     await test('compiler HTTP API reports success, parser and semantic failure with later phases skipped', async () => {
         const server = require('../server').listen(0); await new Promise(resolve => server.once('listening', resolve));
@@ -203,7 +205,7 @@ async function close(server) { await new Promise(resolve => server.close(resolve
     });
     await test('unchanged generated files match pre-ENUM baselines for five representative old programs', () => {
         for (const [name, source] of Object.entries(baseline.sources)) {
-            const hashes = Object.fromEntries(compileProject(source).map(f => [f.path, crypto.createHash('sha256').update(f.content).digest('hex')]));
+            const hashes = Object.fromEntries(projectWriteChanges(compileProject(source), source).map(f => [f.path, crypto.createHash('sha256').update(f.content).digest('hex')]));
             const stable = entries => Object.fromEntries(Object.entries(entries).filter(([file]) => !queryArtifact(file)));
             assert.deepEqual(Object.keys(hashes), Object.keys(baseline.projects[name]));
             assert.deepEqual(stable(hashes), stable(baseline.projects[name]), name);

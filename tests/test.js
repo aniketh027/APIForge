@@ -4898,20 +4898,12 @@ const studentFields = [
     { name: 'score', dataType: 'FLOAT', constraints: [], validations: [{ type: 'MIN', value: 0 }, { type: 'MAX', value: 100 }], defaultValue: null }
 ];
 const ctrlContent = CodeGenerator.generateController('Student', studentFields);
-assertTrue('Controller contains validateStudent function', ctrlContent.includes('function validateStudent(data)'));
-assertTrue('Controller contains min check for age', ctrlContent.includes("data.age < 18"));
-assertTrue('Controller contains max check for age', ctrlContent.includes("data.age > 60"));
-assertTrue('Controller contains min check for score', ctrlContent.includes("data.score < 0"));
-assertTrue('Controller contains max check for score', ctrlContent.includes("data.score > 100"));
-assertTrue('Controller create calls validateStudent', ctrlContent.includes("const validationError = validateStudent(req.body)"));
-assertTrue('Controller update calls validateStudent', ctrlContent.includes("const validationError = validateStudent(req.body)"));
-
-// ── Codegen Test: Execute generated validation function directly via Function constructor ──
-console.log('');
-console.log('── Codegen: Execute validate function directly ──');
-const fnMatch = ctrlContent.match(/function validateStudent\(data\) \{[\s\S]*?\n\}/);
-assertTrue('Found validateStudent function implementation', !!fnMatch);
-const validateStudentFn = new Function('data', fnMatch[0].replace('function validateStudent(data) {', '').replace(/\n\}$/, ''));
+const validateStudentFn = require('./request-validation-test-helpers').load(ctrlContent, () => ({})).validateStudent;
+assertTrue('Controller exports validateStudent function', typeof validateStudentFn === 'function');
+assertTrue('Controller includes integer type check', ctrlContent.includes('Number.isSafeInteger(value)'));
+assertTrue('Controller includes numeric bounds', ctrlContent.includes("['MIN', 'MAX', 'MIN_LENGTH', 'MAX_LENGTH']"));
+assertTrue('Controller create uses create validation', ctrlContent.includes("validateStudent(req.body, 'create')"));
+assertTrue('Controller update uses partial validation', ctrlContent.includes('validateStudent(req.body)'));
 
 // API validation below MIN
 assertEqual('Reject below MIN (age: 12)', validateStudentFn({ age: 12 }), "Field 'age' must be >= 18.");
@@ -4922,8 +4914,11 @@ assertEqual('Accept valid (age: 25)', validateStudentFn({ age: 25 }), null);
 // API accepts boundary values
 assertEqual('Accept min boundary (age: 18)', validateStudentFn({ age: 18 }), null);
 assertEqual('Accept max boundary (age: 60)', validateStudentFn({ age: 60 }), null);
+assertEqual('Reject score below MIN', validateStudentFn({ score: -1 }), "Field 'score' must be >= 0.");
+assertEqual('Reject score above MAX', validateStudentFn({ score: 101 }), "Field 'score' must be <= 100.");
+assertEqual('Reject numeric string score before comparisons', validateStudentFn({ score: '20' }), "Field 'score' must be a finite number.");
 // API allows omitted field (relies on DB default)
-assertEqual('Accept omitted field payload', validateStudentFn({ name: 'Aniketh' }), null);
+assertEqual('Accept omitted field payload', validateStudentFn({}), null);
 
 // ── Codegen Test: Swagger Schema metadata (minimum, maximum, default) ──
 console.log('');
