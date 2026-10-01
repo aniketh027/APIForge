@@ -1,0 +1,206 @@
+{
+  "baselineCommit": "170b4e3a043d4ba0e706d38ab5cabc462cf7dd7d",
+  "errorRegistrySha256": "3fb97e9979629aaec4c63b3d65e622ee8ec076e7f51a718a0687c77e355279f0",
+  "programs": {
+    "explicit": {
+      "source": "ENTITY Student\nid INT PRIMARY KEY\nname STRING REQUIRED",
+      "irSha256": "78d76b188d373b6481e33aed76d0c61e65f52f87733a5da89daf6d96c485db99",
+      "optimizedIRSha256": "78d76b188d373b6481e33aed76d0c61e65f52f87733a5da89daf6d96c485db99",
+      "files": [
+        {
+          "path": "database/schema.sql",
+          "sha256": "61f450d77fdd884cdb10ee258a7885736510a733ed627c5771944f65b738878d"
+        },
+        {
+          "path": "config/db.js",
+          "sha256": "eb0676c33db434bd7361c6a6f6b89855f34432bbb999fe14324fbb0d66109569"
+        },
+        {
+          "path": ".env.example",
+          "sha256": "bfcc5a50359e88d9127a837568cfe7a19657f52ef65614b16e95556aa54dba07"
+        },
+        {
+          "path": "package.json",
+          "sha256": "a53032414a3b6f14d05096213a0e4308ee7ac5ec5db0c31f5b941b90945e8894"
+        },
+        {
+          "path": "README.md",
+          "sha256": "13ee70329174b4b2c71d5212b664984f5fc909562451e6083786b732c520ebe6"
+        },
+        {
+          "path": "models/Student.js",
+          "sha256": "09131077ddbb9992d51babbdd4be917a7fb955da10dbf0fdcc61ef4436baf5b4"
+        },
+        {
+          "path": "controllers/studentController.js",
+          "sha256": "bce106b371cf59a55074e356a923c6933743518ccea045704f5dab74439a1393"
+        },
+        {
+          "path": "routes/studentRoutes.js",
+          "sha256": "d82d305c5a438ed8c172c404548d401a8bbc2fa1f4c37349cf6130d32bd26fcc"
+        },
+        {
+          "path": "server.js",
+          "sha256": "b6974dead19150402922cf9cb82ce48c514c71149060db6999c72066b52622ec"
+        },
+        {
+          "path": "swagger.json",
+          "sha256": "332f964c6d63bf7083def8e5cc89299214178ccb514e433eb6954fde9860bf90"
+        }
+      ]
+    },
+    "implicit": {
+      "source": "ENTITY Student\nname STRING REQUIRED\nage INT",
+      "irSha256": "dce7c17896dace0943d86255f7932e8f17c6bba6a7b8a6682c1d39a39515769e",
+      "optimizedIRSha256": "dce7c17896dace0943d86255f7932e8f17c6bba6a7b8a6682c1d39a39515769e",
+      "files": [
+        {
+          "path": "database/schema.sql",
+          "sha256": "ab5efacbacd8c4a7a3342e21f5c1d964243292e29b74f121a05c4dd14b228597"
+        },
+        {
+          "path": "config/db.js",
+          "sha256": "eb0676c33db434bd7361c6a6f6b89855f34432bbb999fe14324fbb0d66109569"
+        },
+        {
+          "path": ".env.example",
+          "sha256": "bfcc5a50359e88d9127a837568cfe7a19657f52ef65614b16e95556aa54dba07"
+        },
+        {
+          "path": "package.json",
+          "sha256": "a53032414a3b6f14d05096213a0e4308ee7ac5ec5db0c31f5b941b90945e8894"
+        },
+        {
+          "path": "README.md",
+          "sha256": "13ee70329174b4b2c71d5212b664984f5fc909562451e6083786b732c520ebe6"
+        },
+        {
+          "path": "models/Student.js",
+          "sha256": "4277ac299155c7c92fa6beb55a478178146cee8bf9f35ca89fd9e85be5491773"
+        },
+        {
+          "path": "controllers/studentController.js",
+          "sha256": "bce106b371cf59a55074e356a923c6933743518ccea045704f5dab74439a1393"
+        },
+        {
+          "path": "routes/studentRoutes.js",
+          "sha256": "d82d305c5a438ed8c172c404548d401a8bbc2fa1f4c37349cf6130d32bd26fcc"
+        },
+        {
+          "path": "server.js",
+          "sha256": "b6974dead19150402922cf9cb82ce48c514c71149060db6999c72066b52622ec"
+        },
+        {
+          "path": "swagger.json",
+          "sha256": "c8bd8c8acf2a3af24685e0c5a8d33ecc093e7d8ddf536f7ee2340786ebf9bfe1"
+        }
+      ]
+    },
+    "relationship": {
+      "source": "ENTITY Student\nid INT PRIMARY KEY\nname STRING\nENTITY Course\nid INT PRIMARY KEY\ntitle STRING\nRELATION Student ENROLLS Course MANY_TO_MANY",
+      "irSha256": "2bef629813bce34b58f7411cce3ca4f8e4d2d6cadfe2300119782c97ce1d8257",
+      "optimizedIRSha256": "2bef629813bce34b58f7411cce3ca4f8e4d2d6cadfe2300119782c97ce1d8257",
+      "files": [
+        {
+          "path": "database/schema.sql",
+          "sha256": "33fc785910ad2ab866c379f238216dd175f41fdcd0ce33e326ef9ef254c31bc9"
+        },
+        {
+          "path": "config/db.js",
+          "sha256": "eb0676c33db434bd7361c6a6f6b89855f34432bbb999fe14324fbb0d66109569"
+        },
+        {
+          "path": ".env.example",
+          "sha256": "bfcc5a50359e88d9127a837568cfe7a19657f52ef65614b16e95556aa54dba07"
+        },
+        {
+          "path": "package.json",
+          "sha256": "a53032414a3b6f14d05096213a0e4308ee7ac5ec5db0c31f5b941b90945e8894"
+        },
+        {
+          "path": "README.md",
+          "sha256": "a51f2365e9b0184d1a54ed749478989b691f321d283b0a3b97c0c502bea4b8ae"
+        },
+        {
+          "path": "models/Student.js",
+          "sha256": "3a386b6b7c2256a742fae9174b4e0b199e69e2c1c01dd2b17795fa627bba7cd0"
+        },
+        {
+          "path": "controllers/studentController.js",
+          "sha256": "37bd2c6c19694f3447e7c374b0d88b2b8d0a3dc94b01dc4f8234baabc999d98e"
+        },
+        {
+          "path": "routes/studentRoutes.js",
+          "sha256": "1d40874565aa3e0a27c098d42df6d4e1e4f6b99ec4d7ddc00c657d1ec28407b3"
+        },
+        {
+          "path": "models/Course.js",
+          "sha256": "e4666f322708ed8a51ef4833710e436064a185b7283276a1a4adacec20d8c6e6"
+        },
+        {
+          "path": "controllers/courseController.js",
+          "sha256": "6c7e2016f92292854bb623c3ff0cbe2e84a178521d079f9acebf03f2418cf6d8"
+        },
+        {
+          "path": "routes/courseRoutes.js",
+          "sha256": "1a33c97daa3d235ab7dc16ddf5ae0caf7a7977b3ab0f53c0de2a8161b28d13e9"
+        },
+        {
+          "path": "server.js",
+          "sha256": "569a67694e3c5470485eda3b980a094a491ea8ddde5dd95c7950fa116cf03914"
+        },
+        {
+          "path": "swagger.json",
+          "sha256": "cbd33545efae332b4921404eba326f4ac2a05839e4969bf92fca3c94d5f09d45"
+        }
+      ]
+    },
+    "length": {
+      "source": "ENTITY Student\nid INT PRIMARY KEY\nname STRING MIN_LENGTH 2 MAX_LENGTH 300 DEFAULT \"valid\"",
+      "irSha256": "87f35ad4ac448ae8a87dd0251460f19d4c499b0c9f448b70d611b47e1977fd15",
+      "optimizedIRSha256": "87f35ad4ac448ae8a87dd0251460f19d4c499b0c9f448b70d611b47e1977fd15",
+      "files": [
+        {
+          "path": "database/schema.sql",
+          "sha256": "7bd7c19aae6605cdf27adc6953f2d8cbe20961711e52953e5b1428da19e15ca2"
+        },
+        {
+          "path": "config/db.js",
+          "sha256": "eb0676c33db434bd7361c6a6f6b89855f34432bbb999fe14324fbb0d66109569"
+        },
+        {
+          "path": ".env.example",
+          "sha256": "bfcc5a50359e88d9127a837568cfe7a19657f52ef65614b16e95556aa54dba07"
+        },
+        {
+          "path": "package.json",
+          "sha256": "a53032414a3b6f14d05096213a0e4308ee7ac5ec5db0c31f5b941b90945e8894"
+        },
+        {
+          "path": "README.md",
+          "sha256": "13ee70329174b4b2c71d5212b664984f5fc909562451e6083786b732c520ebe6"
+        },
+        {
+          "path": "models/Student.js",
+          "sha256": "b660a585b8d1e2014021c36e51da8205c4bf589e87926998a4ffa69bb35c5a11"
+        },
+        {
+          "path": "controllers/studentController.js",
+          "sha256": "70383a25755212d2ae7984d208b02820cf2b5cde6e5048e00d6cd4605573ff14"
+        },
+        {
+          "path": "routes/studentRoutes.js",
+          "sha256": "d82d305c5a438ed8c172c404548d401a8bbc2fa1f4c37349cf6130d32bd26fcc"
+        },
+        {
+          "path": "server.js",
+          "sha256": "b6974dead19150402922cf9cb82ce48c514c71149060db6999c72066b52622ec"
+        },
+        {
+          "path": "swagger.json",
+          "sha256": "90e2729192d0ac2e40fc1b0278154f16006374e2c693cd4ddf429dd1bf444c79"
+        }
+      ]
+    }
+  }
+}

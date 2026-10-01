@@ -294,7 +294,10 @@ APIForge is designed to fail helpfully:
 The compiler, CLI, HTTP API and playground share stable diagnostic codes,
 optional source ranges and deterministic hints. Existing messages and symbolic
 codes remain available. See [Structured compiler diagnostics](docs/structured-diagnostics.md)
-for the format, full registry and compatibility details.
+for the format, full registry and compatibility details. Non-fatal warnings use
+the same model and separate `WRN` codes: omitted primary keys produce `WRN001`,
+and existing direct-IR optimizer warnings are structured too. Warning-only
+compilations still generate all files, return HTTP 200 and exit 0 in the CLI.
 
 Example:
 

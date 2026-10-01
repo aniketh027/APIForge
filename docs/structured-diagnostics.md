@@ -1,10 +1,10 @@
 # Structured compiler diagnostics
 
-APIForge exposes error diagnostics through one JSON contract, implemented in
+APIForge exposes errors and non-fatal warnings through one JSON contract, implemented in
 `src/utils/diagnostics.js`. The six compiler phases and DSL rules are unchanged.
 Lexer and parser failures still stop immediately; semantic analysis retains its
 existing collection of errors. Later phases never run after a failed phase.
-This contract introduces no warning or recovery behavior.
+Warnings never fail a phase or stop compilation. Fatal error behavior is unchanged.
 
 ```json
 {
@@ -44,6 +44,8 @@ guidance; existing message-level suggestions remain for compatibility.
 - Semantic results expose `.diagnostics` alongside `.errors`. Existing error
   messages remain, and legacy entries have symbolic `.code` and `.diagnostic`.
   `MISSING_ENTITY_DECLARATION` remains the symbol for `SEM001`.
+  `.warnings` is a separate array of shared diagnostics with `severity: "warning"`.
+  Valid programs may have warnings; `valid` still depends only on errors.
 - Failed HTTP compilations expose `.diagnostic` (first error), `.diagnostics`
   (all existing errors), `.phase`, boolean `.phases`, and explicit `.phaseStates`
   (`succeeded`, `failed`, `skipped`). Legacy `.errors` and successful partial
@@ -56,6 +58,75 @@ guidance; existing message-level suggestions remain for compatibility.
   CLI and the legacy `formatCodeFrame` utility. Start-only locations use one
   caret. Multi-line ranges highlight each covered line. Empty strings reach
   semantic analysis, consistently with the HTTP API.
+
+## Warnings
+
+For `ENTITY Student` followed by `name STRING`, semantic analysis returns:
+
+```json
+{
+  "phase": "semantic",
+  "code": "WRN001",
+  "severity": "warning",
+  "message": "Entity 'Student' has no explicit primary key. APIForge will generate an implicit integer id field.",
+  "symbol": "IMPLICIT_PRIMARY_KEY",
+  "line": 1,
+  "column": 8,
+  "endLine": 1,
+  "endColumn": 15,
+  "hint": "Declare an explicit PRIMARY KEY to control the identifier."
+}
+```
+
+`createDiagnostic()` defaults to `error`, preserving existing error shapes.
+`createWarningDiagnostic()` uses the same factory with a fixed warning severity
+and a separate central registry. Unknown conditions, conditions registered for
+the wrong severity, and unsupported severities throw rather than silently assign
+a code. Optional fields and source ranges follow the same rules for both severities.
+
+Warning codes use the **WRN plus three explicit digits** namespace, independently
+of phase. `WARNING_CODES` in `src/utils/diagnostics.js` owns the append-only
+assignments: never renumber or reuse them. All 57 existing error assignments are
+unchanged. `symbol` describes the condition; `phase` identifies its emitter.
+
+| Phase | Code | Symbol | Existing behavior reported |
+|---|---|---|---|
+| semantic | WRN001 | IMPLICIT_PRIMARY_KEY | Valid entity lacks an explicit PK; SQL generation adds `id INT PRIMARY KEY AUTO_INCREMENT`. |
+| optimizer | WRN002 | CONFLICTING_FIELD | Direct-IR duplicate field has differing type, constraints, validations or default; both declarations remain. |
+| optimizer | WRN003 | CONFLICTING_RELATION_TYPE | Direct-IR relationship name/endpoints match but cardinality differs; both declarations remain. |
+| optimizer | WRN004 | CONFLICTING_RELATION_ENDPOINTS | Direct-IR relationship name matches but endpoints differ; both declarations remain. |
+| optimizer | WRN005 | INVALID_IR | Existing non-throwing invalid-IR fallback returns the input unchanged and no optimizations. This does not promise that invalid IR can be generated into a backend. |
+
+Only WRN001 adds a new reported condition. The four optimizer conditions already
+returned warning strings. Ordinary conflicting DSL declarations still fail
+semantic analysis before optimization. Exact IR duplicates are removed without
+warnings. No style or performance policies are added. Implicit-PK warnings are
+reported for valid semantic programs only, where code generation can proceed.
+
+Successful compiler API responses always include `warnings: []` when no warnings
+exist. Responses remain HTTP 200 with `success: true`, six `phases: true` values, six
+`phaseStates: "succeeded"` values, and all generated files. Errors remain in fatal
+`diagnostic`/`diagnostics` and compatible `errors` collections on failures;
+warnings never enter them. Failed phase responses preserve warnings already
+emitted by successful earlier phases. Warning metadata does not enter AST/IR,
+symbol-table values, or generated SQL, JavaScript, package files or OpenAPI.
+
+The existing optimizer/API `.warnings` array now contains structured diagnostic
+objects rather than strings. This is the single canonical representation;
+external string consumers should use `warning.message`. Messages and optimizer
+conflict handling are preserved. No parallel string array is maintained.
+
+All collections use the same deterministic order: compiler phase order, source
+line, source column, then stable code. Known positions precede unknown positions;
+exact ties preserve emission order. Optimizer warnings use existing IR line or
+column/range metadata when present; unknown coordinates stay null. IR generated
+by the normal pipeline currently carries line numbers only.
+
+CLI warnings print once with a `[!]` label, phase, public code, shared source
+frame and optional hint. Warning-only compilations generate output and exit 0.
+The playground retains its green success summary and six successful phases,
+adds an inline warning count when nonzero, and shows compact amber warning items
+using the shared source-frame utility. Zero-warning success appearance is unchanged.
 
 ## HTTP statuses
 

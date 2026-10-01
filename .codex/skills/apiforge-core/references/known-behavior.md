@@ -70,7 +70,9 @@ The current Language Guide's generated CRUD examples include an `/api/<plural>` 
 
 ## Structured diagnostics
 
-`src/utils/diagnostics.js` owns the stable LEX/PAR/SEM/INP/INT code registry.
+`src/utils/diagnostics.js` owns the stable LEX/PAR/SEM/INP/INT error registry
+and the separate append-only WRN warning registry. Errors default to severity
+`error`; `createWarningDiagnostic` uses the same model with severity `warning`.
 Thrown lexer/parser errors have `.diagnostic`; semantic results have `.diagnostics`
 alongside compatible `.errors` entries. HTTP failures expose `diagnostic`,
 `diagnostics`, legacy `errors`, and explicit `phaseStates`. Internal exceptions
@@ -78,3 +80,11 @@ produce safe INT001 diagnostics. Positions are 1-based with exclusive end ranges
 unknown starts are null and unavailable ranges/hints are omitted. CLI and browser
 use `src/utils/source-frame.js`. See `docs/structured-diagnostics.md` for the full
 contract. Blank browser input reaches the same semantic rule as API/CLI input.
+
+Semantic results expose separate structured `warnings` without changing `valid`.
+Valid entities without explicit primary keys receive WRN001 at their names;
+SQL generation retains its implicit integer id behavior. Existing direct-IR
+optimizer field/type/endpoint conflicts and invalid-IR fallback use WRN002-005
+instead of strings (use `.message` for text). CLI/API/playground aggregate
+warnings in phase/location/code order; warning-only compilation remains successful,
+HTTP 200, CLI exit 0, with six succeeded phases and unchanged generated files.

@@ -261,6 +261,10 @@ Constraints enforce structural rules and integrity on fields. Constraints follow
 - **Single Primary Key**: An entity can have **at most one** primary key. Declaring multiple primary keys causes a semantic error.
 - **Auto-Increment Behavior**: For `INT` primary keys without an explicit default value, the code generator automatically adds `AUTO_INCREMENT` in MySQL.
 - **Auto-Injection**: If an entity omits an explicit primary key, APIForge automatically injects an `id INT PRIMARY KEY AUTO_INCREMENT` column during code generation.
+  Valid programs receive the non-fatal `WRN001 / IMPLICIT_PRIMARY_KEY` warning at
+  the entity name. Compilation succeeds and generated artifacts are unchanged.
+  Declare an explicit `PRIMARY KEY` to control the identifier. See
+  [structured diagnostics](structured-diagnostics.md) for the warning contract.
 
 ### 2. REQUIRED
 - Specifies that the field must not be null.
