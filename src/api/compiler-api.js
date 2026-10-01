@@ -15,7 +15,7 @@
  * ============================================================
  */
 
-const { COMPILER_PHASES, createDiagnostic, internalDiagnostic } = require('../utils/diagnostics');
+const { COMPILER_PHASES, createDiagnostic, internalDiagnostic, sortDiagnostics } = require('../utils/diagnostics');
 const express = require('express');
 const router = express.Router();
 
@@ -29,7 +29,8 @@ const CodeGenerator = require('../codegen/codegen');
 
 function failure(res, status, result) {
     const diagnostics = result.errors.map(error => error.diagnostic || internalDiagnostic(result.phase));
-    return res.status(status).json({ ...result, diagnostic: diagnostics[0], diagnostics,
+    return res.status(status).json({ ...result, warnings: sortDiagnostics(result.warnings || []),
+        diagnostic: diagnostics[0], diagnostics,
         phaseStates: Object.fromEntries(COMPILER_PHASES.map(phase => [phase,
             result.phases[phase] ? 'succeeded' : phase === result.phase ? 'failed' : 'skipped'])) });
 }
@@ -138,6 +139,7 @@ router.post('/compile', (req, res) => {
         }
 
         symbolTable = semanticResult.symbolTable;
+        warnings = semanticResult.warnings || [];
         phases.semantic = true;
 
         // ── Phase 4: IR Generation ──────────────────────────
@@ -152,6 +154,7 @@ router.post('/compile', (req, res) => {
                 tokens,
                 ast,
                 symbolTable,
+                warnings,
                 errors: [internalError('ir')]
             });
         }
@@ -161,7 +164,7 @@ router.post('/compile', (req, res) => {
             const optResult = Optimizer.optimize(ir);
             optimizedIR = optResult.ir;
             optimizations = optResult.optimizations || [];
-            warnings = optResult.warnings || [];
+            warnings = sortDiagnostics([...warnings, ...(optResult.warnings || [])]);
             phases.optimizer = true;
         } catch (err) {
             return failure(res, 500, {
@@ -172,6 +175,7 @@ router.post('/compile', (req, res) => {
                 ast,
                 symbolTable,
                 ir,
+                warnings,
                 errors: [internalError('optimizer')]
             });
         }
@@ -214,6 +218,7 @@ router.post('/compile', (req, res) => {
     res.json({
         success: true,
         phases,
+        phaseStates: Object.fromEntries(COMPILER_PHASES.map(phase => [phase, 'succeeded'])),
         tokens,
         ast,
         symbolTable,

@@ -665,6 +665,59 @@ textarea:focus-visible,
     flex: 0 0 auto;
 }
 
+.summary-warning .summary-value,
+.warning-heading {
+    color: var(--warning);
+}
+
+.warning-list {
+    margin-top: var(--space-3);
+    min-width: 0;
+}
+
+.warning-item {
+    padding: 8px 10px;
+    border-left: 2px solid var(--warning);
+    border-radius: var(--radius-sm);
+    background: var(--warning-muted);
+    font-size: 11px;
+    overflow-wrap: anywhere;
+}
+
+.warning-item + .warning-item {
+    margin-top: var(--space-2);
+}
+
+.warning-heading {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    font-weight: 680;
+}
+
+.warning-code,
+.warning-excerpt {
+    font-family: var(--font-mono);
+}
+
+.warning-message {
+    margin-top: 4px;
+    color: var(--text);
+}
+
+.warning-excerpt {
+    max-width: 100%;
+    margin: 6px 0;
+    overflow-x: auto;
+    color: var(--text-muted);
+    white-space: pre;
+}
+
+.warning-hint {
+    margin-top: 4px;
+    color: var(--text-muted);
+}
+
 .download-section.visible {
     display: flex;
 }

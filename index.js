@@ -55,7 +55,7 @@ const IRGenerator = require('./src/ir/generator');
 const Optimizer = require('./src/optimizer/optimizer');
 const CodeGenerator = require('./src/codegen/codegen');
 const { formatDiagnostic } = require('./src/utils/source-frame');
-const { internalDiagnostic } = require('./src/utils/diagnostics');
+const { internalDiagnostic, sortDiagnostics } = require('./src/utils/diagnostics');
 
 // ── Read the source .apiforge file ──────────────────────────
 
@@ -188,7 +188,7 @@ console.log('');
 // - Duplicate entity names
 // - Duplicate field names within an entity
 // - Invalid data type usage
-// - Missing primary key, etc.
+// Warnings (such as an implicit primary key) do not fail this phase.
 
 console.log('─── Phase 3: Semantic Analysis ───');
 let semanticResult;
@@ -334,13 +334,6 @@ if (optResult.optimizations.length === 0) {
     });
 }
 
-if (optResult.warnings.length > 0) {
-    console.log('  Warnings:');
-    optResult.warnings.forEach(warn => {
-        console.log(`    ⚠ ${warn}`);
-    });
-}
-
 console.log('');
 console.log('  Optimized IR Instructions:');
 console.log('  ──────────────────────────');
@@ -424,6 +417,16 @@ codegenResult.files.forEach(file => {
     console.log(`  ✓ output/${file.path}`);
 });
 console.log('');
+
+const warnings = sortDiagnostics([...(semanticResult.warnings || []), ...(optResult.warnings || [])]);
+if (warnings.length > 0) {
+    console.log(`[!] ${warnings.length} warning${warnings.length === 1 ? '' : 's'} — compilation succeeded`);
+    warnings.forEach(warning => {
+        console.log(`[!] ${warning.phase} warning`);
+        console.log(formatDiagnostic(sourceCode, warning));
+        console.log('');
+    });
+}
 
 console.log('╔══════════════════════════════════════════════╗');
 console.log('║       Compilation Complete!                   ║');

@@ -219,7 +219,7 @@ function applyPhaseStatuses(phases, isSuccess, failingPhase, phaseStates) {
     if (phaseStates) {
         PHASE_ORDER.forEach(phase => setPhaseStatus(phase,
             phaseStates[phase] === 'succeeded' ? 'success' : phaseStates[phase] === 'failed' ? 'error' : 'skipped'));
-        if (pipelineState) pipelineState.textContent = `${formatPhaseName(failingPhase || 'compiler')} failed`;
+        if (pipelineState) pipelineState.textContent = isSuccess ? 'All phases completed' : `${formatPhaseName(failingPhase || 'compiler')} failed`;
         return;
     }
     if (!phases) return;
@@ -300,6 +300,7 @@ function renderSummary(data) {
     const filesCount = (data.generatedFiles && Array.isArray(data.generatedFiles))
         ? data.generatedFiles.length
         : 0;
+    const warningsCount = (data.warnings || []).length;
 
     summaryPanel.classList.add('visible');
     summaryContent.innerHTML = `
@@ -311,9 +312,29 @@ function renderSummary(data) {
                 <span class="summary-item"><span class="summary-value">${fieldsCount}</span>${fieldsCount === 1 ? 'field' : 'fields'}</span>
                 <span class="summary-item"><span class="summary-value">${optimizationsCount}</span>${optimizationsCount === 1 ? 'optimization' : 'optimizations'}</span>
                 <span class="summary-item"><span class="summary-value">${filesCount}</span>${filesCount === 1 ? 'file' : 'files'}</span>
+                ${warningsCount ? `<span class="summary-item summary-warning"><span class="summary-value">${warningsCount}</span>${warningsCount === 1 ? 'warning' : 'warnings'}</span>` : ''}
             </div>
+            ${renderWarnings(data.warnings || [])}
         </div>
     `;
+}
+
+function renderWarnings(warnings) {
+    if (!warnings.length) return '';
+    return `<div class="warning-list" role="region" aria-label="Compiler warnings">${warnings.map(warning => {
+        const frames = APIForgeSourceFrame.sourceFrame(editor.value, warning);
+        const excerpt = frames.length ? `<pre class="warning-excerpt">${frames.map(frame =>
+            `${frame.line} | ${escapeHtml(frame.text)}${frame.pointer ? `\n${' '.repeat(String(frame.line).length)} | ${escapeHtml(frame.pointer)}` : ''}`
+        ).join('\n')}</pre>` : '';
+        return `<div class="warning-item">
+            <div class="warning-heading">${escapeHtml(formatPhaseName(warning.phase))} warning
+                <span class="warning-code" title="${escapeHtml(warning.symbol)}">${escapeHtml(warning.code)}</span>
+            </div>
+            <div class="warning-message">${escapeHtml(warning.message)}</div>
+            ${excerpt}
+            ${warning.hint ? `<div class="warning-hint">Hint: ${escapeHtml(warning.hint)}</div>` : ''}
+        </div>`;
+    }).join('')}</div>`;
 }
 
 function hideSummary() {
@@ -580,12 +601,6 @@ function renderOptimizedIR(data) {
         });
     } else {
         html += '<div class="ir-summary">✓ No optimizations required — IR is already optimal</div>';
-    }
-
-    if (data.warnings && data.warnings.length > 0) {
-        data.warnings.forEach(w => {
-            html += `<div class="ir-summary warning">Warning: ${escapeHtml(w)}</div>`;
-        });
     }
 
     html += renderIR(data.optimizedIR, 'Optimized IR');
