@@ -1,1190 +1,878 @@
 # APIForge Language Guide
 
-## 1. Introduction
+Verified against compiler baseline `96a1d34a80cfb21e4b5bdbaddf810dbef576f670`
+on 2026-10-01. Implementation and tests are the authority for this guide.
+See [audit evidence and reproduction commands](language-guide-verification.md).
+
+## 1. Overview
+
+APIForge describes entities, fields, constraints, literal defaults, and
+relationships. It generates MySQL DDL, an Express backend using `mysql2/promise`,
+and an OpenAPI 3.0.0 document.
+
+Compilation runs through lexer, parser/AST, semantic analysis, IR generation,
+optimization, and code generation. Successful compilation means target files
+were generated; it does not mean a database was created or the backend was
+deployed. Target limitations are described below.
+
+The smallest valid declaration consists of one entity and one field:
+
+<!-- example: valid smallest warnings=WRN001 -->
+~~~apiforge
+ENTITY Item
+value STRING
+~~~
+
+This succeeds with WRN001 because there is no explicit primary key. For a
+resource with consistent generated item operations, declare the key explicitly:
+
+<!-- example: valid explicit-minimal -->
+~~~apiforge
+ENTITY Item
+id INT PRIMARY KEY
+~~~
+
+Save a complete program in a file, then run `node index.js <file.apiforge>`.
+The CLI writes under `output/` relative to its working directory.
+`npm run compile` compiles `samples/student.apiforge`; `npm run dev` starts the
+compiler playground. The compiler HTTP API returns generated files in memory.
+For backend setup, follow the generated README.md.
+
+## 2. Lexical Syntax
+
+### Identifiers and case
+
+Identifiers match `[A-Za-z_][A-Za-z0-9_]*`. ASCII letters and underscores may start
+a name; subsequent characters may also be decimal digits. Unicode letters,
+hyphens, dots, quoted identifiers, and digit-first names are not identifier syntax.
+`1name` produces LEX002; unsupported characters produce LEX001.
+
+Entity, field, and relationship names are case-sensitive. Student and student
+are different DSL names, although generated lowercase names can collide.
+PascalCase entities and simple field names are conventions, not grammar rules.
+
+These exact uppercase words are reserved:
+
+| Category | Words |
+|---|---|
+| Declarations | `ENTITY`, `RELATION` |
+| Datatypes | `INT`, `FLOAT`, `BOOLEAN`, `STRING`, `ENUM` |
+| Modifiers | `PRIMARY`, `KEY`, `REQUIRED`, `UNIQUE`, `DEFAULT`, `MIN`, `MAX`, `MIN_LENGTH`, `MAX_LENGTH` |
+| Boolean literals | `TRUE`, `FALSE` |
+| Cardinalities | `ONE_TO_ONE`, `ONE_TO_MANY`, `MANY_TO_ONE`, `MANY_TO_MANY` |
+
+Lowercase spellings are ordinary identifiers. They can be names in suitable
+positions but do not act as keywords or datatypes. A reserved entity name such
+as INT fails at the parser (PAR001); a reserved word in field-name position
+normally produces PAR009. Reserved ENTITY/RELATION tokens instead delimit
+declarations. The analyzer also checks reserved names for direct AST consumers
+(SEM003, SEM006, SEM025).
+
+### Whitespace, punctuation, and comments
+
+Spaces, tabs, carriage returns, and line feeds separate tokens and are discarded.
+Indentation and newlines do not delimit fields. A leading UTF-8 BOM is stripped.
+An entity's field list ends at ENTITY, RELATION, or EOF.
+
+`//` starts a comment through the next line feed or EOF, including after a
+declaration. `//` inside a quoted string is ordinary text. Block comments and
+`#` comments are unsupported. Only `(`, `)`, and `,` have punctuation tokens,
+used by ENUM; braces, colons, semicolons, and assignment operators are not grammar.
+
+This is a complete program despite being on one line:
+
+<!-- example: valid compact -->
+~~~apiforge
+ENTITY Item id INT PRIMARY KEY label STRING // trailing comment
+~~~
+
+### Literal syntax
+
+| Literal | Source form | Details |
+|---|---|---|
+| Number | `-?[0-9]+(\.[0-9]+)?` | Examples: `0`, `007`, `-12`, `8.5`, `-0.25`. No leading plus, exponent, hex, leading dot, or trailing dot. |
+| String | Double quotes around text | Empty text is allowed. A line feed or EOF before the closing quote produces LEX003. |
+| Boolean | `TRUE` or `FALSE` | Lowercase true/false are not boolean literal tokens. |
+
+Numbers become JavaScript numbers through parseFloat. Integral decimal values
+such as 1.0 satisfy integer checks; checks concern the parsed value.
+The compiler does not generally enforce MySQL storage limits or safe-integer
+precision on DSL literals. Use representable values; do not infer the collection
+query's stricter numeric rules apply to source literals.
+
+Strings have **no escape syntax**. Backslashes are literal characters:
+`"C:\folder"` contains a backslash and `"line\n"` contains backslash followed by
+n. `\"` does not embed a quote: the quote terminates the token. Apostrophes,
+Unicode text, commas, and parentheses are allowed inside double quotes.
+SQL/JSON output escaping is separate from DSL string syntax.
 
-APIForge is a domain-specific language (DSL) and six-phase optimizing compiler designed for rapid backend engineering. Instead of manually writing repetitive database schemas, SQL queries, data access objects, Express controllers, route definitions, and OpenAPI documentation, developers declare high-level data models and relationships using APIForge DSL.
+## 3. Entity Declarations
 
-The APIForge compiler takes a declarative `.apiforge` specification and compiles it into a production-ready, fully functional backend consisting of:
+The parser grammar, with `*` meaning zero or more, is:
 
-- **MySQL DDL Schema**: Complete `CREATE TABLE` scripts with primary keys, foreign keys, unique constraints, nullability, default values, and check constraints.
-- **Express.js REST API**: Parameterized SQL models using `mysql2/promise`, controllers with input validation, modular routers, and an Express application entrypoint.
-- **OpenAPI 3.0 Specification**: An interactive `swagger.json` document detailing all CRUD endpoints, relationship endpoints, request bodies, path parameters, and schema validations.
+~~~text
+Program    := (EntityDecl | RelationDecl)*
+EntityDecl := ENTITY Identifier FieldDecl*
+~~~
 
----
+Semantic analysis requires at least one entity (SEM001), at least one field in
+every entity (SEM004), and globally unique entity names (SEM002). The parser
+alone can build an empty Program or an empty Entity.
 
-## 2. Quick Start
+Relationships may precede or appear between entities. Endpoint resolution checks
+the whole program, so forward references work:
 
-### Prerequisites
-- **Node.js**: Version 14 or higher (v18+ recommended).
-- **npm**: Version 6 or higher.
-
-### Installation
-Clone the repository and install dependencies:
-
-```bash
-npm install
-```
-
-### Running the Web Playground
-APIForge includes an interactive browser-based playground with real-time compilation, phase-by-phase diagnostics, and project export:
-
-```bash
-npm run dev
-# or
-npm start
-```
-
-Open **http://localhost:3001** in your web browser.
-
-### Compiling a .apiforge File via CLI
-To compile the default sample file:
-
-```bash
-npm run compile
-```
-
-To compile any custom `.apiforge` file:
-
-```bash
-node index.js samples/student.apiforge
-```
-
-### Running the Test Suite
-APIForge features a comprehensive test suite covering all compiler phases:
-
-```bash
-npm test
-```
-
-### Where Generated Files Appear
-All generated target code is emitted directly into the `output/` directory:
-
-```text
-output/
-├── config/
-│   └── db.js                        # MySQL connection pool configuration
-├── controllers/
-│   └── <entity>Controller.js        # Request handlers & validation logic
-├── database/
-│   └── schema.sql                   # MySQL DDL schema and foreign keys
-├── models/
-│   └── <Entity>.js                  # Data access models with parameterized queries
-├── routes/
-│   └── <entity>Routes.js            # Express router with CRUD & relation routes
-├── .env.example                     # Environment variable template
-├── package.json                     # Runtime dependencies and npm start script
-├── README.md                        # Generated-project setup guide
-├── server.js                        # Express server entry point
-└── swagger.json                     # OpenAPI 3.0 API specification
-```
-
----
-
-## 3. Compiler Pipeline
-
-APIForge is built as a classic six-phase compiler. Each phase executes sequentially and passes its output to the subsequent phase:
-
-```text
-       Source Code (.apiforge file)
-                  │
-                  ▼
-         ┌─────────────────┐
-         │  1. LEXER       │  Character stream → Token stream
-         └────────┬────────┘
-                  ▼
-         ┌─────────────────┐
-         │  2. PARSER      │  Token stream → Abstract Syntax Tree (AST)
-         └────────┬────────┘
-                  ▼
-         ┌─────────────────┐
-         │  3. SEMANTIC    │  AST validation + Symbol Table construction
-         │     ANALYZER    │  (Checks types, ranges, duplicates, relations)
-         └────────┬────────┘
-                  ▼
-         ┌─────────────────┐
-         │  4. IR          │  AST → Linear Intermediate Representation
-         │     GENERATOR   │  (Target-independent instruction stream)
-         └────────┬────────┘
-                  ▼
-         ┌─────────────────┐
-         │  5. OPTIMIZER   │  6 target-independent optimization passes
-         └────────┬────────┘
-                  ▼
-         ┌─────────────────┐
-         │  6. CODE        │  Optimized IR → Target artifacts
-         │     GENERATOR   │  (MySQL schema, Express API, OpenAPI spec)
-         └─────────────────┘
-```
-
-### The 6 Phases Explained Simply:
-
-1. **Phase 1: Lexical Analysis (Lexer)**
-   Reads raw source text character-by-character, strips whitespace and comments, and groups characters into typed tokens (`KEYWORD`, `IDENTIFIER`, `DATATYPE`, `MODIFIER`, `NUMBER`, `STRING_LITERAL`, `BOOLEAN_LITERAL`).
-2. **Phase 2: Syntax Analysis (Parser)**
-   Uses recursive descent parsing to verify that tokens follow the language grammar rules and constructs a hierarchical Abstract Syntax Tree (AST).
-3. **Phase 3: Semantic Analysis**
-   Checks program logic and semantic rules that syntax alone cannot enforce (e.g., verifying that data types exist, checking range consistency, ensuring relationship targets exist, rejecting duplicates). Collects all errors and builds the symbol table.
-4. **Phase 4: Intermediate Representation (IR) Generation**
-   Converts the tree-shaped AST into a flat list of target-independent instructions (`CREATE_ENTITY`, `ADD_FIELD`, `CREATE_RELATION`).
-5. **Phase 5: Optimization**
-   Executes six target-independent optimization passes on the IR to normalize constraints and eliminate duplicate instructions before code generation.
-6. **Phase 6: Code Generation**
-   Translates the optimized IR into concrete target files: SQL DDL for MySQL, JavaScript modules for Express, and JSON for OpenAPI.
-
----
-
-## 4. Language Basics
-
-### Line Structure & Whitespace
-- APIForge is a **free-form, line-friendly** language.
-- Indentation (spaces or tabs) is ignored by the lexer and parser. You may indent fields under an entity for readability.
-- Blank lines between entities or fields are permitted and ignored.
-- Newlines serve as natural delimiters between declarations.
-
-### Comments
-- **Single-line comments** begin with `//` and continue to the end of the line:
-  ```apiforge
-  // This is a comment. It is ignored by the compiler.
-  ENTITY Student // Comments can also appear at the end of a line
-  ```
-- **Block comments** (`/* ... */`) are **not supported**.
-
-### Identifiers
-Identifiers are user-defined names given to entities, fields, and relationships:
-- Must begin with an ASCII letter (`a-z`, `A-Z`) or an underscore (`_`).
-- Subsequent characters may be letters, digits (`0-9`), or underscores (`_`).
-- **Cannot begin with a digit** (e.g., `1student` produces a lexical error).
-- **Cannot be a reserved word** (e.g., `ENTITY`, `INT`, `REQUIRED`, `TRUE`).
-
-### Case Sensitivity
-- **All language keywords, data types, modifiers, relation types, and boolean literals are strictly UPPERCASE**:
-  - Keywords: `ENTITY`, `RELATION`
-  - Data Types: `INT`, `STRING`, `FLOAT`, `BOOLEAN`, `ENUM`
-  - Modifiers: `PRIMARY`, `KEY`, `REQUIRED`, `UNIQUE`, `MIN`, `MAX`, `MIN_LENGTH`, `MAX_LENGTH`, `DEFAULT`
-  - Relation Types: `ONE_TO_ONE`, `ONE_TO_MANY`, `MANY_TO_ONE`, `MANY_TO_MANY`
-  - Boolean Literals: `TRUE`, `FALSE`
-- Typing keywords in lowercase (e.g., `entity`, `int`, `string`) will cause the lexer to treat them as identifiers, resulting in syntax errors.
-- **Identifiers are case-sensitive**: `Student` and `student` are considered different names.
-
-### End of File (EOF) Behavior
-- The compiler expects a clean termination. Trailing comments, blank lines, or whitespace at the end of the file are ignored.
-- A program must contain at least one `ENTITY`. Empty, whitespace-only, comment-only, and relation-only programs produce a semantic error.
-
----
-
-## 5. ENTITY
-
-An entity represents a database table and a complete REST resource.
-
-### Syntax
-```apiforge
-ENTITY <EntityName>
-    <field_declaration>
-    ...
-```
-
-### Example
-```apiforge
-ENTITY Student
-    id INT PRIMARY KEY
-    name STRING REQUIRED
-```
-
-### Rules & Boundaries
-1. **Naming**: Must be a valid identifier in PascalCase (recommended) or snake_case, and cannot match any reserved word.
-2. **Uniqueness**: Entity names must be unique within the source file. Duplicate entity declarations cause a semantic error.
-3. **Fields Requirement**: Every entity **must contain at least one field**. An empty entity declaration is rejected by semantic analysis.
-4. **Boundaries**: An entity declaration begins with the `ENTITY` keyword and continues until the next `ENTITY` keyword, the next `RELATION` keyword, or the end of the file (`EOF`).
-
----
-
-## 6. Data Types
-
-APIForge supports four built-in primitive data types. Every field must declare exactly one data type.
-
-| DSL Data Type | Description | MySQL Column Type | OpenAPI / Swagger Type |
-|:---|:---|:---|:---|
-| `INT` | 32-bit signed integer numbers | `INT` | `integer` |
-| `STRING` | Text string | `VARCHAR(255)` by default; widened when a declared length bound exceeds 255 | `string` |
-| `FLOAT` | Floating-point decimal numbers | `FLOAT` | `number` |
-| `BOOLEAN` | Logical boolean flag (`TRUE` or `FALSE`) | `BOOLEAN` | `boolean` |
-| `ENUM("a", "b")` | Finite case-sensitive set of strings | `ENUM('a', 'b')` | `string` with `enum` |
-
-### ENUM datatype
-
-```apiforge
-status ENUM("active", "inactive") DEFAULT "active"
-role ENUM(
-    "student",
-    "faculty",
-    "admin"
-) REQUIRED UNIQUE
-```
-
-An ENUM declaration needs at least one double-quoted string. Values retain
-declaration order and literal contents. Comparison is case-sensitive, so
-`"ACTIVE"` and `"active"` are distinct. Duplicate values are semantic errors;
-bare identifiers, empty lists and missing delimiters are parser errors. The
-lexer does not decode backslash escapes or allow literal newlines inside strings.
-
-DEFAULT must be a string member of the declared set. REQUIRED and UNIQUE are
-allowed. MIN/MAX and MIN_LENGTH/MAX_LENGTH are invalid; ENUM already defines
-the finite accepted values. Explicit PRIMARY KEY remains INT/STRING only;
-implicit integer primary-key behavior is unchanged.
-
-AST fields, symbols and ADD_FIELD IR carry `dataType: "ENUM"` and an ordered
-`enumValues` array. Source metadata is non-enumerable; duplicate diagnostics
-identify the repeated quoted value, default errors identify the DEFAULT clause,
-and illegal bounds identify their modifier. Optimization preserves values exactly.
-
-SQL uses native ENUM and `utf8mb4_bin` collation for case-sensitive membership.
-Apostrophes are doubled, and literal backslashes are doubled under MySQL's
-normal backslash-escaping SQL mode. The generated schema assumes that mode;
-`NO_BACKSLASH_ESCAPES` requires adapting SQL literal escaping. MySQL's native
-ENUM semantics still apply, including removal of trailing spaces in declaration
-members and strict-mode enforcement for direct database writes. Prefer values
-without trailing spaces. These target constraints do not rewrite AST or IR values.
-See the [MySQL ENUM reference](https://dev.mysql.com/doc/refman/8.4/en/enum.html)
-for native storage, SQL-mode and numeric-index behavior.
-
-Generated POST and PUT handlers reject supplied non-string values and strings
-outside the set with HTTP 400 and the existing `{ success: false, error }` style.
-Optional null remains allowed; REQUIRED ENUM rejects supplied null. Omission
-keeps existing behavior, allowing database defaults; REQUIRED omission remains
-database-enforced. OpenAPI properties use `type: "string"`, the declared `enum`
-array and optional `default`; REQUIRED fields stay in the entity required array.
-Request operations share that component schema. Existing response descriptions
-and uniqueness representation remain unchanged.
-
-See `samples/enum_account.apiforge`, `npm run test:enum` and the opt-in
-`npm run test:generated-mysql` for offline and native-database verification.
-
-### Examples
-```apiforge
-ENTITY Product
-    id INT PRIMARY KEY
-    title STRING REQUIRED
-    price FLOAT REQUIRED
-    inStock BOOLEAN DEFAULT TRUE
-```
-
----
-
-## 7. Fields
-
-Fields define the attributes (database columns and JSON properties) of an entity.
-
-### Syntax
-```apiforge
-<fieldName> <DataType> [<Modifiers>...]
-```
-
-### Examples
-```apiforge
-name STRING
-age INT
-email STRING REQUIRED UNIQUE
-rating FLOAT MIN 0.0 MAX 5.0 DEFAULT 5.0
-```
-
-### Rules
-1. **Field Name**: Must be a valid identifier.
-2. **Field Name Uniqueness**: Field names must be unique within the declaring entity. Two fields with the same name in the same entity cause a semantic error.
-3. **Data Type Required**: A valid data type must immediately follow the field name.
-4. **Reserved Names**: Field names cannot be reserved words (e.g., you cannot name a field `INT`, `PRIMARY`, or `ENTITY`).
-
----
-
-## 8. Constraints
-
-Constraints enforce structural rules and integrity on fields. Constraints follow the data type in any order.
-
-| Constraint | DSL Syntax | Meaning | Generated MySQL DDL | Generated OpenAPI |
-|:---|:---|:---|:---|:---|
-| **Primary Key** | `PRIMARY KEY` | Unique record identifier | `INT PRIMARY KEY AUTO_INCREMENT` | Included in schema |
-| **Required** | `REQUIRED` | Mandatory field (cannot be null) | `NOT NULL` | Added to `required: [...]` |
-| **Unique** | `UNIQUE` | Values must be distinct across table | `UNIQUE` | Documented in schema |
-
-### 1. PRIMARY KEY
-- Marks the unique primary identifier for the entity.
-- **Allowed Data Types**: Only `INT` or `STRING` fields may be declared as `PRIMARY KEY`.
-- **Single Primary Key**: An entity can have **at most one** primary key. Declaring multiple primary keys causes a semantic error.
-- **Auto-Increment Behavior**: For `INT` primary keys without an explicit default value, the code generator automatically adds `AUTO_INCREMENT` in MySQL.
-- **Auto-Injection**: If an entity omits an explicit primary key, APIForge automatically injects an `id INT PRIMARY KEY AUTO_INCREMENT` column during code generation.
-  Valid programs receive the non-fatal `WRN001 / IMPLICIT_PRIMARY_KEY` warning at
-  the entity name. Compilation succeeds and generated artifacts are unchanged.
-  Declare an explicit `PRIMARY KEY` to control the identifier. See
-  [structured diagnostics](structured-diagnostics.md) for the warning contract.
-
-### 2. REQUIRED
-- Specifies that the field must not be null.
-- Translates to `NOT NULL` in MySQL.
-- Adds the field name to the OpenAPI schema's `required` array.
-
-### 3. UNIQUE
-- Guarantees that no two records have the same value for this column.
-- Translates to the `UNIQUE` column constraint in MySQL.
-
-### Constraint Combination Example
-```apiforge
-ENTITY User
-    id INT PRIMARY KEY
-    username STRING REQUIRED UNIQUE
-    email STRING REQUIRED UNIQUE
-```
-
----
-
-## 9. Validation Rules
-
-APIForge supports numeric value bounds and STRING length bounds. These are separate modifier pairs: `MIN` / `MAX` for numeric fields, and `MIN_LENGTH` / `MAX_LENGTH` for STRING fields.
-
-### Numeric Value Validation: MIN / MAX
-
-#### Syntax
-```apiforge
-<fieldName> <DataType> MIN <number>
-<fieldName> <DataType> MAX <number>
-<fieldName> <DataType> MIN <number> MAX <number>
-```
-
-#### Allowed Data Types
-- `MIN` and `MAX` are **only allowed on numeric data types**: `INT` and `FLOAT`.
-  - Applying `MIN` or `MAX` to `STRING`, `BOOLEAN` or `ENUM` fields produces a semantic error.
-
-#### Numeric Rules
-- **For `INT` fields**: The validation value **must be an integer** (e.g., `MIN 18`). Decimal bounds (such as `MIN 18.5`) on `INT` fields are rejected with a semantic error.
-- **For `FLOAT` fields**: The validation value may be an integer or decimal (e.g., `MIN 0.0 MAX 10.0`).
-- **Negative Numbers**: Negative numbers are fully supported (e.g., `MIN -50 MAX -10`).
-
-#### Range Consistency
-- When both `MIN` and `MAX` are specified on the same field, the compiler enforces that **`MIN <= MAX`**.
-- If `MIN > MAX` (e.g., `MIN 60 MAX 18`), the semantic analyzer raises an error.
-- Duplicate `MIN` or duplicate `MAX` modifiers on the same field are rejected.
-
-#### Code Generation Effects
-1. **MySQL DDL**: Generates an SQL table check constraint:
-   ```sql
-   CHECK (age >= 18 AND age <= 60)
-   ```
-2. **Express Controllers**: Generates validation checks in `validate<Entity>(data)`:
-   ```javascript
-   if (data.age !== undefined && data.age !== null && data.age < 18) {
-       return "Field 'age' must be >= 18.";
-   }
-   ```
-3. **OpenAPI / Swagger**: Populates `minimum` and `maximum` properties in `swagger.json`.
-
-#### Valid Examples
-```apiforge
-age INT MIN 18 MAX 65
-score FLOAT MIN 0.0 MAX 100.0
-offset INT MIN -100 MAX 100
-temperature FLOAT MIN -40.0
-```
-
-#### Invalid Examples (Compiler Rejections)
-```apiforge
-// ✗ Error: MIN not allowed on STRING
-name STRING MIN 5
-
-// ✗ Error: Float bound on INT field
-age INT MIN 18.5
-
-// ✗ Error: MIN cannot be greater than MAX
-discount INT MIN 50 MAX 10
-
-// ✗ Error: Duplicate MIN modifier
-level INT MIN 1 MIN 5
-```
-
-### STRING Length Validation: MIN_LENGTH / MAX_LENGTH
-
-Use `MIN_LENGTH` and `MAX_LENGTH` to constrain the number of Unicode characters in a `STRING` value:
-
-```apiforge
-<fieldName> STRING MIN_LENGTH <non-negative-integer>
-<fieldName> STRING MAX_LENGTH <non-negative-integer>
-<fieldName> STRING MIN_LENGTH <non-negative-integer> MAX_LENGTH <non-negative-integer>
-```
-
-The modifiers may appear independently or together and may be combined with `REQUIRED`, `UNIQUE`, `PRIMARY KEY`, and `DEFAULT`. Each modifier may appear at most once per field. Values must be non-negative integers; when both are present, `MIN_LENGTH <= MAX_LENGTH` is required.
-
-For a STRING field with `DEFAULT`, semantic analysis counts Unicode code points in the default and requires its length to satisfy all declared bounds. Generated Express validation uses the same code-point counting behavior for supplied non-null values. Omitted fields and `null` keep the existing runtime behavior, allowing database defaults and constraints to apply.
-
-Code generation maps the rules consistently:
-
-- MySQL uses `CHECK (CHAR_LENGTH(column) ...)` expressions and widens the default `VARCHAR(255)` capacity when a declared bound exceeds 255.
-- Express returns HTTP 400 through the existing generated validation path when a supplied value is not a string or violates a bound.
-- OpenAPI uses `minLength` and `maxLength` on the entity schema referenced by generated `POST` and `PUT` request bodies.
-
-Valid examples:
-
-```apiforge
-username STRING REQUIRED MIN_LENGTH 3 MAX_LENGTH 20
-bio STRING MAX_LENGTH 500
-role STRING DEFAULT "student" MIN_LENGTH 3 MAX_LENGTH 20
-nickname STRING MIN_LENGTH 0
-```
-
-Invalid examples:
-
-```apiforge
-// ✗ Length validation applies only to STRING
-age INT MIN_LENGTH 2
-
-// ✗ Length values cannot be negative or fractional
-name STRING MIN_LENGTH -1
-alias STRING MAX_LENGTH 2.5
-
-// ✗ MIN_LENGTH cannot exceed MAX_LENGTH
-code STRING MIN_LENGTH 5 MAX_LENGTH 3
-
-// ✗ Each length modifier may appear only once
-name STRING MIN_LENGTH 3 MIN_LENGTH 4
-
-// ✗ The default is shorter than MIN_LENGTH
-status STRING MIN_LENGTH 3 DEFAULT "ok"
-```
-
----
-
-## 10. DEFAULT
-
-The `DEFAULT` modifier specifies a default value for a field when no value is provided during insertion.
-
-### Syntax
-```apiforge
-<fieldName> <DataType> DEFAULT <LiteralValue>
-```
-
-### Supported Literal Forms
-Every default value must match the data type of the field:
-
-| Data Type | Allowed Default Literal Form | Example DSL | Generated SQL |
-|:---|:---|:---|:---|
-| `INT` | Integer number literal (positive or negative) | `age INT DEFAULT 25` | `DEFAULT 25` |
-| `FLOAT` | Decimal or integer number literal | `cgpa FLOAT DEFAULT 8.5` | `DEFAULT 8.5` |
-| `STRING` | Double-quoted string literal | `status STRING DEFAULT "active"` | `DEFAULT 'active'` |
-| `BOOLEAN` | Boolean literal (`TRUE` or `FALSE`) | `active BOOLEAN DEFAULT TRUE` | `DEFAULT TRUE` |
-| `ENUM` | A quoted declared member | `status ENUM("active", "inactive") DEFAULT "active"` | `DEFAULT 'active'` |
-
-### Semantic Rules
-1. **Type Compatibility**: The default value literal must strictly match the field's declared type. Declaring `age INT DEFAULT "young"` or `active BOOLEAN DEFAULT 1` produces a semantic error.
-2. **Validation Conformance**: Numeric defaults must satisfy `MIN` / `MAX`; STRING defaults must satisfy `MIN_LENGTH` / `MAX_LENGTH`.
-3. **Single Default**: A field can have at most one `DEFAULT` clause. Duplicate defaults on the same field are rejected.
-4. **String Escaping**: Single quotes inside string defaults are safely escaped by doubling them (`''`) in generated SQL to prevent injection.
-
-### Primary Key and DEFAULT Interaction
-In MySQL, columns marked with `AUTO_INCREMENT` cannot have an explicit `DEFAULT` clause. Therefore:
-- `id INT PRIMARY KEY`: Generates `PRIMARY KEY AUTO_INCREMENT`.
-- `id INT PRIMARY KEY DEFAULT 1`: Generates `PRIMARY KEY DEFAULT 1` (omitting `AUTO_INCREMENT`).
-
-### Valid Examples
-```apiforge
-age INT MIN 18 MAX 60 DEFAULT 25
-status STRING DEFAULT "pending" MIN_LENGTH 3 MAX_LENGTH 20
-rating FLOAT MIN 0.0 MAX 5.0 DEFAULT 5.0
-isVerified BOOLEAN DEFAULT FALSE
-```
-
-### Invalid Examples (Compiler Rejections)
-```apiforge
-// ✗ Error: Default value outside range [18, 60]
-age INT MIN 18 MAX 60 DEFAULT 10
-
-// ✗ Error: Float default on INT field
-count INT DEFAULT 4.5
-
-// ✗ Error: Type mismatch (string on INT)
-total INT DEFAULT "zero"
-
-// ✗ Error: Duplicate DEFAULT clause
-status STRING DEFAULT "draft" DEFAULT "published"
-
-// ✗ Error: STRING default is shorter than MIN_LENGTH
-role STRING MIN_LENGTH 3 DEFAULT "ok"
-```
-
----
-
-## 11. Relationships
-
-Relationships declare associations between entities. APIForge supports all four relational cardinalities.
-
-### Syntax
-```apiforge
-RELATION <sourceEntity> <relationName> <targetEntity> <relationshipType>
-```
-
-### Parameters
-- **`<sourceEntity>`**: The originating entity name (must exist).
-- **`<relationName>`**: Unique identifier for this relationship across the entire program (cannot be a reserved word).
-- **`<targetEntity>`**: The destination entity name (must exist).
-- **`<relationshipType>`**: One of the four cardinalities listed below.
-
----
-
-### 1. ONE_TO_ONE
-**Meaning**: Exactly one source record is linked to one target record (e.g., a User has one Profile).
-
-```apiforge
-RELATION User HAS_PROFILE Profile ONE_TO_ONE
-```
-
-- **Generated MySQL**: Adds a unique foreign key column on the target table referencing the source entity's primary key with cascading deletes:
-  ```sql
-  ALTER TABLE Profile ADD COLUMN user_id INT UNIQUE;
-  ALTER TABLE Profile ADD CONSTRAINT fk_profile_user FOREIGN KEY (user_id) REFERENCES User(id) ON DELETE CASCADE;
-  ```
-- **Generated REST API**:
-  - `GET /users/:id/profile`: Retrieves the profile associated with the user.
-
----
-
-### 2. ONE_TO_MANY
-**Meaning**: One source record is associated with many target records (e.g., a Department has many Employees).
-
-```apiforge
-RELATION Department HAS_EMPLOYEES Employee ONE_TO_MANY
-```
-
-- **Generated MySQL**: Adds a nullable foreign key column on the target table referencing the source entity:
-  ```sql
-  ALTER TABLE Employee ADD COLUMN department_id INT;
-  ALTER TABLE Employee ADD CONSTRAINT fk_employee_department FOREIGN KEY (department_id) REFERENCES Department(id) ON DELETE SET NULL;
-  ```
-- **Generated REST API**:
-  - `GET /departments/:id/employees`: Retrieves all employees belonging to the department.
-
----
-
-### 3. MANY_TO_ONE
-**Meaning**: Many source records reference one target record (e.g., many Orders belong to one Customer).
-
-```apiforge
-RELATION Order PLACED_BY Customer MANY_TO_ONE
-```
-
-- **Generated MySQL**: Adds a foreign key column on the source table referencing the target entity:
-  ```sql
-  ALTER TABLE `Order` ADD COLUMN customer_id INT;
-  ALTER TABLE `Order` ADD CONSTRAINT fk_order_customer FOREIGN KEY (customer_id) REFERENCES Customer(id) ON DELETE SET NULL;
-  ```
-- **Generated REST API**:
-  - `GET /orders/:id/customer`: Retrieves the customer for a specific order.
-
----
-
-### 4. MANY_TO_MANY
-**Meaning**: Multiple source records associate with multiple target records (e.g., Students enroll in Courses).
-
-```apiforge
+<!-- example: valid forward-reference -->
+~~~apiforge
 RELATION Student ENROLLS_IN Course MANY_TO_MANY
-```
-
-- **Generated MySQL**: Generates an intermediary junction table named `<Source>_<Target>` with a composite primary key and foreign keys to both tables:
-  ```sql
-  CREATE TABLE Student_Course (
-      student_id INT NOT NULL,
-      course_id INT NOT NULL,
-      PRIMARY KEY (student_id, course_id),
-      FOREIGN KEY (student_id) REFERENCES Student(id) ON DELETE CASCADE,
-      FOREIGN KEY (course_id) REFERENCES Course(id) ON DELETE CASCADE
-  );
-  ```
-- **Generated REST API**:
-  - `GET /students/:id/courses`: Retrieves all courses for a student.
-  - `POST /students/:id/courses/:courseId`: Enrolls a student into a course (inserts into junction table).
-  - `DELETE /students/:id/courses/:courseId`: Drops a student from a course (deletes from junction table).
-
----
-
-### Relationship Semantic Rules
-1. **Existence**: Both `<sourceEntity>` and `<targetEntity>` must be defined in the same source file.
-2. **No Self-References**: Self-referential relationships (e.g., `RELATION User HAS_FRIEND User ONE_TO_ONE`) are not supported and are rejected.
-3. **Unique Names**: The relationship name must be globally unique across all relationships.
-4. **Non-Reserved**: Relationship names cannot match reserved keywords.
-
----
-
-## 12. Complete DSL Example
-
-Below is a complete, realistic DSL file demonstrating entities, primitive types, constraints, numeric and STRING-length validations, default values, and relationships.
-
-```apiforge
-// ============================================
-// University Management System
-// File: university.apiforge
-// ============================================
-
-ENTITY Department
-    id INT PRIMARY KEY
-    name STRING REQUIRED UNIQUE
-    budget FLOAT MIN 10000.0 DEFAULT 50000.0
-
 ENTITY Student
-    id INT PRIMARY KEY
-    fullName STRING REQUIRED MIN_LENGTH 2 MAX_LENGTH 80
-    email STRING REQUIRED UNIQUE
-    age INT MIN 17 MAX 65 DEFAULT 20
-    gpa FLOAT MIN 0.0 MAX 4.0 DEFAULT 3.0
-    isActive BOOLEAN DEFAULT TRUE
-
+id INT PRIMARY KEY
 ENTITY Course
-    id INT PRIMARY KEY
-    code STRING REQUIRED UNIQUE
-    title STRING REQUIRED
-    credits INT MIN 1 MAX 6 DEFAULT 3
+code STRING PRIMARY KEY
+~~~
 
-// Relationships
-RELATION Department OFFERS Course ONE_TO_MANY
-RELATION Student ENROLLS_IN Course MANY_TO_MANY
-```
+Fields after a relationship need a new ENTITY declaration; there is no
+reopening/extension syntax for an existing entity.
 
-### Section-by-Section Explanation:
+## 4. Field Declarations
 
-1. **Department Entity**:
-   - `id`: Integer primary key with auto-increment.
-   - `name`: Unique, mandatory department name.
-   - `budget`: Float with minimum budget validation ($10,000.00) and a default of $50,000.00.
-2. **Student Entity**:
-   - `id`: Integer primary key with auto-increment.
-   - `fullName`: Mandatory text string between 2 and 80 Unicode code points.
-   - `email`: Mandatory and unique string.
-   - `age`: Integer with bounded range (`MIN 17 MAX 65`) and default of 20.
-   - `gpa`: Decimal with grade scale bounds (`MIN 0.0 MAX 4.0`) and default of 3.0.
-   - `isActive`: Boolean flag defaulting to `TRUE`.
-3. **Course Entity**:
-   - `id`: Integer primary key.
-   - `code`: Mandatory unique course code (e.g., "CS101").
-   - `title`: Mandatory course title.
-   - `credits`: Integer bounded between 1 and 6, defaulting to 3.
-4. **Relationships**:
-   - `Department OFFERS Course ONE_TO_MANY`: Adds `department_id` foreign key on the `Course` table.
-   - `Student ENROLLS_IN Course MANY_TO_MANY`: Generates the `Student_Course` junction table with association endpoints.
+~~~text
+FieldDecl := Identifier DataType Modifier*
+DataType  := INT | FLOAT | BOOLEAN | STRING | ENUM "(" String ("," String)* ")"
+Modifier  := PRIMARY KEY | REQUIRED | UNIQUE
+           | DEFAULT Literal
+           | MIN Number | MAX Number
+           | MIN_LENGTH Number | MAX_LENGTH Number
+Literal   := Number | String | TRUE | FALSE
+~~~
 
----
+Number and String refer to the lexical forms in section 2. Grammar notation
+is not literal source syntax. A datatype is mandatory and modifiers are optional.
+Each field name must be unique within its entity (SEM005); another entity may
+reuse the same field name.
 
-## 13. Compilation Walkthrough
+Modifiers may appear in any order after the datatype. PRIMARY KEY requires
+adjacent PRIMARY and KEY tokens, although ignored whitespace/comments may occur
+between them. Constraints, each bound kind, and DEFAULT may each appear at most
+once. Repetition is a semantic error even when values are identical; the
+optimizer does not make duplicate DSL declarations legal.
 
-When you run `node index.js university.apiforge`, the compiler processes the file through all six phases:
+<!-- example: valid modifier-order -->
+~~~apiforge
+ENTITY Item
+id INT UNIQUE REQUIRED PRIMARY KEY
+label STRING DEFAULT "ready" MAX_LENGTH 20 REQUIRED MIN_LENGTH 2 UNIQUE
+~~~
 
-### Step 1: Lexical Analysis
-The lexer converts the character stream into 85 tokens, including the final EOF token. Whitespace and comments are stripped.
+## 5. Datatypes
 
-```text
-  ┌───────┬──────────────┬──────────────┬──────┬────────┐
-  │  #    │ Type         │ Value        │ Line │ Column │
-  ├───────┼──────────────┼──────────────┼──────┼────────┤
-  │    1  │ KEYWORD      │ ENTITY       │    6 │     1  │
-  │    2  │ IDENTIFIER   │ Department   │    6 │     8  │
-  │    3  │ IDENTIFIER   │ id           │    7 │     5  │
-  │    4  │ DATATYPE     │ INT          │    7 │     8  │
-  ...
-```
+| Type | Allowed modifiers | SQL | OpenAPI property type |
+|---|---|---|---|
+| INT | PRIMARY KEY, REQUIRED, UNIQUE, DEFAULT, MIN, MAX | INT | integer |
+| FLOAT | REQUIRED, UNIQUE, DEFAULT, MIN, MAX | FLOAT | number |
+| BOOLEAN | REQUIRED, UNIQUE, DEFAULT | BOOLEAN | boolean |
+| STRING | PRIMARY KEY, REQUIRED, UNIQUE, DEFAULT, MIN_LENGTH, MAX_LENGTH | VARCHAR(255) or wider | string |
+| ENUM(...) | REQUIRED, UNIQUE, member DEFAULT | Native ENUM(...) | string with enum |
 
-### Step 2: Syntax Analysis (Parser)
-The parser constructs an AST containing 3 `EntityNode` instances and 2 `RelationNode` instances:
+### INT
 
-```text
-Program
-├── Entity: "Department"
-│   ├── Field: id (INT) [PRIMARY_KEY]
-│   ├── Field: name (STRING) [REQUIRED, UNIQUE]
-│   └── Field: budget (FLOAT) [MIN 10000, DEFAULT 50000]
-├── Entity: "Student"
-│   ├── Field: id (INT) [PRIMARY_KEY]
-│   ├── Field: fullName (STRING) [REQUIRED] [MIN_LENGTH 2, MAX_LENGTH 80]
-│   ├── Field: email (STRING) [REQUIRED, UNIQUE]
-│   ├── Field: age (INT) [MIN 17, MAX 65, DEFAULT 20]
-│   ├── Field: gpa (FLOAT) [MIN 0, MAX 4, DEFAULT 3]
-│   └── Field: isActive (BOOLEAN) [DEFAULT true]
-├── Entity: "Course"
-│   ├── Field: id (INT) [PRIMARY_KEY]
-│   ├── Field: code (STRING) [REQUIRED, UNIQUE]
-│   ├── Field: title (STRING) [REQUIRED]
-│   └── Field: credits (INT) [MIN 1, MAX 6, DEFAULT 3]
-├── Relation: Department OFFERS Course (ONE_TO_MANY)
-└── Relation: Student ENROLLS_IN Course (MANY_TO_MANY)
-```
+INT defaults and numeric bounds must have integer values. Fractional bounds
+produce SEM019; non-integer or non-number defaults produce SEM021.
+Negative values and one-sided bounds are allowed. Length bounds produce SEM016.
 
-### Step 3: Semantic Analysis
-The analyzer checks:
-- Entity and field names are unique and non-reserved.
-- Primary keys are valid and unique per entity.
-- `MIN` and `MAX` boundaries are numerically consistent (`17 <= 65`, `0.0 <= 4.0`, `1 <= 6`).
-- `MIN_LENGTH` and `MAX_LENGTH` boundaries are non-negative integers in a consistent range (`2 <= 80`).
-- Defaults are type-compatible and satisfy applicable numeric and STRING-length validations.
-- Relationship source and target entities exist without self-references.
-- Populates the global Symbol Table.
+<!-- example: valid datatype-int -->
+~~~apiforge
+ENTITY Counter
+id INT PRIMARY KEY
+delta INT REQUIRED MIN -10 MAX 10 DEFAULT 0
+integralDecimal INT DEFAULT 1.0
+~~~
 
-### Step 4: IR Generation
-Emits linear instructions:
-1. `CREATE_ENTITY Department`
-2. `ADD_FIELD Department.id INT [PRIMARY_KEY]`
-3. `ADD_FIELD Department.name STRING [REQUIRED, UNIQUE]`
-4. `ADD_FIELD Department.budget FLOAT [MIN 10000, DEFAULT 50000]`
-5. `CREATE_ENTITY Student`
-...
-16. `CREATE_RELATION Department OFFERS Course ONE_TO_MANY`
-17. `CREATE_RELATION Student ENROLLS_IN Course MANY_TO_MANY`
+### FLOAT
 
-### Step 5: Optimization
-Runs the 6 optimization passes:
-- Canonical constraint ordering (`PRIMARY_KEY` -> `REQUIRED` -> `UNIQUE`).
-- Duplicate validation and field elimination.
-- Confirms IR passes internal schema validation.
+FLOAT accepts integer or decimal defaults and numeric bounds. It cannot be a
+primary key (SEM011); length bounds produce SEM016, and non-number defaults
+produce SEM021.
 
-### Step 6: Code Generation
-Writes all target files into `output/` with database schemas, models, controllers, routers, and documentation.
+<!-- example: valid datatype-float -->
+~~~apiforge
+ENTITY Measurement
+id INT PRIMARY KEY
+temperature FLOAT MIN -40.5 MAX 100 DEFAULT 20.25
+~~~
 
----
+### BOOLEAN
 
-## 14. Generated Output
+BOOLEAN defaults use TRUE or FALSE. Numeric defaults, including 0/1, are
+invalid (SEM021). PRIMARY KEY, numeric bounds, and length bounds produce
+SEM011, SEM015, and SEM016 respectively.
 
-The compiler generates a modular Express.js project in `output/`:
+<!-- example: valid datatype-boolean -->
+~~~apiforge
+ENTITY Flag
+id INT PRIMARY KEY
+enabled BOOLEAN REQUIRED DEFAULT TRUE
+~~~
 
-| File / Folder | Purpose |
-|:---|:---|
-| `output/database/schema.sql` | MySQL DDL table creations, constraints, and relationships. |
-| `output/config/db.js` | MySQL2 connection pool with environment variable fallbacks. |
-| `output/.env.example` | Template for port and database credentials (`DB_HOST`, `DB_USER`, etc.). |
-| `output/package.json` | Generated backend metadata, runtime dependencies, and `npm start` script. |
-| `output/README.md` | Installation, database setup, route, and startup instructions for the generated project. |
-| `output/models/<Entity>.js` | Asynchronous CRUD queries and relationship helper methods. |
-| `output/controllers/<entity>Controller.js` | Express request handlers with automatic `validate<Entity>()` logic. |
-| `output/routes/<entity>Routes.js` | REST routes and relationship sub-routes. |
-| `output/server.js` | Express server registering all routes, JSON parsing, and error handling. |
-| `output/swagger.json` | OpenAPI 3.0 API documentation for all endpoints and schemas. |
+### STRING
 
----
+STRING defaults are double-quoted literals. PRIMARY KEY and STRING length bounds
+may be combined. Numeric bounds are invalid (SEM015); non-string defaults are
+invalid (SEM021).
 
-## 15. Generated REST API
+SQL capacity is `max(255, declared MIN_LENGTH, declared MAX_LENGTH)`, considering
+bounds that exist. MAX_LENGTH 20 still uses VARCHAR(255) with a length
+check; MAX_LENGTH 500 widens it to VARCHAR(500). A larger MIN_LENGTH alone
+also widens capacity. There is no general compile-time check of physical MySQL
+column/key limits. Without a length modifier, no controller string-length/type
+check is generated for an ordinary STRING field.
 
-For each declared entity, APIForge generates standard RESTful CRUD endpoints under the pluralized resource path (`/<plural>`).
+<!-- example: valid datatype-string -->
+~~~apiforge
+ENTITY Article
+slug STRING PRIMARY KEY MIN_LENGTH 1 MAX_LENGTH 80
+body STRING MAX_LENGTH 500
+title STRING REQUIRED DEFAULT "Untitled"
+~~~
 
-### Standard CRUD Endpoints
+### ENUM
 
-| HTTP Method | Route Path | Description | Success Code | Error Codes |
-|:---|:---|:---|:---:|:---:|
-| `GET` | `/<plural>` | Fetch records with optional collection query options | `200 OK` | `400 Bad Request`, `500 Internal Error` |
-| `GET` | `/<plural>/:id` | Fetch single record by ID | `200 OK` | `404 Not Found`, `500` |
-| `POST` | `/<plural>` | Create new record | `201 Created` | `400 Bad Request`, `500` |
-| `PUT` | `/<plural>/:id` | Update record by ID | `200 OK` | `400 Bad Request`, `404`, `500` |
-| `DELETE` | `/<plural>/:id` | Delete record by ID | `200 OK` | `404 Not Found`, `500` |
+ENUM requires an inline list rather than a named enum definition. See section 8
+for exact syntax, invalid combinations, and target differences.
 
-### Collection query options
+<!-- example: valid datatype-enum -->
+~~~apiforge
+ENTITY Account
+id INT PRIMARY KEY
+status ENUM("active", "closed") DEFAULT "active"
+~~~
 
-These are generated API query parameters, with no new DSL syntax. Collection
-responses keep the existing JSON body `{ "success": true, "data": [...] }`,
-including when paginated.
+## 6. Primary Keys
 
-```text
+An entity may declare at most one PRIMARY KEY field (SEM010). Only INT and
+STRING are permitted (SEM011). PRIMARY KEY may coexist with REQUIRED, UNIQUE,
+applicable bounds, and a type-correct DEFAULT. Repeating the same constraint
+produces SEM009. PRIMARY without KEY produces PAR014; standalone KEY
+produces PAR015. Composite entity keys have no DSL syntax.
+
+<!-- example: valid primary-key-policies -->
+~~~apiforge
+ENTITY AutoRecord
+id INT PRIMARY KEY
+ENTITY FixedRecord
+id INT PRIMARY KEY DEFAULT 1
+ENTITY NamedRecord
+code STRING PRIMARY KEY REQUIRED MAX_LENGTH 80
+~~~
+
+| Declaration | Generated SQL behavior |
+|---|---|
+| INT PRIMARY KEY without DEFAULT | PRIMARY KEY AUTO_INCREMENT |
+| INT PRIMARY KEY with DEFAULT | PRIMARY KEY DEFAULT value; no AUTO_INCREMENT |
+| STRING PRIMARY KEY | PRIMARY KEY; no AUTO_INCREMENT |
+| No explicit PRIMARY KEY | Prepends id INT PRIMARY KEY AUTO_INCREMENT |
+
+No explicit key is required for semantic validity. Each valid entity without one
+receives semantic WRN001. The injected ID is a target detail, absent from AST,
+symbols, IR, and the entity's OpenAPI component properties. Collection query
+metadata includes that ID, and OpenAPI path parameters use integer IDs.
+
+**Current implicit-key limitation:** item model lookup/update/delete and create
+response key naming fall back to the first declared field, while SQL, collection
+pagination, and OpenAPI path metadata use implicit id. Source relationship
+model helpers also use that first-field fallback. Declare an explicit key for
+consistent item and relationship operations.
+
+Also, an ordinary field named id without PRIMARY KEY is accepted by semantics,
+but SQL still injects another id column. This collision is not diagnosed.
+
+## 7. Field Modifiers and Constraints
+
+### PRIMARY KEY
+
+Selects the key field as described in section 6. The parser stores the two-token
+source spelling as PRIMARY_KEY internally; PRIMARY_KEY is not DSL syntax.
+SQL enforces key uniqueness; OpenAPI does not automatically put the key in its
+required array unless REQUIRED is also written.
+
+### REQUIRED
+
+Allowed on every supported datatype. Emits SQL NOT NULL and adds the field
+to the OpenAPI component's required array. It does not generate a general
+missing-field check in Express. Supplied null on REQUIRED ENUM is a special
+membership-validation failure; other SQL nullability enforcement is left to the
+database. REQUIRED does not mean non-empty text; use MIN_LENGTH for that.
+
+### UNIQUE
+
+Allowed on every supported datatype. Emits SQL UNIQUE. There is no generated
+pre-insert uniqueness query or OpenAPI uniqueness property. Database errors are
+caught through the normal controller error path.
+
+<!-- example: valid required-unique -->
+~~~apiforge
+ENTITY Member
+id INT PRIMARY KEY
+email STRING REQUIRED UNIQUE MIN_LENGTH 1
+badge ENUM("silver", "gold") UNIQUE
+enabled BOOLEAN REQUIRED
+~~~
+
+### DEFAULT
+
+Syntax is DEFAULT literal, once per field. The parser accepts a number,
+double-quoted string, or uppercase boolean; absence/wrong token produces
+PAR020. Semantic analysis checks datatype (SEM021), duplicates (SEM020),
+numeric range (SEM022), STRING length (SEM023), and ENUM membership
+(SEM032). INT requires an integer, FLOAT a number, BOOLEAN a boolean, STRING
+a string, and ENUM a string member.
+
+Defaults emit SQL DEFAULT and OpenAPI default. Express does not insert
+default values into request bodies or reload the inserted record for create
+responses. Omitted insert fields are left to MySQL. Omitted PUT fields retain
+their existing values; PUT does not reset them to defaults.
+
+### MIN
+
+Syntax: `MIN <number>`. Sets an inclusive lower bound on INT/FLOAT.
+The numeric operand is required; a missing/wrong token produces PAR016.
+
+### MAX
+
+Syntax: `MAX <number>`. Sets an inclusive upper bound on INT/FLOAT.
+The numeric operand is required; a missing/wrong token produces PAR017.
+
+Each takes a number and applies only to INT/FLOAT (SEM015 otherwise).
+Each may appear independently, once per kind (SEM012 for repetition).
+INT bounds must be integers (SEM019). MIN must not exceed MAX (SEM017).
+Bounds are inclusive; defaults must satisfy them (SEM022).
+
+MIN/MAX emit SQL CHECK comparisons, supplied-value controller comparisons, and
+OpenAPI minimum/maximum. Missing numeric operands produce PAR016/PAR017.
+SEM013 covers nonnumeric bounds supplied through direct AST objects.
+
+<!-- example: valid numeric-bounds -->
+~~~apiforge
+ENTITY Score
+id INT PRIMARY KEY
+points INT MAX 100 MIN 0 DEFAULT 50
+adjustment FLOAT MIN -2.5
+~~~
+
+### MIN_LENGTH
+
+Syntax: `MIN_LENGTH <number>`. Sets an inclusive lower STRING code-point bound.
+The operand must have a non-negative integer value; missing/wrong token is PAR018.
+
+### MAX_LENGTH
+
+Syntax: `MAX_LENGTH <number>`. Sets an inclusive upper STRING code-point bound.
+The operand must have a non-negative integer value; missing/wrong token is PAR019.
+
+Each takes a non-negative integer value and applies only to STRING (SEM016
+otherwise). Zero is valid. Negative/fractional values produce SEM014.
+Each kind may occur once (SEM012); MIN_LENGTH must not exceed MAX_LENGTH
+(SEM018). STRING defaults must satisfy the bounds (SEM023).
+
+Semantic/default and Express lengths count Unicode code points using
+`Array.from(value).length`, not bytes or grapheme clusters. SQL emits CHAR_LENGTH
+checks; OpenAPI uses minLength/maxLength. SQL storage widens as in section 5.
+Missing operands produce PAR018/PAR019.
+
+<!-- example: valid length-bounds -->
+~~~apiforge
+ENTITY Label
+id INT PRIMARY KEY
+text STRING MIN_LENGTH 1 MAX_LENGTH 2 DEFAULT "😀"
+optional STRING MIN_LENGTH 0
+~~~
+
+## 8. ENUM
+
+~~~text
+Identifier ENUM "(" String ("," String)* ")" Modifier*
+~~~
+
+Quoted punctuation denotes literal tokens. A declaration requires at least one
+quoted string, commas between members, and a closing parenthesis.
+Values are unique and case-sensitive; declaration order survives AST, symbols,
+IR, optimization, SQL, and OpenAPI. Empty string members are allowed; an empty
+list is not. Whitespace/comments may separate tokens, including across lines.
+
+<!-- example: valid enum-details -->
+~~~apiforge
+ENTITY Choice
+id INT PRIMARY KEY
+value ENUM(
+    "active", // case-distinct members are allowed
+    "ACTIVE",
+    "",
+    "O'Reilly",
+    "C:\folder"
+) REQUIRED UNIQUE DEFAULT "active"
+~~~
+
+DEFAULT must be a quoted exact member. No unquoted enum constants or reusable
+named enum type declarations exist. The same literal backslash/no-escape rules
+as ordinary strings apply.
+
+| Invalid condition | Phase / public code |
+|---|---|
+| Missing opening parenthesis, empty list, unquoted/non-string member, missing member after comma | Parser PAR001 |
+| Missing comma or closing parenthesis after a member | Parser PAR022 |
+| Duplicate exact member | Semantic SEM031 |
+| String DEFAULT outside the set (including wrong case) | Semantic SEM032 |
+| Non-string DEFAULT | Semantic SEM021 |
+| PRIMARY KEY | Semantic SEM011 |
+| MIN or MAX | Semantic SEM015 |
+| MIN_LENGTH or MAX_LENGTH | Semantic SEM016 |
+| Malformed direct AST value array | Semantic SEM030 (the source parser already rejects malformed lists) |
+
+SQL uses native `ENUM(...) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin`.
+Apostrophes are doubled in SQL literals. ENUM members/defaults also double
+literal backslashes, assuming MySQL's normal backslash-escaping mode.
+Ordinary STRING defaults only double apostrophes; their legacy backslash
+handling is different. Generated JavaScript/JSON represents ENUM values using
+JSON escaping without changing the DSL values.
+
+Native MySQL behavior remains relevant: trailing spaces in declared members are
+removed, strict SQL mode affects direct database rejection, numeric indexes can
+be used by direct database writers, and ENUM sorting follows declaration
+indexes. These are target rules, not additional accepted DSL syntax.
+See the [MySQL ENUM reference](https://dev.mysql.com/doc/refman/8.4/en/enum.html).
+Prefer members without trailing spaces.
+
+Generated POST/PUT validation rejects supplied non-strings and nonmembers before
+model calls. Optional null is allowed; REQUIRED ENUM rejects supplied null.
+Omission is allowed by the controller even for REQUIRED ENUM, leaving database
+defaults/nullability to apply. OpenAPI has type string, the ordered enum
+array, optional default, and REQUIRED membership in the parent required array.
+It does not emit nullable: true for optional fields.
+
+## 9. Relationships
+
+~~~text
+RelationDecl := RELATION SourceIdentifier RelationIdentifier TargetIdentifier Cardinality
+Cardinality  := ONE_TO_ONE | ONE_TO_MANY | MANY_TO_ONE | MANY_TO_MANY
+~~~
+
+Both endpoints must be declared somewhere in the program (SEM028 source,
+SEM029 target). Names resolve case-sensitively. Relationship names are globally
+unique (SEM024) and cannot be reserved. A relationship cannot connect an entity
+to itself (SEM027). Missing/invalid cardinality is a parser error
+(PAR010/PAR011). An explicit endpoint key is not semantically mandatory,
+but avoids the implicit-key model inconsistency described in section 6.
+
+For source S, target T, and their key fields, foreign-key column names use the
+entity name with only its first character lowercased, followed by an underscore
+and the referenced key name. STRING key foreign keys retain the generated
+VARCHAR capacity. Entity tables are emitted before relationship DDL.
+
+| Cardinality | Generated storage | Generated source-router operation |
+|---|---|---|
+| ONE_TO_ONE | Nullable, UNIQUE S-key column on T; FK references S, ON DELETE CASCADE | GET singular T |
+| ONE_TO_MANY | Nullable S-key column on T; FK references S, ON DELETE SET NULL | GET list of T |
+| MANY_TO_ONE | Nullable T-key column on S; FK references T, ON DELETE SET NULL | GET singular T |
+| MANY_TO_MANY | S_T junction table; two NOT NULL FK columns, composite PK, both ON DELETE CASCADE | GET list, POST association, DELETE association |
+
+ONE_TO_ONE enforces at most one target per non-null source key; it does not
+require every source record to have a target. The DSL cannot customize
+nullability, referential actions, foreign-key names, or relationship column names.
+
+Relationship routes are generated on the source only. Path segments and
+handler names derive from T, not the relationship name. SQL-added FK columns
+do not become source DSL fields or OpenAPI component properties. Apart from
+MANY_TO_MANY association routes, no dedicated linking/unlinking endpoint is
+generated. See section 12 for paths and section 13 for all four forms.
+
+Different relationship names between the same endpoints are semantically valid
+but can duplicate junction tables, FK columns, handler names, routes, or OpenAPI
+paths. The compiler does not diagnose these target collisions.
+
+## 10. Defaults and Validation
+
+Compile-time validation checks declarations and literal defaults. Runtime
+validation checks supplied request data. The generated OpenAPI schema is
+documentation; the server does not load a schema validator.
+
+| Rule | Compile time | Generated POST/PUT | SQL / OpenAPI |
+|---|---|---|---|
+| Default type/range/length/membership | Enforced by semantics | No default injection | DEFAULT / default |
+| Numeric MIN/MAX | Type/range consistency, inclusive default check | Compare provided non-null values using JavaScript comparisons | CHECK / minimum, maximum |
+| STRING length | Non-negative integer bounds and code-point default length | Provided non-null value must be string and satisfy code-point length | CHAR_LENGTH CHECK / minLength, maxLength |
+| ENUM membership | Unique members and exact default membership | Exact string membership; null policy as in section 8 | Native ENUM / string enum |
+| REQUIRED | Valid modifier; duplicate rejected | No general omission check | NOT NULL / required array |
+| UNIQUE / key | Valid declaration/type; duplicate rejected | No uniqueness precheck | Database constraint; no OpenAPI uniqueness marker |
+
+Numeric write checks do not independently enforce JSON number type, INT
+integrality, or safe/finite numeric values; JavaScript coercion can affect
+comparisons. Unbounded ordinary fields have no general generated datatype check.
+Bounds skip omitted/null values. Database acceptance still depends on column
+types, constraints, capacity, and SQL configuration.
+
+Controller validation failures return HTTP 400 with
+`{ "success": false, "error": "<message>" }`. Database failures caught by CRUD
+controllers use HTTP 500, including database-enforced nullability/uniqueness
+failures; they are not automatically mapped to validation 400 responses.
+Supplied update fields are passed to the model; omitted fields are unchanged.
+
+## 11. Diagnostics
+
+Public error codes have a prefix and three digits. The registry contains
+61 errors: LEX001–LEX004, PAR001–PAR022, SEM001–SEM032, INP001–INP002, and INT001.
+The symbolic identifier is separate: a semantic compatibility error may have
+`code: "DUPLICATE_FIELD"`, while its nested diagnostic has `code: "SEM005"`.
+Do not confuse the legacy symbolic code with the public code.
+
+~~~json
+{
+  "phase": "semantic",
+  "code": "SEM017",
+  "severity": "error",
+  "message": "MIN value 60 cannot be greater than MAX value 18.",
+  "symbol": "MIN_EXCEEDS_MAX",
+  "line": 2,
+  "column": 9,
+  "endLine": 2,
+  "endColumn": 15,
+  "hint": "MIN must not exceed MAX."
+}
+~~~
+
+Positions are 1-based; end ranges are exclusive. Unknown starts are null.
+Unavailable ranges and hints are omitted. Lexer/parser errors stop immediately;
+semantics collects errors, then the pipeline stops before IR/codegen.
+See [the full diagnostic registry](structured-diagnostics.md).
+
+Warnings use the same shape with severity warning and a separate collection:
+
+| Code | Symbol / phase | Actual condition |
+|---|---|---|
+| WRN001 | IMPLICIT_PRIMARY_KEY / semantic | Each otherwise valid entity without an explicit key; SQL injects integer id. |
+| WRN002 | CONFLICTING_FIELD / optimizer | Direct-IR repeated entity/field with differing type, ENUM members/order, constraints, validations, or default; both remain. |
+| WRN003 | CONFLICTING_RELATION_TYPE / optimizer | Direct-IR same relationship name/endpoints but different cardinality; both remain. |
+| WRN004 | CONFLICTING_RELATION_ENDPOINTS / optimizer | Direct-IR same relationship name but different endpoints; both remain. |
+| WRN005 | INVALID_IR / optimizer | Non-object/missing-instructions-array fallback; returns input unchanged with no optimizations. |
+
+WRN002–WRN005 describe direct optimizer inputs, not permission to write conflicting
+DSL. Ordinary duplicate declarations fail semantics; exact IR duplicates may be
+removed without warnings. Invalid-IR fallback does not establish that later
+codegen can succeed. No ENUM-specific or style warning exists.
+
+Warnings are ordered by compiler phase, line, column, then code; unavailable
+positions sort after known ones. Ties preserve emission order. They do not change
+semantic validity or generated contents. Warning-only CLI compilation exits 0;
+compiler HTTP success remains 200 with six succeeded phases. API warnings is
+an array of diagnostic objects, including an empty array when none exist.
+
+The repository compiler endpoint is `POST /api/compile`, distinct from generated
+resource routes. Missing/non-string source (INP001) and lexer/parser failures
+return 400; semantic failures return 422; internal failures use safe INT001 with
+500. Malformed JSON retains the existing 500/INP002 behavior. Empty, blank, and
+comment-only strings reach semantic SEM001. The CLI exits 1 for compiler failures.
+
+## 12. Generated API Behavior
+
+This section describes emitted backend behavior, not additional DSL syntax.
+
+### Files and naming
+
+Generation returns seven fixed files plus three per entity:
+
+~~~text
+database/schema.sql
+config/db.js
+.env.example
+package.json
+README.md
+server.js
+swagger.json
+models/<Entity>.js
+controllers/<lowerFirstEntity>Controller.js
+routes/<lowerFirstEntity>Routes.js
+~~~
+
+Entity SQL names retain spelling; the general SQL identifier helper quotes its
+recognized MySQL reserved words. Model filenames retain entity spelling.
+Controller/router filenames lowercase only the first letter. Resource routes
+lowercase the whole entity name and pluralize: consonant+y becomes ies; endings
+s/ch/sh/x add es; otherwise add s. Examples: Student → students, Category →
+categories, Box → boxes, Person → persons. There is no irregular-noun dictionary.
+Some relationship model SQL interpolates names without the general quoting
+helper, so SQL-reserved names are not uniformly safe for relationship queries.
+
+The CLI reconciles generator-owned models/controllers/routes/config/database
+directories; root user files such as output/.env are preserved. Generated
+dependencies are dotenv, express, and mysql2. No lockfile, live .env, or
+automatic database/schema bootstrap is emitted. /health checks the server.
+The server does not serve Swagger UI or swagger.json.
+
+### CRUD and responses
+
+For Student, the server mounts directly at /students:
+
+| Method | Path | Success | Typical failure |
+|---|---|---|---|
+| GET | `/students` | 200, success/data array | 400 invalid query; 500 DB error |
+| GET | `/students/:id` | 200, success/data record | 404 absent; 500 DB error |
+| POST | `/students` | 201, success/data result | 400 generated validation; 500 DB error |
+| PUT | `/students/:id` | 200, success/data refreshed record | 400 generated validation; 404 absent; 500 DB error |
+| DELETE | `/students/:id` | 200, success/message | 404 absent; 500 DB error |
+
+There is no /api prefix on generated resource routes. Path parameters remain
+named id even for a differently named STRING primary key. Models bind request
+values with mysql2 placeholders/object binding. PUT with an empty payload looks
+up the existing record. Create returns the model's insert result plus submitted
+data rather than re-reading database defaults.
+
+### Collection GET queries
+
+Only collection GET supports these options. Item GET, writes, and relationship
+routes do not apply collection-query validation or filtering.
+
+For the Student program in section 13:
+
+~~~text
 GET /students?age=21
-GET /students?sort=name&order=asc
+GET /students?status=active&active=false
+GET /students?sort=name&order=desc
 GET /students?page=2&limit=20
 GET /students?status=active&age=21&sort=name&order=desc&page=2&limit=10
-```
+~~~
 
-Exact equality filters use known entity fields, including generated implicit `id`,
-and combine with AND in declaration order. INT accepts signed safe integers;
-FLOAT accepts finite decimal/exponent numbers; BOOLEAN accepts only lowercase
-`true`/`false`; STRING uses raw text (including empty strings); ENUM requires exact
-declared membership. No NULL, wildcard, range, or OR syntax exists. Equality follows
-the generated MySQL column's comparison behavior; STRING collation is unchanged.
+Known fields (plus implicit integer id when needed) support SQL equality.
+Multiple filters use AND in declaration order. SQL-added relationship FK columns
+are not automatically included in the query whitelist. Write bounds/defaults
+are not reapplied to filters.
 
-`sort=<field>` accepts known fields and `order=asc|desc` defaults to `asc`.
-`order` without `sort` is invalid. Pagination is opt-in through either `page` or
-`limit`, with defaults 1/20 and a maximum limit of 100. Page and limit must be
-positive decimal integers without leading zeros; unsafe integers/offsets are
-rejected. Without pagination, results remain unbounded and no COUNT query runs.
-Paginated queries order by primary key when no sort is provided, and add primary
-key ASC as a tie-breaker when sorting a different field.
+| Filter datatype | Accepted decoded HTTP string |
+|---|---|
+| INT | Optional minus followed by digits, converting to a safe integer; leading zeros allowed. No plus, whitespace, decimals, or exponents. |
+| FLOAT | Finite signed decimal/exponent; .5, +3.2, 1e-3 work. URL-encode a literal plus as %2B. No whitespace, hex, NaN, Infinity, or overflow. |
+| BOOLEAN | Exactly lowercase true or false. |
+| STRING | Raw text, including empty strings; equality follows SQL column collation. |
+| ENUM | Exact declared member, case-sensitive; empty only if declared. |
 
-Paginated responses include `X-Total-Count`, `X-Page`, `X-Limit`, and
-`X-Total-Pages` headers. Count uses the same filters. No matches means total pages
-0; pages beyond the last yield empty `data`. Reserved parameters are `page`,
-`limit`, `sort`, `order`; fields with these names cannot filter, but can sort.
-Unknown fields, repeated/non-string values, invalid typed filters, invalid sorting,
-and malformed/out-of-range pagination return `{ success: false, error: "..." }`
-with HTTP 400 before database access. Collection database errors return a sanitized
-500 response. Item GET, POST/PUT/DELETE, and relationship routes do not gain these
-query options. Values and LIMIT/OFFSET are bound parameters; SQL identifiers and
-order tokens come from generated whitelists.
+No special NULL filter exists: STRING null is text; ENUM null must be a declared
+member. Wildcard/contains, ranges, OR, and nested relationship filters have no
+query syntax.
 
-### Relationship Endpoints
+`sort=<field>` must name a known field. order accepts lowercase asc/desc,
+defaults to asc, and requires sort. No automatic ordering occurs without sort
+or pagination. Sorting does not by itself enable pagination.
 
-Depending on the cardinality, relationship endpoints are automatically appended to the source entity's router:
+Either page or limit enables pagination, with defaults page=1, limit=20,
+and maximum limit=100. Each must use positive decimal digits with no leading
+zeros; page/limit and `(page-1)*limit` must be safe integers. Pagination without
+sort orders by primary key ASC. Sorting a different field adds primary key ASC
+as a tie-breaker.
 
-| Cardinality | Method & Path | Description | Status Code |
-|:---|:---|:---|:---:|
-| **MANY_TO_MANY** | `GET /<sources>/:id/<targets>` | List associated target records | `200 OK` |
-| **MANY_TO_MANY** | `POST /<sources>/:id/<targets>/:<target>Id` | Link target record to source | `201 Created` |
-| **MANY_TO_MANY** | `DELETE /<sources>/:id/<targets>/:<target>Id` | Unlink target record from source | `200 OK` |
-| **ONE_TO_MANY** | `GET /<sources>/:id/<targets>` | List children associated with source | `200 OK` |
-| **MANY_TO_ONE** | `GET /<sources>/:id/<target>` | Get parent associated with source | `200 OK` / `404` |
-| **ONE_TO_ONE** | `GET /<sources>/:id/<target>` | Get single related target record | `200 OK` / `404` |
+Success always preserves `{ "success": true, "data": [...] }`. Pagination adds
+X-Total-Count, X-Page, X-Limit, X-Total-Pages headers. Count uses the same
+filters. Zero matches means zero total pages; beyond-last pages have empty data.
+Data and count are separate SQL reads, so concurrent writes can affect agreement.
+Without page/limit, results are unbounded and there is no COUNT query.
 
-### Validation Behavior
-When a `POST` or `PUT` request is made:
-1. The controller invokes `validate<Entity>(req.body)`.
-2. If any field violates numeric or STRING length bounds, the API immediately returns:
-   ```json
-   {
-       "success": false,
-       "error": "Field 'username' length must be >= 3."
-   }
-   ```
-   with an **HTTP 400 Bad Request** status code.
-3. Omitted fields in `PUT` updates are tolerated, relying on database defaults.
+page, limit, sort, order are reserved control names. Fields with those
+names may be sorted but cannot be filtered. Unknown keys, repeated/non-string
+values, invalid datatype values, and invalid sorting/pagination return 400
+before any DB query. Collection DB failures return sanitized 500 error
+`Unable to retrieve collection.`. Filter values, limit, and offset are bound
+parameters; column names and direction tokens come from trusted whitelists.
 
----
+### Relationship routes
 
-## 16. Generated SQL
+| Cardinality/example | Routes |
+|---|---|
+| Student → Course MANY_TO_MANY | GET `/students/:id/courses`; POST/DELETE `/students/:id/courses/:courseId` |
+| Department → Employee ONE_TO_MANY | GET `/departments/:id/employees` |
+| Invoice → Customer MANY_TO_ONE | GET `/invoices/:id/customer` |
+| User → Profile ONE_TO_ONE | GET `/users/:id/profile` |
 
-The generated `output/database/schema.sql` uses standard MySQL DDL.
+Singular target segments lowercase only the first character (AccountProfile →
+accountProfile). List routes return success/data arrays, singular routes return
+success/data records or 404, association POST returns 201 with success/data,
+and association DELETE returns 200 with success/message. Association DELETE's
+controller does not turn a missing association into 404.
 
-### Representative Example
+### OpenAPI
 
-```sql
--- ============================================================
--- MySQL Database Schema
--- Generated automatically by APIForge Compiler
--- ============================================================
+swagger.json describes CRUD/relationship paths at the root, shared POST/PUT
+entity schemas, REQUIRED arrays, defaults, numeric/length bounds, ENUM members,
+typed collection filters, sort/order controls, pagination bounds and conditional
+headers. Path parameter type follows the owning explicit key (INT → integer,
+STRING → string), or implicit integer id.
 
-CREATE TABLE `Department` (
-    `id` INT PRIMARY KEY AUTO_INCREMENT,
-    `name` VARCHAR(255) NOT NULL UNIQUE,
-    `budget` FLOAT DEFAULT 50000 CHECK (`budget` >= 10000)
-);
+The generated specification is not a complete runtime response contract: most
+CRUD responses have descriptions only, and relationship response schemas describe
+the related array/object without modeling its success/data envelope. Component
+schemas omit implicit IDs and SQL-added relationship columns and are reused for
+PUT despite the runtime's omitted-field tolerance.
 
-CREATE TABLE `Student` (
-    `id` INT PRIMARY KEY AUTO_INCREMENT,
-    `fullName` VARCHAR(255) NOT NULL CHECK (CHAR_LENGTH(`fullName`) >= 2 AND CHAR_LENGTH(`fullName`) <= 80),
-    `email` VARCHAR(255) NOT NULL UNIQUE,
-    `age` INT DEFAULT 20 CHECK (`age` >= 17 AND `age` <= 65),
-    `gpa` FLOAT DEFAULT 3 CHECK (`gpa` >= 0 AND `gpa` <= 4),
-    `isActive` BOOLEAN DEFAULT TRUE
-);
+## 13. Complete Examples
 
-CREATE TABLE `Course` (
-    `id` INT PRIMARY KEY AUTO_INCREMENT,
-    `code` VARCHAR(255) NOT NULL UNIQUE,
-    `title` VARCHAR(255) NOT NULL,
-    `credits` INT DEFAULT 3 CHECK (`credits` >= 1 AND `credits` <= 6)
-);
+All apiforge blocks are complete valid programs. They were compiled through all
+six real phases and their generated JavaScript was parsed. Invalid programs are
+tabulated separately in section 14. Syntax templates above use text fences.
 
--- ============================================================
--- Relationship Tables & Foreign Key Constraints
--- ============================================================
+### All field datatypes and collection-query fields
 
--- Relationship: Department OFFERS Course (ONE_TO_MANY)
-ALTER TABLE `Course` ADD COLUMN `department_id` INT;
-ALTER TABLE `Course` ADD CONSTRAINT `fk_course_department` FOREIGN KEY (`department_id`) REFERENCES `Department`(`id`) ON DELETE SET NULL;
+<!-- example: valid student-complete -->
+~~~apiforge
+ENTITY Student
+id INT PRIMARY KEY
+name STRING REQUIRED MIN_LENGTH 2 MAX_LENGTH 80
+email STRING UNIQUE
+age INT MIN 18 MAX 65 DEFAULT 21
+cgpa FLOAT MIN 0 MAX 10 DEFAULT 8.5
+active BOOLEAN DEFAULT TRUE
+status ENUM("active", "inactive", "suspended") DEFAULT "active"
+~~~
 
--- Relationship: Student ENROLLS_IN Course (MANY_TO_MANY)
-CREATE TABLE `Student_Course` (
-    `student_id` INT NOT NULL,
-    `course_id` INT NOT NULL,
-    PRIMARY KEY (`student_id`, `course_id`),
-    FOREIGN KEY (`student_id`) REFERENCES `Student`(`id`) ON DELETE CASCADE,
-    FOREIGN KEY (`course_id`) REFERENCES `Course`(`id`) ON DELETE CASCADE
-);
-```
+### STRING primary key and enum constraints
 
-### Key SQL Characteristics:
-- **MySQL Reserved Words**: Identifiers matching MySQL keywords (e.g. `Order`, `Group`, `Key`) are quoted with backticks.
-- **Foreign Key Constraints**: Formed using deterministic naming (`fk_<target>_<source>`).
-- **Check Constraints**: Numeric checks are synthesized from `MIN` / `MAX`; STRING checks use `CHAR_LENGTH` for `MIN_LENGTH` / `MAX_LENGTH`.
+<!-- example: valid account-complete -->
+~~~apiforge
+ENTITY Account
+code STRING PRIMARY KEY REQUIRED MIN_LENGTH 3 MAX_LENGTH 40
+email STRING REQUIRED UNIQUE
+role ENUM("student", "faculty", "admin") REQUIRED DEFAULT "student"
+enabled BOOLEAN DEFAULT FALSE
+~~~
 
----
+### All relationship cardinalities
 
-## 17. Swagger/OpenAPI
+Distinct endpoint pairs avoid generated naming collisions:
 
-APIForge generates an OpenAPI 3.0.0 specification in `output/swagger.json`.
-
-### Specification Features:
-1. **Path Definitions**: Defines paths for all entity CRUD routes and relationship operations.
-2. **Parameters**: Path parameters (`id`, `targetId`) are documented with `in: "path"`, `required: true`, and type `integer`.
-3. **Request Bodies**: `POST` and `PUT` endpoints declare `requestBody` referencing the entity schema under `#/components/schemas/<Entity>`.
-4. **Schema Properties**:
-   - `INT` maps to `type: "integer"`.
-   - `STRING` maps to `type: "string"`.
-   - `FLOAT` maps to `type: "number"`.
-   - `BOOLEAN` maps to `type: "boolean"`.
-   - `MIN` / `MAX` map to `minimum` and `maximum` properties.
-   - `MIN_LENGTH` / `MAX_LENGTH` map to `minLength` and `maxLength` properties.
-   - `DEFAULT` maps to the `default` property.
-   - `REQUIRED` populates the schema's `required: [...]` array.
-
----
-
-## 18. Error Handling
-
-APIForge is built to provide actionable, human-friendly compiler errors.
-
-### Diagnostics Architecture:
-
-Compiler failures expose the shared JSON diagnostic contract: phase, stable code,
-severity, message, symbolic identifier, 1-based line/column, optional exclusive
-end positions and deterministic hint. Unknown positions are null; unavailable
-ranges and hints are omitted. Existing error messages and symbolic identifiers
-remain available for compatibility. See [Structured compiler diagnostics](structured-diagnostics.md)
-for the complete code registry, HTTP statuses and consumer contract.
-
-Lexer/parser failures stop immediately. Semantic analysis retains its existing
-collection of errors; subsequent phases are skipped on failure. Existing typo
-suggestions remain in messages. The CLI and playground share source-frame
-calculation and render actual ranges or a single caret when only a start is known.
-
-### Compiler Error Examples:
-
-#### 1. Malformed Decimal
-
-```text
-LEX004: Malformed numeric literal: expected a digit after the decimal point.
-  --> line 2, column 21
-2 | cgpa FLOAT DEFAULT 8.
-  |                     ^
-Hint: A decimal point must be followed by a digit, for example 8.0.
-[ABORT] Compilation stopped during lexer.
-```
-
-#### 2. Missing Field Datatype
-
-```text
-PAR012: Missing data type for field 'age'.
-Expected one of: INT, STRING, FLOAT, BOOLEAN.
-  --> line 2, column 4
-2 | age
-  |    ^
-[ABORT] Compilation stopped during parser.
-```
-
-#### 3. Reversed Numeric Bounds
-
-```text
-SEM017: MIN value 60 cannot be greater than MAX value 18.
-  --> line 2, column 9
-2 | age INT MIN 60 MAX 18
-  |         ^^^^^^
-Hint: MIN must not exceed MAX.
-```
-
----
-
-## 19. Common Mistakes
-
-Here are frequent mistakes and how the compiler responds:
-
-| Mistake | Example Code | Compiler Diagnostic | How to Fix |
-|:---|:---|:---|:---|
-| **Lowercase Keywords** | `entity Student` | `Expected ENTITY declaration but found IDENTIFIER "entity"` | Always use uppercase `ENTITY`. |
-| **Lowercase Datatype** | `name string` | `Expected DATATYPE but found IDENTIFIER "string". Did you mean 'STRING'?` | Always use uppercase `STRING`. |
-| **Missing Datatype** | `name REQUIRED` | `Expected DATATYPE but found MODIFIER "REQUIRED"` | Specify data type before modifier: `name STRING REQUIRED`. |
-| **Self-Referential Relation** | `RELATION User HAS User ONE_TO_ONE` | `Self-referential relationships are not supported: 'User' cannot relate to itself` | Remove or model relationship via separate entities. |
-| **Non-Existent Relation Target** | `RELATION Student IN Class ONE_TO_ONE` | `Target entity 'Class' in relationship 'IN' does not exist.` | Declare the `ENTITY Class` before referencing it. |
-| **Float Bound on INT** | `age INT MIN 18.5` | `Validation 'MIN' value for INT field 'age' must be an integer, but found 18.5.` | Use integer values for INT bounds (`MIN 18`). |
-| **Inverted MIN/MAX** | `age INT MIN 65 MAX 18` | `MIN value 65 cannot be greater than MAX value 18.` | Ensure `MIN <= MAX`. |
-| **Length Rule on Non-STRING** | `age INT MIN_LENGTH 2` | `Validation 'MIN_LENGTH' is only allowed for STRING fields.` | Use `MIN_LENGTH` / `MAX_LENGTH` only on `STRING`; use `MIN` / `MAX` for numeric fields. |
-| **Negative STRING Length** | `name STRING MIN_LENGTH -1` | `Validation 'MIN_LENGTH' value on field 'name' must be a non-negative integer.` | Use zero or a positive integer. |
-| **Inverted STRING Length** | `name STRING MIN_LENGTH 5 MAX_LENGTH 3` | `MIN_LENGTH value 5 cannot be greater than MAX_LENGTH value 3.` | Ensure `MIN_LENGTH <= MAX_LENGTH`. |
-| **Default Outside Bounds** | `age INT MIN 18 MAX 60 DEFAULT 12` | `Default value 12 is less than MIN value 18.` | Choose a default value within `[MIN, MAX]`. |
-| **Multiple Primary Keys** | `id INT PRIMARY KEY`<br>`uuid STRING PRIMARY KEY` | `Entity 'User' cannot have multiple primary keys.` | Use at most one primary key per entity. |
-| **Duplicate Fields** | `email STRING`<br>`email STRING` | `Duplicate field 'email' in entity 'User'.` | Remove the duplicate field name. |
-
----
-
-## 20. Full Example
-
-The following standalone `.apiforge` specification demonstrates all supported features in a single, fully compilable program.
-
-You can save this file as `samples/ecommerce.apiforge` and compile it immediately:
-
-```apiforge
-// ============================================
-// APIForge DSL - E-Commerce Store Example
-// File: ecommerce.apiforge
-// ============================================
-
+<!-- example: valid relationships-complete -->
+~~~apiforge
+ENTITY User
+id INT PRIMARY KEY
+username STRING REQUIRED UNIQUE
+ENTITY Profile
+id INT PRIMARY KEY
+bio STRING MAX_LENGTH 500
+ENTITY Department
+code STRING PRIMARY KEY MAX_LENGTH 40
+name STRING REQUIRED
+ENTITY Employee
+id INT PRIMARY KEY
+name STRING REQUIRED
+ENTITY Invoice
+id INT PRIMARY KEY
+amount FLOAT MIN 0 DEFAULT 0
 ENTITY Customer
-    id INT PRIMARY KEY
-    username STRING REQUIRED UNIQUE
-    email STRING REQUIRED UNIQUE
-    age INT MIN 18 MAX 100 DEFAULT 25
-    loyaltyPoints INT MIN 0 DEFAULT 0
-    isVip BOOLEAN DEFAULT FALSE
+code STRING PRIMARY KEY MAX_LENGTH 40
+name STRING REQUIRED
+ENTITY Student
+id INT PRIMARY KEY
+name STRING REQUIRED
+ENTITY Course
+code STRING PRIMARY KEY MAX_LENGTH 40
+title STRING REQUIRED
 
-ENTITY Order
-    id INT PRIMARY KEY
-    orderNumber STRING REQUIRED UNIQUE
-    totalAmount FLOAT MIN 0.0 DEFAULT 0.0
-    status STRING DEFAULT "pending"
+RELATION User HAS_PROFILE Profile ONE_TO_ONE
+RELATION Department HAS_EMPLOYEES Employee ONE_TO_MANY
+RELATION Invoice BELONGS_TO Customer MANY_TO_ONE
+RELATION Student ENROLLS_IN Course MANY_TO_MANY
+~~~
 
-ENTITY Product
-    id INT PRIMARY KEY
-    sku STRING REQUIRED UNIQUE
-    name STRING REQUIRED
-    price FLOAT MIN 0.01 DEFAULT 9.99
-    stockCount INT MIN 0 DEFAULT 100
+## 14. Common Invalid Programs
 
-// 1. One Customer places many Orders (ONE_TO_MANY)
-RELATION Customer PLACED Order ONE_TO_MANY
+Each row below is a complete independent source program. In the compact source
+column, `↵` denotes an actual newline. Expected values are the exact public
+diagnostic code arrays, not legacy symbolic identifiers. The documentation
+verifier runs every row and checks the entire array; examples may produce more
+than one semantic diagnostic.
 
-// 2. Orders contain many Products, Products appear in many Orders (MANY_TO_MANY)
-RELATION Order CONTAINS Product MANY_TO_MANY
-```
+| Case | Complete source (`↵` = newline) | Expected public codes |
+|---|---|---|
+| comment-only | `// no entities` | `SEM001` |
+| empty-entity | `ENTITY Item` | `SEM004` |
+| lowercase-keyword | `entity Item ↵ id INT` | `PAR007` |
+| digit-name | `ENTITY 1Item ↵ id INT` | `LEX002` |
+| unsupported-punctuation | `ENTITY Item {` | `LEX001` |
+| malformed-number | `ENTITY Item ↵ value FLOAT DEFAULT 8.` | `LEX004` |
+| unterminated-string | `ENTITY Item ↵ value STRING DEFAULT "open` | `LEX003` |
+| reserved-entity | `ENTITY INT ↵ id INT` | `PAR001` |
+| reserved-field | `ENTITY Item ↵ STRING INT` | `PAR009` |
+| missing-entity-name | `ENTITY` | `PAR002` |
+| missing-datatype | `ENTITY Item ↵ value` | `PAR012` |
+| datatype-replaced-by-modifier | `ENTITY Item ↵ value REQUIRED` | `PAR013` |
+| unsupported-datatype | `ENTITY Item ↵ value DATE` | `PAR013` |
+| lowercase-datatype | `ENTITY Item ↵ value string` | `PAR013` |
+| primary-without-key | `ENTITY Item ↵ id INT PRIMARY` | `PAR014` |
+| standalone-key | `ENTITY Item ↵ id INT KEY` | `PAR015` |
+| missing-min | `ENTITY Item ↵ value INT MIN` | `PAR016` |
+| missing-max | `ENTITY Item ↵ value FLOAT MAX` | `PAR017` |
+| missing-min-length | `ENTITY Item ↵ value STRING MIN_LENGTH` | `PAR018` |
+| missing-max-length | `ENTITY Item ↵ value STRING MAX_LENGTH` | `PAR019` |
+| missing-default | `ENTITY Item ↵ value STRING DEFAULT` | `PAR020` |
+| duplicate-entity | `ENTITY Item ↵ id INT PRIMARY KEY ↵ ENTITY Item ↵ code STRING` | `SEM002` |
+| duplicate-field | `ENTITY Item ↵ name STRING ↵ name INT` | `SEM005` |
+| duplicate-constraint | `ENTITY Item ↵ value STRING REQUIRED REQUIRED` | `SEM009` |
+| multiple-keys | `ENTITY Item ↵ id INT PRIMARY KEY ↵ code STRING PRIMARY KEY` | `SEM010` |
+| float-key | `ENTITY Item ↵ value FLOAT PRIMARY KEY` | `SEM011` |
+| boolean-key | `ENTITY Item ↵ value BOOLEAN PRIMARY KEY` | `SEM011` |
+| duplicate-bound | `ENTITY Item ↵ value INT MIN 1 MIN 1` | `SEM012` |
+| fractional-int-bound | `ENTITY Item ↵ value INT MIN 1.5` | `SEM019` |
+| numeric-bound-on-string | `ENTITY Item ↵ value STRING MIN 1` | `SEM015` |
+| numeric-bound-on-boolean | `ENTITY Item ↵ value BOOLEAN MAX 1` | `SEM015` |
+| length-bound-on-int | `ENTITY Item ↵ value INT MAX_LENGTH 4` | `SEM016` |
+| negative-length | `ENTITY Item ↵ value STRING MIN_LENGTH -1` | `SEM014` |
+| fractional-length | `ENTITY Item ↵ value STRING MAX_LENGTH 2.5` | `SEM014` |
+| reversed-numeric-range | `ENTITY Item ↵ value INT MIN 60 MAX 18` | `SEM017` |
+| reversed-length-range | `ENTITY Item ↵ value STRING MIN_LENGTH 5 MAX_LENGTH 3` | `SEM018` |
+| duplicate-default | `ENTITY Item ↵ value STRING DEFAULT "a" DEFAULT "b"` | `SEM020` |
+| wrong-default-type | `ENTITY Item ↵ value BOOLEAN DEFAULT 1` | `SEM021` |
+| fractional-int-default | `ENTITY Item ↵ value INT DEFAULT 4.5` | `SEM021` |
+| numeric-default-outside | `ENTITY Item ↵ value INT MIN 18 MAX 60 DEFAULT 12` | `SEM022` |
+| string-default-outside | `ENTITY Item ↵ value STRING MIN_LENGTH 3 DEFAULT "ok"` | `SEM023` |
+| enum-empty-list | `ENTITY Item ↵ value ENUM()` | `PAR001` |
+| enum-unquoted-member | `ENTITY Item ↵ value ENUM(active)` | `PAR001` |
+| enum-trailing-comma | `ENTITY Item ↵ value ENUM("a",)` | `PAR001` |
+| enum-missing-comma | `ENTITY Item ↵ value ENUM("a" "b")` | `PAR022` |
+| enum-missing-close | `ENTITY Item ↵ value ENUM("a"` | `PAR022` |
+| enum-duplicate | `ENTITY Item ↵ value ENUM("a", "a")` | `SEM031` |
+| enum-wrong-case-default | `ENTITY Item ↵ value ENUM("active") DEFAULT "ACTIVE"` | `SEM032` |
+| enum-nonstring-default | `ENTITY Item ↵ value ENUM("a") DEFAULT TRUE` | `SEM021` |
+| enum-key | `ENTITY Item ↵ value ENUM("a") PRIMARY KEY` | `SEM011` |
+| enum-numeric-bound | `ENTITY Item ↵ value ENUM("a") MIN 1` | `SEM015` |
+| enum-length-bound | `ENTITY Item ↵ value ENUM("a") MAX_LENGTH 1` | `SEM016` |
+| missing-cardinality | `ENTITY Item ↵ id INT ↵ RELATION Item LINKS Other` | `PAR010` |
+| invalid-cardinality | `ENTITY Item ↵ id INT ↵ RELATION Item LINKS Other one_to_many` | `PAR011` |
+| missing-source | `ENTITY Item ↵ id INT ↵ RELATION Other LINKS Item MANY_TO_ONE` | `SEM028` |
+| missing-target | `ENTITY Item ↵ id INT ↵ RELATION Item LINKS Other ONE_TO_MANY` | `SEM029` |
+| self-relation | `ENTITY Item ↵ id INT ↵ RELATION Item LINKS Item ONE_TO_ONE` | `SEM027` |
+| duplicate-relation | `ENTITY A ↵ id INT ↵ ENTITY B ↵ id INT ↵ RELATION A LINKS B MANY_TO_MANY ↵ RELATION A LINKS B ONE_TO_MANY` | `SEM024` |
+| relation-only | `RELATION A LINKS B MANY_TO_ONE` | `SEM001, SEM028, SEM029` |
 
-To compile this specification:
-```bash
-node index.js samples/ecommerce.apiforge
-```
+Parser codes depend on the actual token position: missing datatype at EOF is
+PAR012, whereas `value REQUIRED` produces PAR013. Unrecognized modifier
+spellings are ordinary identifiers and may start an attempted next field; do
+not assume they produce the registry's direct-token PAR021.
 
----
+## 15. Current Language Boundaries
 
-## 21. CLI Reference
+The current source language has no block scopes/braces, semicolon terminators,
+imports, namespaces, entity extension, inheritance, reusable named enums,
+arrays/objects, expressions/functions, loops, conditional statements, migrations,
+custom endpoints, authentication declarations, or alternate database targets.
 
-All CLI commands are defined in `package.json` and executed via npm or node:
+Only the five listed datatypes exist. DATE/TIMESTAMP, UUID, JSON, DECIMAL,
+VARCHAR(n), NULL defaults, regex/email constraints, indexes, composite entity
+primary keys, explicit FOREIGN KEY constraints, and configurable delete actions have
+no DSL construct. SQL composite junction keys are generated from MANY_TO_MANY,
+not declared by composite-key syntax.
 
-### 1. `npm install`
-Installs project dependencies (`express`, `mysql2`, `dotenv`).
+Strings have no escapes or multiline form. Source numbers have no plus prefix,
+scientific notation, or hexadecimal form, even though HTTP FLOAT filters accept
+some of those representations. Self-relations are rejected. Duplicate DSL
+declarations are errors, not optimizer deduplication requests.
 
-### 2. `npm run dev`
-Launches the interactive Web Playground server at **http://localhost:3001** via `server.js`.
-
-### 3. `npm start`
-Alias for launching the Web Playground server (`node server.js`).
-
-### 4. `npm test`
-Runs the complete test suite (`node tests/test.js`). Executes 1000+ unit, integration, and end-to-end tests across all compiler phases.
-
-### 5. `npm run compile`
-Executes the CLI compiler on the baseline sample file:
-```bash
-node index.js samples/student.apiforge
-```
-
-### 6. `node index.js <path-to-file>`
-Compiles an arbitrary `.apiforge` file into `output/`. Prints phase-by-phase diagnostics (Token Table, AST, Symbol Table, IR instructions, Optimizer passes, and generated files summary).
-
----
-
-## 22. Generated Project Usage
-
-Once you compile a DSL file, follow these steps to run and test the generated backend:
-
-### Step 1: Enter the Generated Project and Install Dependencies
-```bash
-cd output
-npm install
-```
-
-### Step 2: Configure Environment
-Copy `.env.example` to `.env` and adjust your MySQL credentials:
-```bash
-PORT=3000
-DB_HOST=localhost
-DB_PORT=3306
-DB_USER=root
-DB_PASSWORD=your_password
-DB_NAME=apiforge_db
-```
-
-### Step 3: Create the MySQL Database & Import Schema
-Run the schema script against your MySQL instance:
-```bash
-mysql -u root -p -e "CREATE DATABASE IF NOT EXISTS apiforge_db;"
-mysql -u root -p apiforge_db < database/schema.sql
-```
-
-### Step 4: Start the Generated API Server
-Run the generated Express server through its package script:
-```bash
-npm start
-```
-The server starts listening on port 3000:
-```text
-APIForge server listening on port 3000
-```
-
-### Step 5: Test Endpoints
-Test the health check:
-```bash
-curl http://localhost:3000/health
-```
-
-Create a new customer (POST):
-```bash
-curl -X POST http://localhost:3000/customers \
-     -H "Content-Type: application/json" \
-     -d '{"username": "john_doe", "email": "john@example.com", "age": 28}'
-```
-
-Fetch all customers (GET):
-```bash
-curl http://localhost:3000/customers
-```
-
-Trigger input validation error (age < 18):
-```bash
-curl -X POST http://localhost:3000/customers \
-     -H "Content-Type: application/json" \
-     -d '{"username": "kid", "email": "kid@example.com", "age": 15}'
-```
-Response (HTTP 400):
-```json
-{
-    "success": false,
-    "error": "Field 'age' must be >= 18."
-}
-```
-
----
-
-## 23. FAQ
-
-### What is APIForge?
-APIForge is a domain-specific language (DSL) and compiler for rapid backend development. It enables developers to define data schemas and relationships in a simple declarative syntax and automatically generates a production-ready MySQL database schema, an Express.js REST API with models and controllers, and an OpenAPI 3.0 specification.
-
-### Is APIForge a programming language?
-APIForge is a **domain-specific declarative language**, not a general-purpose programming language. It lacks control-flow primitives like loops (`for`, `while`) or arbitrary conditional branching (`if/else`). It is designed specifically for expressing data structures, validations, and entity relationships.
-
-### Is SQL the language being compiled?
-No. APIForge DSL is the input language. SQL is one of the target languages emitted by the compiler's code generator.
-
-### Why is MySQL involved?
-MySQL is the relational database target for APIForge code generation. The compiler produces relational DDL tables, foreign keys, and parameterized queries designed for the `mysql2/promise` driver.
-
-### Why do we have IR (Intermediate Representation)?
-The Intermediate Representation (IR) decouples the front-end (lexer, parser, semantic analyzer) from the back-end (code generator). By converting the AST into target-independent IR instructions (`CREATE_ENTITY`, `ADD_FIELD`, `CREATE_RELATION`), the compiler can:
-1. Apply general optimizations (Passes 1-6) without caring about MySQL or Express syntax.
-2. Allow adding future database targets (e.g., PostgreSQL, SQLite) without modifying the parser.
-
-### What does the optimizer do?
-The optimizer executes six target-independent passes on the IR:
-1. **Constraint Normalization**: De-duplicates and sorts field constraints deterministically (`PRIMARY_KEY` -> `REQUIRED` -> `UNIQUE`).
-2. **Duplicate Validation Elimination**: Removes redundant identical validation rules on the same field.
-3. **Validation Order Normalization**: Orders validations consistently (`MIN` before `MAX`).
-4. **Duplicate Entity Elimination**: Removes redundant entity definitions.
-5. **Duplicate Field Elimination**: Removes identical duplicate field declarations.
-6. **Duplicate Relationship Elimination**: Removes redundant relationship instructions.
-
-### What happens when compilation fails?
-The compiler stops and prints formatted diagnostics:
-- For lexical or syntax errors: It stops immediately, displays the error code, message, line, column, and draws a code frame with a caret under the error.
-- For semantic errors: It collects all errors across the file and reports them together in a consolidated list with line and column positions.
-- When an error occurs, no output files are written.
-
-### What gets generated?
-Every successful compilation produces ten core components in `output/`:
-1. `database/schema.sql` (MySQL DDL schema)
-2. `config/db.js` (MySQL connection pool configuration)
-3. `.env.example` (Environment variables template)
-4. `package.json` (Generated project metadata, runtime dependencies, and start script)
-5. `README.md` (Generated-project setup guide)
-6. `models/<Entity>.js` (Data access objects with SQL queries)
-7. `controllers/<entity>Controller.js` (Request handlers & boundary validation)
-8. `routes/<entity>Routes.js` (Express router endpoints)
-9. `server.js` (Express application entry point)
-10. `swagger.json` (OpenAPI 3.0 API document)
+The compiler does not guarantee that every semantically accepted name/combination
+produces an operational backend. Current target limits include implicit-key
+fallback differences, duplicate injected id columns, lowercase naming collisions,
+repeated relationship output collisions, inconsistent relationship SQL quoting,
+physical database limits, and incomplete request/response schema enforcement.
+These limits are recorded here without adding language rules or changing output.
