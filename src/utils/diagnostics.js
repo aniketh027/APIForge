@@ -39,10 +39,22 @@ const CODES = Object.freeze({
     internal: Object.freeze({ FAILURE: 'INT001' })
 });
 
-function createDiagnostic(phase, symbol, message, location = {}, hint) {
-    const code = CODES[phase]?.[symbol] || (symbol === 'FAILURE' ? CODES.internal.FAILURE : null);
+// Separate, append-only warning namespace; phase and symbol remain independent.
+const WARNING_CODES = Object.freeze({
+    semantic: Object.freeze({ IMPLICIT_PRIMARY_KEY: 'WRN001' }),
+    optimizer: Object.freeze({
+        CONFLICTING_FIELD: 'WRN002', CONFLICTING_RELATION_TYPE: 'WRN003',
+        CONFLICTING_RELATION_ENDPOINTS: 'WRN004', INVALID_IR: 'WRN005'
+    })
+});
+
+function createDiagnostic(phase, symbol, message, location = {}, hint, { severity = 'error' } = {}) {
+    if (severity !== 'error' && severity !== 'warning') throw new Error(`Unsupported diagnostic severity: ${severity}`);
+    const registry = severity === 'warning' ? WARNING_CODES : CODES;
+    const code = registry[phase]?.[symbol] ||
+        (severity === 'error' && symbol === 'FAILURE' ? CODES.internal.FAILURE : null);
     if (!code) throw new Error(`Unregistered diagnostic: ${phase}.${symbol}`);
-    const diagnostic = { phase, code, severity: 'error', message, symbol,
+    const diagnostic = { phase, code, severity, message, symbol,
         line: Number.isInteger(location.line) && location.line > 0 ? location.line : null,
         column: Number.isInteger(location.column) && location.column > 0 ? location.column : null };
     if (diagnostic.line && diagnostic.column && Number.isInteger(location.endLine) &&
@@ -54,6 +66,22 @@ function createDiagnostic(phase, symbol, message, location = {}, hint) {
     }
     if (hint) diagnostic.hint = hint;
     return diagnostic;
+}
+
+function createWarningDiagnostic(phase, symbol, message, location = {}, hint) {
+    return createDiagnostic(phase, symbol, message, location, hint, { severity: 'warning' });
+}
+
+// Known locations sort first. Exact ties retain emission order (stable sort).
+function sortDiagnostics(diagnostics) {
+    const compareText = (a, b) => a < b ? -1 : a > b ? 1 : 0;
+    const phaseIndex = phase => {
+        const index = COMPILER_PHASES.indexOf(phase);
+        return index === -1 ? COMPILER_PHASES.length : index;
+    };
+    return [...diagnostics].sort((a, b) => phaseIndex(a.phase) - phaseIndex(b.phase) ||
+        (a.line ?? Infinity) - (b.line ?? Infinity) ||
+        (a.column ?? Infinity) - (b.column ?? Infinity) || compareText(a.code, b.code));
 }
 
 // Keep Error.message/code/userMessage intact for existing callers.
@@ -72,4 +100,5 @@ function locate(node, key, fallbackColumn, occurrence = 0) {
     return node.sourceLocations?.[key]?.[occurrence] || { line: node.line, column: fallbackColumn };
 }
 
-module.exports = { COMPILER_PHASES, CODES, createDiagnostic, attachDiagnostic, internalDiagnostic, locate };
+module.exports = { COMPILER_PHASES, CODES, WARNING_CODES, createDiagnostic, createWarningDiagnostic,
+    sortDiagnostics, attachDiagnostic, internalDiagnostic, locate };

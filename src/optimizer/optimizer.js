@@ -35,6 +35,8 @@
  * ============================================================
  */
 
+const { createWarningDiagnostic, sortDiagnostics } = require('../utils/diagnostics');
+
 /**
  * Priority order for constraint normalization.
  */
@@ -53,6 +55,15 @@ const VALIDATION_PRIORITY = {
     'MIN_LENGTH': 3,
     'MAX_LENGTH': 4
 };
+
+// Parser-style source metadata may be non-enumerable. Normalization copies
+// language values without losing the locations needed by warning diagnostics.
+function normalizedInstruction(inst, updates) {
+    const result = { ...inst, ...updates };
+    const sourceLocations = Object.getOwnPropertyDescriptor(inst, 'sourceLocations');
+    if (sourceLocations) Object.defineProperty(result, 'sourceLocations', sourceLocations);
+    return result;
+}
 
 /**
  * Normalizes a list of constraint strings:
@@ -101,10 +112,7 @@ function normalizeConstraints(instructions) {
 
         if (changed) {
             modifiedCount++;
-            return {
-                ...inst,
-                constraints: normalized
-            };
+            return normalizedInstruction(inst, { constraints: normalized });
         }
 
         return inst;
@@ -149,10 +157,7 @@ function eliminateDuplicateValidations(instructions) {
         }
 
         if (uniqueValidations.length !== inst.validations.length) {
-            return {
-                ...inst,
-                validations: uniqueValidations
-            };
+            return normalizedInstruction(inst, { validations: uniqueValidations });
         }
 
         return inst;
@@ -193,10 +198,7 @@ function normalizeValidations(instructions) {
 
         if (changed) {
             modifiedCount++;
-            return {
-                ...inst,
-                validations: sorted
-            };
+            return normalizedInstruction(inst, { validations: sorted });
         }
 
         return inst;
@@ -246,7 +248,7 @@ function removeDuplicateEntities(instructions) {
  * If data types, constraints, validations, or default values conflict, both are preserved and a warning is logged.
  * 
  * @param {Array} instructions - Array of IR instructions
- * @returns {Object} - { instructions: Array, removedCount: number, warnings: Array<string> }
+ * @returns {Object} - { instructions: Array, removedCount: number, warnings: Array<Object> }
  */
 function removeDuplicateFields(instructions) {
     const seenFields = new Map(); // key: "Entity.field", value: instruction
@@ -278,11 +280,12 @@ function removeDuplicateFields(instructions) {
                 removedCount++;
             } else {
                 // Conflicting duplicate — preserve both and emit warning
-                warnings.push(
+                warnings.push(createWarningDiagnostic('optimizer', 'CONFLICTING_FIELD',
                     `Optimization Conflict: Duplicate field '${key}' has conflicting declarations: ` +
                     `'${prevInst.dataType} [${prevInst.constraints.join(', ')}]' vs ` +
-                    `'${inst.dataType} [${inst.constraints.join(', ')}]'.`
-                );
+                    `'${inst.dataType} [${inst.constraints.join(', ')}]'.`,
+                    inst.sourceLocations?.name?.[0] || inst
+                ));
                 filtered.push(inst);
             }
         }
@@ -291,7 +294,7 @@ function removeDuplicateFields(instructions) {
     return {
         instructions: filtered,
         removedCount,
-        warnings
+        warnings: sortDiagnostics(warnings)
     };
 }
 
@@ -302,7 +305,7 @@ function removeDuplicateFields(instructions) {
  * both are preserved and an optimization conflict warning is logged.
  * 
  * @param {Array} instructions - Array of IR instructions
- * @returns {Object} - { instructions: Array, removedCount: number, warnings: Array<string> }
+ * @returns {Object} - { instructions: Array, removedCount: number, warnings: Array<Object> }
  */
 function removeDuplicateRelations(instructions) {
     const seenRelations = new Map(); // key: relationName, value: instruction
@@ -333,15 +336,17 @@ function removeDuplicateRelations(instructions) {
                 removedCount++;
             } else if (sameSource && sameTarget && !sameType) {
                 // Conflicting relation type — preserve both and emit warning
-                warnings.push(
-                    `Optimization Conflict: Relationship '${inst.relationName}' between '${inst.sourceEntity}' and '${inst.targetEntity}' has conflicting relation types: ${prevInst.relationType} vs ${inst.relationType}.`
-                );
+                warnings.push(createWarningDiagnostic('optimizer', 'CONFLICTING_RELATION_TYPE',
+                    `Optimization Conflict: Relationship '${inst.relationName}' between '${inst.sourceEntity}' and '${inst.targetEntity}' has conflicting relation types: ${prevInst.relationType} vs ${inst.relationType}.`,
+                    inst.sourceLocations?.name?.[0] || inst
+                ));
                 filtered.push(inst);
             } else {
                 // Conflicting endpoints — preserve both and emit warning
-                warnings.push(
-                    `Optimization Conflict: Relationship '${inst.relationName}' has conflicting endpoint definitions: '${prevInst.sourceEntity} -> ${prevInst.targetEntity}' vs '${inst.sourceEntity} -> ${inst.targetEntity}'.`
-                );
+                warnings.push(createWarningDiagnostic('optimizer', 'CONFLICTING_RELATION_ENDPOINTS',
+                    `Optimization Conflict: Relationship '${inst.relationName}' has conflicting endpoint definitions: '${prevInst.sourceEntity} -> ${prevInst.targetEntity}' vs '${inst.sourceEntity} -> ${inst.targetEntity}'.`,
+                    inst.sourceLocations?.name?.[0] || inst
+                ));
                 filtered.push(inst);
             }
         }
@@ -350,7 +355,7 @@ function removeDuplicateRelations(instructions) {
     return {
         instructions: filtered,
         removedCount,
-        warnings
+        warnings: sortDiagnostics(warnings)
     };
 }
 
@@ -370,7 +375,7 @@ function optimize(ir) {
         return {
             ir: ir,
             optimizations: [],
-            warnings: ['Invalid IR passed to optimizer.']
+            warnings: [createWarningDiagnostic('optimizer', 'INVALID_IR', 'Invalid IR passed to optimizer.')]
         };
     }
 
@@ -462,7 +467,7 @@ function optimize(ir) {
     return {
         ir: optimizedIR,
         optimizations,
-        warnings
+        warnings: sortDiagnostics(warnings)
     };
 }
 

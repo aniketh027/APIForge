@@ -78,7 +78,7 @@
 // ── Reserved Words ──────────────────────────────────────────
 // Entity names, field names, and relation names must NOT use any of these.
 
-const { createDiagnostic, locate } = require('../utils/diagnostics');
+const { createDiagnostic, createWarningDiagnostic, sortDiagnostics, locate } = require('../utils/diagnostics');
 const { didYouMeanSuffix } = require('../utils/errors');
 
 const RESERVED_WORDS = new Set([
@@ -222,10 +222,20 @@ class SemanticAnalyzer {
             configurable: true
         });
 
+        // Only valid programs reach codegen's existing implicit INT id behavior.
+        // Keep warning metadata out of the AST, symbol table, and generated IR.
+        const warnings = this.errors.length === 0 ? ast.entities
+            .filter(entity => !entity.fields.some(field => (field.constraints || []).includes('PRIMARY_KEY')))
+            .map(entity => createWarningDiagnostic('semantic', 'IMPLICIT_PRIMARY_KEY',
+                `Entity '${entity.name}' has no explicit primary key. APIForge will generate an implicit integer id field.`,
+                locate(entity, 'name', entity.nameColumn),
+                'Declare an explicit PRIMARY KEY to control the identifier.')) : [];
+
         return {
             valid: this.errors.length === 0,
             errors: this.errors,
             diagnostics: this.errors.map(error => error.diagnostic),
+            warnings: sortDiagnostics(warnings),
             symbolTable: this.symbolTable,
             entities: this.symbolTable,
             relations: this.relationsTable

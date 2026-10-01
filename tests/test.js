@@ -1947,7 +1947,7 @@ const conflictFieldIR = {
 };
 const opt4 = Optimizer.optimize(conflictFieldIR);
 assertTrue('Conflicting duplicate field preserved both (2 fields)', opt4.ir.instructions.filter(i => i.op === 'ADD_FIELD').length === 2);
-assertTrue('Optimization warning logged for conflict', opt4.warnings.length === 1 && opt4.warnings[0].includes('Optimization Conflict'));
+assertTrue('Optimization warning logged for conflict', opt4.warnings.length === 1 && opt4.warnings[0].message.includes('Optimization Conflict'));
 
 
 console.log('');
@@ -2140,7 +2140,7 @@ const conflictRelTypeIR = {
 };
 const opt17 = Optimizer.optimize(conflictRelTypeIR);
 assertEqual('Both conflicting relations preserved', opt17.ir.instructions.filter(i => i.op === 'CREATE_RELATION').length, 2);
-assertTrue('Optimization warning emitted for conflicting relation type', opt17.warnings.some(w => w.includes('conflicting relation types')));
+assertTrue('Optimization warning emitted for conflicting relation type', opt17.warnings.some(w => w.message.includes('conflicting relation types')));
 
 
 // ── Optimizer Test 18: Conflicting relationship endpoints -> warning ──
@@ -2159,7 +2159,7 @@ const conflictEndpointsIR = {
 };
 const opt18 = Optimizer.optimize(conflictEndpointsIR);
 assertEqual('Both conflicting endpoint relations preserved', opt18.ir.instructions.filter(i => i.op === 'CREATE_RELATION').length, 2);
-assertTrue('Optimization warning emitted for conflicting endpoints', opt18.warnings.some(w => w.includes('conflicting endpoint definitions')));
+assertTrue('Optimization warning emitted for conflicting endpoints', opt18.warnings.some(w => w.message.includes('conflicting endpoint definitions')));
 
 
 // ── Optimizer Test 19: Different relationship names preserved ──

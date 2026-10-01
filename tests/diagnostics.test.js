@@ -10,7 +10,7 @@ const Semantic = require('../src/semantic/analyzer');
 const IR = require('../src/ir/generator');
 const Optimizer = require('../src/optimizer/optimizer');
 const Codegen = require('../src/codegen/codegen');
-const { CODES, createDiagnostic } = require('../src/utils/diagnostics');
+const { CODES, WARNING_CODES, createDiagnostic, createWarningDiagnostic } = require('../src/utils/diagnostics');
 const { sourceFrame, formatDiagnostic } = require('../src/utils/source-frame');
 const app = require('../server');
 let passed = 0;
@@ -50,6 +50,39 @@ function check(diagnostic, code, phase, line, column) {
         assert(!('endLine' in diagnostic));
         assert(!('hint' in diagnostic));
         assert.throws(() => createDiagnostic('lexer', 'UNREGISTERED', 'bad'), /Unregistered/);
+    });
+    await test('error default is unchanged and warning creation shares the JSON contract', () => {
+        assert.deepEqual(createDiagnostic('input', 'INVALID_SOURCE', 'Invalid source'), {
+            phase: 'input', code: 'INP001', severity: 'error', message: 'Invalid source',
+            symbol: 'INVALID_SOURCE', line: null, column: null
+        });
+        const warning = createWarningDiagnostic('semantic', 'IMPLICIT_PRIMARY_KEY', 'Implicit id',
+            { line: 1, column: 8, endLine: 1, endColumn: 15 }, 'Declare a key.');
+        assert.deepEqual(warning, { phase: 'semantic', code: 'WRN001', severity: 'warning',
+            message: 'Implicit id', symbol: 'IMPLICIT_PRIMARY_KEY', line: 1, column: 8,
+            endLine: 1, endColumn: 15, hint: 'Declare a key.' });
+        assert.deepEqual(JSON.parse(JSON.stringify(warning)), warning);
+        assert.deepEqual(createDiagnostic('semantic', 'IMPLICIT_PRIMARY_KEY', 'Implicit id',
+            { line: 1, column: 8, endLine: 1, endColumn: 15 }, 'Declare a key.', { severity: 'warning' }), warning);
+    });
+    await test('warning registry is unique, separate and rejects unregistered or wrong severity conditions', () => {
+        const warnings = Object.values(WARNING_CODES).flatMap(Object.values);
+        const errors = Object.values(CODES).flatMap(Object.values);
+        assert.equal(warnings.length, 5);
+        assert.equal(new Set([...errors, ...warnings]).size, errors.length + warnings.length);
+        assert(warnings.every(code => /^WRN\d{3}$/.test(code)));
+        assert.throws(() => createWarningDiagnostic('semantic', 'UNREGISTERED', 'bad'), /Unregistered/);
+        assert.throws(() => createWarningDiagnostic('semantic', 'DUPLICATE_FIELD', 'bad'), /Unregistered/);
+        assert.throws(() => createDiagnostic('semantic', 'IMPLICIT_PRIMARY_KEY', 'bad'), /Unregistered/);
+        assert.throws(() => createDiagnostic('input', 'INVALID_SOURCE', 'bad', {}, undefined, { severity: 'info' }), /Unsupported/);
+        const unknown = createWarningDiagnostic('optimizer', 'INVALID_IR', 'Invalid IR');
+        assert.equal(unknown.line, null);
+        assert.equal(unknown.column, null);
+        assert(!('hint' in unknown));
+        assert(!('endLine' in unknown));
+        assert.deepEqual(JSON.parse(JSON.stringify(unknown)), unknown);
+        const startOnly = createWarningDiagnostic('optimizer', 'INVALID_IR', 'Invalid IR', { line: 2, column: 3, endLine: 2, endColumn: 1 });
+        assert(!('endColumn' in startOnly));
     });
     await test('malformed decimal retains the offending dot position and reliable hint', () => {
         const err = fatal(() => Lexer.tokenize('ENTITY Student\ncgpa FLOAT DEFAULT 8.'));
