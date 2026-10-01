@@ -20,6 +20,10 @@ APIForge compiles a small declarative backend language into MySQL DDL, a modular
 - Field constraints, numeric `MIN`/`MAX`, STRING `MIN_LENGTH`/`MAX_LENGTH`, and typed defaults become structured AST properties, then target-independent `ADD_FIELD` data. Codegen maps them to MySQL constraints/defaults/checks, controller validation, and OpenAPI schema properties.
 - A relationship becomes a `RelationNode`; semantic analysis verifies its unique name, endpoints, cardinality, and non-self-reference; the IR carries those facts in `CREATE_RELATION`. Codegen chooses the target-specific foreign-key or junction-table form and generates source-entity relationship handlers, routes, and OpenAPI paths.
 - The optimizer must not silently choose between conflicting declarations. Exact duplicates may be removed; conflicts remain visible as warnings.
+- ENUM remains `dataType: "ENUM"` with ordered `enumValues` through AST, symbols,
+  IR and optimized IR. Duplicate-field comparison includes the exact value array.
+  Only codegen lowers this to MySQL ENUM, Express membership checks and OpenAPI
+  string schemas with enum arrays. ENUM source metadata survives IR normalization.
 
 ## IR boundary
 

@@ -53,6 +53,10 @@ The generated README documents dependency installation, `.env` creation, MySQL d
 - `REQUIRED`, `UNIQUE`, typed defaults, numeric `MIN`/`MAX`, and STRING `MIN_LENGTH`/`MAX_LENGTH` become `NOT NULL`, `UNIQUE`, `DEFAULT`, and `CHECK` clauses as applicable. STRING-length checks use `CHAR_LENGTH`.
 - String defaults escape single quotes by doubling them. MySQL reserved or otherwise unsafe identifiers are backtick-quoted by the general identifier helper.
 - Entity tables are emitted before relationship DDL.
+- ENUM fields map to native `ENUM(...) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin`.
+  ENUM literals reuse SQL formatting with backslash escaping enabled; old STRING
+  formatting remains byte-compatible. The schema assumes MySQL's normal
+  backslash-escaping mode. Native ENUM trims trailing declaration spaces.
 
 Relationship SQL:
 
@@ -72,6 +76,11 @@ Relationship SQL:
 - Per-entity routers expose `GET /`, `GET /:id`, `POST /`, `PUT /:id`, and `DELETE /:id`.
 - The generated server mounts routers directly at lowercase plural paths such as `/students`, without an `/api` prefix, and exposes `/health`.
 - Relationship model/controller/routes are generated on the source entity. `MANY_TO_MANY` supports list/add/remove; `ONE_TO_MANY` supports list; `MANY_TO_ONE` and `ONE_TO_ONE` support singular lookup.
+- ENUM POST/PUT checks enforce exact string membership before model calls. Optional
+  null is allowed; supplied REQUIRED null is rejected. Omitted fields retain existing
+  DB-default and required-omission behavior. OpenAPI uses string + enum + default.
+  The offline ENUM tests execute real emitted routers with mocked model methods;
+  the opt-in MySQL harness also verifies native ENUM values, defaults and rejection.
 
 ## OpenAPI contract
 

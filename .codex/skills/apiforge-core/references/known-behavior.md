@@ -24,7 +24,11 @@ Treat these as implementation facts to verify when the relevant code changes, no
 - `MIN_LENGTH`/`MAX_LENGTH` are STRING-only non-negative integer bounds; `MIN_LENGTH` cannot exceed `MAX_LENGTH`, and STRING defaults must satisfy the declared length range.
 - Semantic analysis does not require an explicit primary key. During SQL generation, an entity without one receives `id INT PRIMARY KEY AUTO_INCREMENT`; the source AST/IR is not rewritten to add that field.
 - `INT PRIMARY KEY` normally becomes `PRIMARY KEY AUTO_INCREMENT`. With an explicit default, such as `INT PRIMARY KEY DEFAULT 1`, codegen omits `AUTO_INCREMENT` and emits the default.
-- `STRING` primary keys are allowed and are not auto-incremented. `FLOAT` and `BOOLEAN` primary keys are rejected.
+- `STRING` primary keys are allowed and are not auto-incremented. `FLOAT`, `BOOLEAN` and `ENUM` primary keys are rejected.
+- ENUM declares an ordered non-empty unique set of case-sensitive quoted strings.
+  Defaults must be members; REQUIRED/UNIQUE are supported and all bound modifiers
+  are rejected. AST/symbols/IR expose `enumValues`; native SQL uses binary collation,
+  Express checks membership and OpenAPI emits string schemas with enum arrays.
 - SQL uses `VARCHAR(255)` for STRING by default and widens the capacity when `MIN_LENGTH` or `MAX_LENGTH` requires more than 255 characters.
 
 ## Generated backend

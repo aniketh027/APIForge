@@ -86,8 +86,25 @@ a code. Optional fields and source ranges follow the same rules for both severit
 
 Warning codes use the **WRN plus three explicit digits** namespace, independently
 of phase. `WARNING_CODES` in `src/utils/diagnostics.js` owns the append-only
-assignments: never renumber or reuse them. All 57 existing error assignments are
-unchanged. `symbol` describes the condition; `phase` identifies its emitter.
+assignments: never renumber or reuse them. All 57 original error assignments are
+unchanged; ENUM appends four errors (61 total). `symbol` describes the condition;
+`phase` identifies its emitter.
+
+ENUM additions are append-only:
+
+| Phase | Code | Symbol | Condition |
+|---|---|---|---|
+| Parser | PAR022 | EXPECTED_ENUM_DELIMITER | Expected comma or closing parenthesis after a value |
+| Semantic | SEM030 | INVALID_ENUM_VALUES | Direct AST ENUM has no non-empty string array |
+| Semantic | SEM031 | DUPLICATE_ENUM_VALUE | Repeated case-sensitive member |
+| Semantic | SEM032 | INVALID_ENUM_DEFAULT | String default is not a declared member |
+
+Missing opening parentheses, empty lists, non-string values and missing values
+reuse PAR001 (EXPECTED_TOKEN). Non-string defaults reuse SEM021. Bounds reuse
+SEM015/SEM016; ENUM primary keys reuse SEM011. Duplicate-value ranges include
+the repeated string's quotes. Defaults and bounds retain modifier ranges.
+Membership hints list at most five values and cap the preview at 200 characters.
+No ENUM warning is introduced; WRN001–WRN005 remain unchanged.
 
 | Phase | Code | Symbol | Existing behavior reported |
 |---|---|---|---|
@@ -119,8 +136,8 @@ conflict handling are preserved. No parallel string array is maintained.
 All collections use the same deterministic order: compiler phase order, source
 line, source column, then stable code. Known positions precede unknown positions;
 exact ties preserve emission order. Optimizer warnings use existing IR line or
-column/range metadata when present; unknown coordinates stay null. IR generated
-by the normal pipeline currently carries line numbers only.
+column/range metadata when present; unknown coordinates stay null. Legacy field
+IR carries line numbers; ENUM field IR also retains non-enumerable token metadata.
 
 CLI warnings print once with a `[!]` label, phase, public code, shared source
 frame and optional hint. Warning-only compilations generate output and exit 0.
@@ -152,8 +169,9 @@ This changes positions only, not accepted programs or compiler semantics.
 
 Codes use a phase prefix and three digits. Numeric assignments are explicit in
 the central registry; append new entries without renumbering or reusing codes.
-`symbol` retains the meaningful condition name. The 57 codes comprise 4 lexical,
-21 parser, 29 semantic, 2 input, and 1 internal code. `INT001` uses the actual
+`symbol` retains the meaningful condition name. The 61 codes comprise 4 lexical,
+22 parser, 32 semantic, 2 input, and 1 internal code. The original 57 assignments
+are unchanged. `INT001` uses the actual
 failed phase in its `phase` field and has no invented source location.
 
 | Phase | Code | Symbol |
@@ -183,6 +201,7 @@ failed phase in its `phase` field and has no invented source location.
 | parser | PAR019 | MISSING_MAX_LENGTH_VALUE |
 | parser | PAR020 | MISSING_DEFAULT_VALUE |
 | parser | PAR021 | UNKNOWN_MODIFIER |
+| parser | PAR022 | EXPECTED_ENUM_DELIMITER |
 | semantic | SEM001 | MISSING_ENTITY_DECLARATION |
 | semantic | SEM002 | DUPLICATE_ENTITY |
 | semantic | SEM003 | RESERVED_ENTITY_NAME |
@@ -212,6 +231,9 @@ failed phase in its `phase` field and has no invented source location.
 | semantic | SEM027 | SELF_RELATION |
 | semantic | SEM028 | UNKNOWN_SOURCE_ENTITY |
 | semantic | SEM029 | UNKNOWN_TARGET_ENTITY |
+| semantic | SEM030 | INVALID_ENUM_VALUES |
+| semantic | SEM031 | DUPLICATE_ENUM_VALUE |
+| semantic | SEM032 | INVALID_ENUM_DEFAULT |
 | input | INP001 | INVALID_SOURCE |
 | input | INP002 | MALFORMED_JSON |
 | internal | INT001 | FAILURE |

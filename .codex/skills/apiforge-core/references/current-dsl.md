@@ -33,13 +33,21 @@ RELATION Student ENROLLS_IN Course MANY_TO_MANY
 
 | Category | Supported forms |
 |---|---|
-| Data types | `INT`, `STRING`, `FLOAT`, `BOOLEAN` |
+| Data types | `INT`, `STRING`, `FLOAT`, `BOOLEAN`, `ENUM("a", "b")` |
 | Constraints | `PRIMARY KEY`, `REQUIRED`, `UNIQUE` |
 | Validations | `MIN <number>`, `MAX <number>`, `MIN_LENGTH <number>`, `MAX_LENGTH <number>` |
 | Default | `DEFAULT <number>`, `DEFAULT "text"`, `DEFAULT TRUE`, `DEFAULT FALSE` |
 | Cardinality | `ONE_TO_ONE`, `ONE_TO_MANY`, `MANY_TO_ONE`, `MANY_TO_MANY` |
 
 `PRIMARY` and `KEY` are separate adjacent tokens and must appear together in that order. Modifiers may be combined after a field type.
+
+ENUM values are one or more unique case-sensitive strings, retained in declaration
+order as `enumValues` across AST, symbols and IR. Multiline lists are accepted.
+DEFAULT must be a string member. REQUIRED/UNIQUE are allowed; numeric/length
+bounds and ENUM primary keys are rejected. The lexer adds only LPAREN, RPAREN
+and COMMA punctuation and does not add string escape syntax. Syntax uses PAR001
+or appended PAR022; semantic additions are SEM030–SEM032. Original codes and
+WRN001–WRN005 remain unchanged.
 
 `MIN` and `MAX` apply only to numeric fields. `INT` bounds and defaults must be integers; `FLOAT` accepts numeric literals. `MIN_LENGTH` and `MAX_LENGTH` apply only to `STRING`, require non-negative integer values, and require `MIN_LENGTH <= MAX_LENGTH` when combined. A default must match the field type, satisfy applicable numeric or STRING-length bounds, and occur at most once. Each validation modifier may appear at most once per field.
 

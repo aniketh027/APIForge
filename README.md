@@ -241,6 +241,26 @@ CREATE TABLE Student_Course (
 | `STRING`  | `VARCHAR(255)` by default | Text strings; widened when a declared length bound exceeds 255 |
 | `FLOAT`   | `FLOAT`           | Decimal numbers          |
 | `BOOLEAN` | `BOOLEAN`         | True/false values        |
+| `ENUM("a", "b")` | `ENUM('a', 'b')` | Finite set of case-sensitive strings |
+
+ENUM fields declare one or more quoted strings in source order:
+
+```apiforge
+status ENUM("active", "inactive") DEFAULT "active"
+role ENUM("student", "faculty", "admin") REQUIRED UNIQUE
+```
+
+Values are case-sensitive; duplicates are invalid. DEFAULT must be a quoted
+member. REQUIRED and UNIQUE are allowed; PRIMARY KEY remains restricted to INT
+and STRING. MIN/MAX and MIN_LENGTH/MAX_LENGTH are invalid on ENUM. Whitespace,
+comments and multiline value lists follow the normal token grammar. Strings
+retain literal backslashes; no string escape syntax is added.
+
+Generation uses native MySQL ENUM with a case-sensitive binary collation,
+escaped literals, Express POST/PUT membership checks and OpenAPI `type: "string"`
+with `enum` and optional `default`. Omitted fields keep existing database-default
+behavior. Optional null is allowed; supplied null for REQUIRED ENUM is rejected.
+Try `samples/enum_account.apiforge` or the ENUM Account playground preset.
 
 > A `PRIMARY KEY` may only be declared on an `INT` or `STRING` field.
 
@@ -273,7 +293,7 @@ ENTITY Student
   - Generates MySQL `CHAR_LENGTH` checks (and widens `VARCHAR` capacity when a bound exceeds 255), Unicode-aware Express validation, and OpenAPI `minLength` / `maxLength` metadata.
   - STRING defaults are checked against the declared length bounds during semantic analysis.
 - **`DEFAULT <literal>`**:
-  - Type-checked against field data type (integers for `INT`, numbers for `FLOAT`, quoted strings for `STRING`, `TRUE`/`FALSE` for `BOOLEAN`).
+  - Type-checked against field data type (integers for `INT`, numbers for `FLOAT`, quoted strings for `STRING`, declared quoted members for `ENUM`, `TRUE`/`FALSE` for `BOOLEAN`).
   - Semantic analysis verifies default values satisfy applicable numeric or STRING-length boundaries.
   - Generates SQL `DEFAULT` clauses and OpenAPI `default` properties.
 

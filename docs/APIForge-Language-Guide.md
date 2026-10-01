@@ -159,7 +159,7 @@ Identifiers are user-defined names given to entities, fields, and relationships:
 ### Case Sensitivity
 - **All language keywords, data types, modifiers, relation types, and boolean literals are strictly UPPERCASE**:
   - Keywords: `ENTITY`, `RELATION`
-  - Data Types: `INT`, `STRING`, `FLOAT`, `BOOLEAN`
+  - Data Types: `INT`, `STRING`, `FLOAT`, `BOOLEAN`, `ENUM`
   - Modifiers: `PRIMARY`, `KEY`, `REQUIRED`, `UNIQUE`, `MIN`, `MAX`, `MIN_LENGTH`, `MAX_LENGTH`, `DEFAULT`
   - Relation Types: `ONE_TO_ONE`, `ONE_TO_MANY`, `MANY_TO_ONE`, `MANY_TO_MANY`
   - Boolean Literals: `TRUE`, `FALSE`
@@ -208,6 +208,56 @@ APIForge supports four built-in primitive data types. Every field must declare e
 | `STRING` | Text string | `VARCHAR(255)` by default; widened when a declared length bound exceeds 255 | `string` |
 | `FLOAT` | Floating-point decimal numbers | `FLOAT` | `number` |
 | `BOOLEAN` | Logical boolean flag (`TRUE` or `FALSE`) | `BOOLEAN` | `boolean` |
+| `ENUM("a", "b")` | Finite case-sensitive set of strings | `ENUM('a', 'b')` | `string` with `enum` |
+
+### ENUM datatype
+
+```apiforge
+status ENUM("active", "inactive") DEFAULT "active"
+role ENUM(
+    "student",
+    "faculty",
+    "admin"
+) REQUIRED UNIQUE
+```
+
+An ENUM declaration needs at least one double-quoted string. Values retain
+declaration order and literal contents. Comparison is case-sensitive, so
+`"ACTIVE"` and `"active"` are distinct. Duplicate values are semantic errors;
+bare identifiers, empty lists and missing delimiters are parser errors. The
+lexer does not decode backslash escapes or allow literal newlines inside strings.
+
+DEFAULT must be a string member of the declared set. REQUIRED and UNIQUE are
+allowed. MIN/MAX and MIN_LENGTH/MAX_LENGTH are invalid; ENUM already defines
+the finite accepted values. Explicit PRIMARY KEY remains INT/STRING only;
+implicit integer primary-key behavior is unchanged.
+
+AST fields, symbols and ADD_FIELD IR carry `dataType: "ENUM"` and an ordered
+`enumValues` array. Source metadata is non-enumerable; duplicate diagnostics
+identify the repeated quoted value, default errors identify the DEFAULT clause,
+and illegal bounds identify their modifier. Optimization preserves values exactly.
+
+SQL uses native ENUM and `utf8mb4_bin` collation for case-sensitive membership.
+Apostrophes are doubled, and literal backslashes are doubled under MySQL's
+normal backslash-escaping SQL mode. The generated schema assumes that mode;
+`NO_BACKSLASH_ESCAPES` requires adapting SQL literal escaping. MySQL's native
+ENUM semantics still apply, including removal of trailing spaces in declaration
+members and strict-mode enforcement for direct database writes. Prefer values
+without trailing spaces. These target constraints do not rewrite AST or IR values.
+See the [MySQL ENUM reference](https://dev.mysql.com/doc/refman/8.4/en/enum.html)
+for native storage, SQL-mode and numeric-index behavior.
+
+Generated POST and PUT handlers reject supplied non-string values and strings
+outside the set with HTTP 400 and the existing `{ success: false, error }` style.
+Optional null remains allowed; REQUIRED ENUM rejects supplied null. Omission
+keeps existing behavior, allowing database defaults; REQUIRED omission remains
+database-enforced. OpenAPI properties use `type: "string"`, the declared `enum`
+array and optional `default`; REQUIRED fields stay in the entity required array.
+Request operations share that component schema. Existing response descriptions
+and uniqueness representation remain unchanged.
+
+See `samples/enum_account.apiforge`, `npm run test:enum` and the opt-in
+`npm run test:generated-mysql` for offline and native-database verification.
 
 ### Examples
 ```apiforge
@@ -300,7 +350,7 @@ APIForge supports numeric value bounds and STRING length bounds. These are separ
 
 #### Allowed Data Types
 - `MIN` and `MAX` are **only allowed on numeric data types**: `INT` and `FLOAT`.
-- Applying `MIN` or `MAX` to `STRING` or `BOOLEAN` fields produces a semantic error.
+  - Applying `MIN` or `MAX` to `STRING`, `BOOLEAN` or `ENUM` fields produces a semantic error.
 
 #### Numeric Rules
 - **For `INT` fields**: The validation value **must be an integer** (e.g., `MIN 18`). Decimal bounds (such as `MIN 18.5`) on `INT` fields are rejected with a semantic error.
@@ -417,6 +467,7 @@ Every default value must match the data type of the field:
 | `FLOAT` | Decimal or integer number literal | `cgpa FLOAT DEFAULT 8.5` | `DEFAULT 8.5` |
 | `STRING` | Double-quoted string literal | `status STRING DEFAULT "active"` | `DEFAULT 'active'` |
 | `BOOLEAN` | Boolean literal (`TRUE` or `FALSE`) | `active BOOLEAN DEFAULT TRUE` | `DEFAULT TRUE` |
+| `ENUM` | A quoted declared member | `status ENUM("active", "inactive") DEFAULT "active"` | `DEFAULT 'active'` |
 
 ### Semantic Rules
 1. **Type Compatibility**: The default value literal must strictly match the field's declared type. Declaring `age INT DEFAULT "young"` or `active BOOLEAN DEFAULT 1` produces a semantic error.
