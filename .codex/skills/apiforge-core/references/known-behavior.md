@@ -23,6 +23,7 @@ Treat these as implementation facts to verify when the relevant code changes, no
 - `MIN`/`MAX` are numeric-only; `INT` bounds must be integers; `MIN` cannot exceed `MAX`.
 - `MIN_LENGTH`/`MAX_LENGTH` are STRING-only non-negative integer bounds; `MIN_LENGTH` cannot exceed `MAX_LENGTH`, and STRING defaults must satisfy the declared length range.
 - Semantic analysis does not require an explicit primary key. During SQL generation, an entity without one receives `id INT PRIMARY KEY AUTO_INCREMENT`; the source AST/IR is not rewritten to add that field.
+- Codegen's shared effective key governs SQL, item CRUD/create identity, relationships, collection metadata and OpenAPI. Implicit keys use id/INT; components mark id readOnly without requiring it. Model fields, AST/source symbols/IR/optimized IR remain source-declared. No-PK declared id/Id/ID/iD fails SEM033 at the field name without WRN001; explicit keys permit ordinary id-like fields.
 - `INT PRIMARY KEY` normally becomes `PRIMARY KEY AUTO_INCREMENT`. With an explicit default, such as `INT PRIMARY KEY DEFAULT 1`, codegen omits `AUTO_INCREMENT` and emits the default.
 - `STRING` primary keys are allowed and are not auto-incremented. `FLOAT`, `BOOLEAN` and `ENUM` primary keys are rejected.
 - ENUM declares an ordered non-empty unique set of case-sensitive quoted strings.

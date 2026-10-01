@@ -274,17 +274,26 @@ code STRING PRIMARY KEY REQUIRED MAX_LENGTH 80
 
 No explicit key is required for semantic validity. Each valid entity without one
 receives semantic WRN001. The injected ID is a target detail, absent from AST,
-symbols, IR, and the entity's OpenAPI component properties. Collection query
-metadata includes that ID, and OpenAPI path parameters use integer IDs.
+source field symbols, IR, and optimized IR. One code-generation effective key
+authority selects the declared PRIMARY KEY or generated id/INT. SQL, item CRUD,
+source/target relationship helpers, collection filtering/sorting/pagination and
+OpenAPI identity metadata all consume it. Item lookup/update/delete and the
+post-update reread use WHERE id = ? for implicit keys. A normal create with id
+omitted returns the database insertId as id and preserves submitted fields.
 
-**Current implicit-key limitation:** item model lookup/update/delete and create
-response key naming fall back to the first declared field, while SQL, collection
-pagination, and OpenAPI path metadata use implicit id. Source relationship
-model helpers also use that first-field fallback. Declare an explicit key for
-consistent item and relationship operations.
+OpenAPI components include implicit id as integer with readOnly: true; it is
+never added to required request input. Model fields remain source-declared;
+query/read metadata includes the generated identity. PUT remains a partial update.
+Caller-supplied implicit id is still forwarded to MySQL under existing write
+behavior; no new contract for its auto-increment behavior is established here.
+The response assembly uses database insertId after spreading submitted data.
 
-Also, an ordinary field named id without PRIMARY KEY is accepted by semantics,
-but SQL still injects another id column. This collision is not diagnosed.
+Without an explicit PRIMARY KEY, a declared id, Id, ID or iD collides with the
+case-insensitive MySQL column allocation and fails semantic analysis with SEM033
+at that field name. Its hint is: Declare an explicit PRIMARY KEY or rename the
+conflicting field. This invalid entity receives no WRN001 and later phases are
+skipped. An explicit key permits ordinary id-like fields; none are promoted or
+renamed. Normal implicit entities retain the same WRN001 wording and location.
 
 ## 7. Field Modifiers and Constraints
 
@@ -460,8 +469,8 @@ Both endpoints must be declared somewhere in the program (SEM028 source,
 SEM029 target). Names resolve case-sensitively. Relationship names are globally
 unique (SEM024) and cannot be reserved. A relationship cannot connect an entity
 to itself (SEM027). Missing/invalid cardinality is a parser error
-(PAR010/PAR011). An explicit endpoint key is not semantically mandatory,
-but avoids the implicit-key model inconsistency described in section 6.
+(PAR010/PAR011). An explicit endpoint key is not semantically mandatory;
+implicit endpoints consistently use the generated integer id described in section 6.
 
 For source S, target T, and their key fields, foreign-key column names use the
 entity name with only its first character lowercased, followed by an underscore
@@ -519,7 +528,7 @@ Supplied update fields are passed to the model; omitted fields are unchanged.
 ## 11. Diagnostics
 
 Public error codes have a prefix and three digits. The registry contains
-61 errors: LEX001–LEX004, PAR001–PAR022, SEM001–SEM032, INP001–INP002, and INT001.
+62 errors: LEX001–LEX004, PAR001–PAR022, SEM001–SEM033, INP001–INP002, and INT001.
 The symbolic identifier is separate: a semantic compatibility error may have
 `code: "DUPLICATE_FIELD"`, while its nested diagnostic has `code: "SEM005"`.
 Do not confuse the legacy symbolic code with the public code.
@@ -706,8 +715,9 @@ STRING → string), or implicit integer id.
 The generated specification is not a complete runtime response contract: most
 CRUD responses have descriptions only, and relationship response schemas describe
 the related array/object without modeling its success/data envelope. Component
-schemas omit implicit IDs and SQL-added relationship columns and are reused for
-PUT despite the runtime's omitted-field tolerance.
+schemas include implicit integer IDs with readOnly: true, omit SQL-added
+relationship columns, and are reused for PUT despite the runtime's omitted-field
+tolerance. This identity fix does not redesign request/response schema reuse.
 
 ## 13. Complete Examples
 
@@ -835,16 +845,17 @@ than one semantic diagnostic.
 | enum-missing-close | `ENTITY Item ↵ value ENUM("a"` | `PAR022` |
 | enum-duplicate | `ENTITY Item ↵ value ENUM("a", "a")` | `SEM031` |
 | enum-wrong-case-default | `ENTITY Item ↵ value ENUM("active") DEFAULT "ACTIVE"` | `SEM032` |
+| implicit-id-collision | `ENTITY Item ↵ ID STRING ↵ name STRING` | `SEM033` |
 | enum-nonstring-default | `ENTITY Item ↵ value ENUM("a") DEFAULT TRUE` | `SEM021` |
 | enum-key | `ENTITY Item ↵ value ENUM("a") PRIMARY KEY` | `SEM011` |
 | enum-numeric-bound | `ENTITY Item ↵ value ENUM("a") MIN 1` | `SEM015` |
 | enum-length-bound | `ENTITY Item ↵ value ENUM("a") MAX_LENGTH 1` | `SEM016` |
 | missing-cardinality | `ENTITY Item ↵ id INT ↵ RELATION Item LINKS Other` | `PAR010` |
 | invalid-cardinality | `ENTITY Item ↵ id INT ↵ RELATION Item LINKS Other one_to_many` | `PAR011` |
-| missing-source | `ENTITY Item ↵ id INT ↵ RELATION Other LINKS Item MANY_TO_ONE` | `SEM028` |
-| missing-target | `ENTITY Item ↵ id INT ↵ RELATION Item LINKS Other ONE_TO_MANY` | `SEM029` |
-| self-relation | `ENTITY Item ↵ id INT ↵ RELATION Item LINKS Item ONE_TO_ONE` | `SEM027` |
-| duplicate-relation | `ENTITY A ↵ id INT ↵ ENTITY B ↵ id INT ↵ RELATION A LINKS B MANY_TO_MANY ↵ RELATION A LINKS B ONE_TO_MANY` | `SEM024` |
+| missing-source | `ENTITY Item ↵ value INT ↵ RELATION Other LINKS Item MANY_TO_ONE` | `SEM028` |
+| missing-target | `ENTITY Item ↵ value INT ↵ RELATION Item LINKS Other ONE_TO_MANY` | `SEM029` |
+| self-relation | `ENTITY Item ↵ value INT ↵ RELATION Item LINKS Item ONE_TO_ONE` | `SEM027` |
+| duplicate-relation | `ENTITY A ↵ value INT ↵ ENTITY B ↵ value INT ↵ RELATION A LINKS B MANY_TO_MANY ↵ RELATION A LINKS B ONE_TO_MANY` | `SEM024` |
 | relation-only | `RELATION A LINKS B MANY_TO_ONE` | `SEM001, SEM028, SEM029` |
 
 Parser codes depend on the actual token position: missing datatype at EOF is
@@ -871,8 +882,7 @@ some of those representations. Self-relations are rejected. Duplicate DSL
 declarations are errors, not optimizer deduplication requests.
 
 The compiler does not guarantee that every semantically accepted name/combination
-produces an operational backend. Current target limits include implicit-key
-fallback differences, duplicate injected id columns, lowercase naming collisions,
+produces an operational backend. Current target limits include lowercase naming collisions,
 repeated relationship output collisions, inconsistent relationship SQL quoting,
 physical database limits, and incomplete request/response schema enforcement.
-These limits are recorded here without adding language rules or changing output.
+These remaining limits are separate from the implicit-key consistency repair.

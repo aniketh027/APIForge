@@ -190,6 +190,12 @@ Each successful CLI compilation reconciles the generator-owned `models/`,
 project, so entity artifacts from older compilations do not remain. Root-level
 user files that APIForge does not generate, such as `output/.env`, are preserved.
 
+Entities without an explicit primary key consistently use generated integer `id`
+for item CRUD, create responses, relationships, collections and OpenAPI. WRN001
+reports valid implicit-key use; a declared id in any casing without an explicit
+key fails SEM033. Source AST/symbols/IR remain unchanged, and OpenAPI marks the
+generated id readOnly without requiring it as request input.
+
 ---
 
 ## Collection query options
@@ -204,7 +210,7 @@ GET /students?page=2&limit=20
 GET /students?status=active&sort=name&order=desc&page=1&limit=10
 ```
 
-- Filters use SQL equality on declared fields, including implicit `id`: INT requires
+- Filters use SQL equality on query/read fields, including implicit `id`: INT requires
   a safe integer, FLOAT a finite decimal/exponent number, BOOLEAN exactly `true` or
   `false`, STRING raw text, and ENUM an exact declared member. Multiple filters use AND.
 - `sort` accepts known fields; `order` accepts lowercase `asc` or `desc`, defaults

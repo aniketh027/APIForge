@@ -87,7 +87,8 @@ a code. Optional fields and source ranges follow the same rules for both severit
 Warning codes use the **WRN plus three explicit digits** namespace, independently
 of phase. `WARNING_CODES` in `src/utils/diagnostics.js` owns the append-only
 assignments: never renumber or reuse them. All 57 original error assignments are
-unchanged; ENUM appends four errors (61 total). `symbol` describes the condition;
+unchanged; ENUM appends four errors and implicit-key collision appends SEM033
+(62 total). `symbol` describes the condition;
 `phase` identifies its emitter.
 
 ENUM additions are append-only:
@@ -105,6 +106,17 @@ SEM015/SEM016; ENUM primary keys reuse SEM011. Duplicate-value ranges include
 the repeated string's quotes. Defaults and bounds retain modifier ranges.
 Membership hints list at most five values and cap the preview at 200 characters.
 No ENUM warning is introduced; WRN001–WRN005 remain unchanged.
+
+SEM033 (`IMPLICIT_PRIMARY_KEY_COLLISION`) is a semantic error when an entity
+without an explicit PRIMARY KEY declares id in any casing (id/Id/ID/iD),
+conflicting with MySQL's case-insensitive generated column allocation. It points
+at the conflicting field-name range and uses the deterministic hint:
+`Declare an explicit PRIMARY KEY or rename the conflicting field.`
+Compilation fails before IR/optimizer/codegen, produces no generated files,
+returns HTTP 422 and CLI exit 1, and emits no WRN001 for the invalid program.
+Explicit keys allow ordinary id-like fields. Valid implicit entities retain
+WRN001's existing wording, severity and source location. All previous 61 error
+assignments and WRN001–WRN005 remain unchanged.
 
 | Phase | Code | Symbol | Existing behavior reported |
 |---|---|---|---|
@@ -169,8 +181,8 @@ This changes positions only, not accepted programs or compiler semantics.
 
 Codes use a phase prefix and three digits. Numeric assignments are explicit in
 the central registry; append new entries without renumbering or reusing codes.
-`symbol` retains the meaningful condition name. The 61 codes comprise 4 lexical,
-22 parser, 32 semantic, 2 input, and 1 internal code. The original 57 assignments
+`symbol` retains the meaningful condition name. The 62 codes comprise 4 lexical,
+22 parser, 33 semantic, 2 input, and 1 internal code. The original 61 assignments
 are unchanged. `INT001` uses the actual
 failed phase in its `phase` field and has no invented source location.
 
@@ -234,6 +246,7 @@ failed phase in its `phase` field and has no invented source location.
 | semantic | SEM030 | INVALID_ENUM_VALUES |
 | semantic | SEM031 | DUPLICATE_ENUM_VALUE |
 | semantic | SEM032 | INVALID_ENUM_DEFAULT |
+| semantic | SEM033 | IMPLICIT_PRIMARY_KEY_COLLISION |
 | input | INP001 | INVALID_SOURCE |
 | input | INP002 | MALFORMED_JSON |
 | internal | INT001 | FAILURE |

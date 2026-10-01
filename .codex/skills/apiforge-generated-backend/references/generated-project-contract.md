@@ -70,7 +70,8 @@ Relationship SQL:
 ## Express and route contract
 
 - Models use promise-based MySQL queries with value placeholders and `INSERT/UPDATE ... SET ?` payload binding.
-- Models select the declared primary key for record lookup; without one, current model generation falls back to the first declared field even though SQL injects an `id`. Verify no-primary-key cases explicitly.
+- A shared codegen effective key selects the explicit PRIMARY KEY or implicit integer id for SQL, item predicates, relationships, collections and OpenAPI. Implicit create returns `{ ...data, id: result.insertId }`; normal supported creates omit id. Caller-supplied implicit id is still forwarded and its database behavior is not redefined. Explicit create/default/key-mutation semantics remain unchanged.
+- Model fields remain source-declared; query/read metadata includes implicit id. OpenAPI marks it integer/readOnly and does not require it in requests. No-PK declared id in any casing fails semantic SEM033 before generation; explicit keys permit ordinary id-like fields. AST/source symbols/IR/optimized IR do not gain synthetic fields.
 - Controllers return `201` for create, `200` for successful reads/updates/deletes, `404` for missing CRUD or singular related records, `400` for generated validation failures, and `500` for caught database/runtime errors.
 - Generated request validation enforces `MIN`/`MAX` and `MIN_LENGTH`/`MAX_LENGTH` only when a value is present and non-null. STRING-length validation rejects non-string supplied values and counts Unicode code points with `Array.from(value).length`. SQL enforces `NOT NULL`, uniqueness, defaults, and checks; OpenAPI marks `REQUIRED` fields and exposes ranges, lengths, and defaults.
 - Per-entity routers expose `GET /`, `GET /:id`, `POST /`, `PUT /:id`, and `DELETE /:id`.

@@ -14,6 +14,7 @@ const Semantic = require('../src/semantic/analyzer');
 const IR = require('../src/ir/generator');
 const Optimizer = require('../src/optimizer/optimizer');
 const Codegen = require('../src/codegen/codegen');
+const { CODES } = require('../src/utils/diagnostics');
 
 const root = path.resolve(__dirname, '..');
 const guide = fs.readFileSync(path.join(__dirname, 'APIForge-Language-Guide.md'), 'utf8').replace(/\r\n/g, '\n');
@@ -65,6 +66,11 @@ function inside(parent, child) {
 }
 
 async function main() {
+    const baselineCodes = require('../tests/fixtures/implicit-pk-compatibility.json').codes;
+    const { IMPLICIT_PRIMARY_KEY_COLLISION, ...originalSemantic } = CODES.semantic;
+    assert.equal(IMPLICIT_PRIMARY_KEY_COLLISION, 'SEM033');
+    assert.deepEqual({ ...CODES, semantic: originalSemantic }, baselineCodes);
+    assert.equal(Object.values(CODES).flatMap(Object.values).length, 62);
     const compiled = new Map();
     let javascript = 0;
     for (const example of valid) {
@@ -102,13 +108,14 @@ async function main() {
     assert(!implicit.ir.instructions.some(i => i.field === 'id'));
     assert.match(content(implicit, 'database/schema.sql'), /id INT PRIMARY KEY AUTO_INCREMENT/);
     const implicitSwagger = JSON.parse(content(implicit, 'swagger.json'));
-    assert(!implicitSwagger.components.schemas.Item.properties.id);
+    assert.deepEqual(implicitSwagger.components.schemas.Item.properties.id, { type: 'integer', readOnly: true });
+    assert(!(implicitSwagger.components.schemas.Item.required || []).includes('id'));
     assert.equal(implicitSwagger.paths['/items/{id}'].parameters[0].schema.type, 'integer');
     const calls = [];
     const pool = { query: async (sql, values) => { calls.push({ sql, values }); return [[]]; } };
     const ImplicitModel = loadModule(content(implicit, 'models/Item.js'), () => pool);
     await ImplicitModel.findById(1);
-    assert.equal(calls[0].sql, 'SELECT * FROM Item WHERE value = ?');
+    assert.equal(calls[0].sql, 'SELECT * FROM Item WHERE id = ?');
     calls.length = 0;
     await ImplicitModel.findAll(ImplicitModel.parseQuery({ page: '1' }));
     assert.equal(calls[0].sql, 'SELECT * FROM Item ORDER BY id ASC LIMIT ? OFFSET ?');
@@ -154,10 +161,10 @@ async function main() {
     assert.equal(relationshipSwagger.paths['/students/{id}/courses'].get.responses['200'].content['application/json'].schema.type, 'array');
     assert.match(content(relationships, 'routes/invoiceRoutes.js'), /router.get\('\/:id\/customer'/);
 
-    // Reproduce accepted-but-colliding target cases without importing the SQL.
+    // Synthetic-id collision is rejected; unrelated target collisions remain.
     const duplicateId = compile('ENTITY Item\nid STRING');
-    assert.equal(duplicateId.diagnostics.length, 0);
-    assert.match(content(duplicateId, 'database/schema.sql'), /id INT PRIMARY KEY AUTO_INCREMENT,\n    id VARCHAR\(255\)/);
+    assert.deepEqual(duplicateId.diagnostics.map(d => d.code), ['SEM033']);
+    assert.equal(duplicateId.files, undefined);
     const duplicatePair = compile('ENTITY A\nid INT PRIMARY KEY\nENTITY B\nid INT PRIMARY KEY\nRELATION A FIRST B MANY_TO_MANY\nRELATION A SECOND B MANY_TO_MANY');
     assert.equal(duplicatePair.diagnostics.length, 0);
     assert.equal((content(duplicatePair, 'database/schema.sql').match(/CREATE TABLE A_B/g) || []).length, 2);
