@@ -15,6 +15,7 @@
  * ============================================================
  */
 
+const { COMPILER_PHASES, createDiagnostic, internalDiagnostic } = require('../utils/diagnostics');
 const express = require('express');
 const router = express.Router();
 
@@ -25,6 +26,24 @@ const SemanticAnalyzer = require('../semantic/analyzer');
 const IRGenerator = require('../ir/generator');
 const Optimizer = require('../optimizer/optimizer');
 const CodeGenerator = require('../codegen/codegen');
+
+function failure(res, status, result) {
+    const diagnostics = result.errors.map(error => error.diagnostic || internalDiagnostic(result.phase));
+    return res.status(status).json({ ...result, diagnostic: diagnostics[0], diagnostics,
+        phaseStates: Object.fromEntries(COMPILER_PHASES.map(phase => [phase,
+            result.phases[phase] ? 'succeeded' : phase === result.phase ? 'failed' : 'skipped'])) });
+}
+
+function compilerError(error) {
+    return { message: error.message, userMessage: error.userMessage || null,
+        code: error.code || null, line: error.line || null, column: error.column || null,
+        diagnostic: error.diagnostic };
+}
+
+function internalError(phase) {
+    const diagnostic = internalDiagnostic(phase);
+    return { message: diagnostic.message, diagnostic };
+}
 
 // ── GET /health ─────────────────────────────────────────────
 
@@ -39,7 +58,7 @@ router.post('/compile', (req, res) => {
 
     // Validate input
     if (typeof source !== 'string') {
-        return res.status(400).json({
+        return failure(res, 400, {
             success: false,
             phase: 'input',
             phases: {
@@ -50,7 +69,8 @@ router.post('/compile', (req, res) => {
                 optimizer: false,
                 codegen: false
             },
-            errors: [{ message: 'Source code is required and must be a string.' }]
+            errors: [{ message: 'Source code is required and must be a string.',
+                diagnostic: createDiagnostic('input', 'INVALID_SOURCE', 'Source code is required and must be a string.') }]
         });
     }
 
@@ -79,21 +99,11 @@ router.post('/compile', (req, res) => {
         tokens = Lexer.tokenize(source);
         phases.lexer = true;
     } catch (err) {
-        let line = err.line || null;
-        let column = err.column || null;
-        if (!line && err.message) {
-            const lineMatch = err.message.match(/line\s+(\d+)/i);
-            if (lineMatch) line = parseInt(lineMatch[1], 10);
-        }
-        if (!column && err.message) {
-            const colMatch = err.message.match(/column\s+(\d+)/i);
-            if (colMatch) column = parseInt(colMatch[1], 10);
-        }
-        return res.status(400).json({
+        return failure(res, err.diagnostic ? 400 : 500, {
             success: false,
             phase: 'lexer',
             phases,
-            errors: [{ message: err.message, line, column }]
+            errors: [err.diagnostic ? compilerError(err) : internalError('lexer')]
         });
     }
 
@@ -102,28 +112,12 @@ router.post('/compile', (req, res) => {
         ast = Parser.parse(tokens);
         phases.parser = true;
     } catch (err) {
-        let line = err.line || null;
-        let column = err.column || null;
-        if (!line && err.message) {
-            const lineMatch = err.message.match(/line\s+(\d+)/i);
-            if (lineMatch) line = parseInt(lineMatch[1], 10);
-        }
-        if (!column && err.message) {
-            const colMatch = err.message.match(/column\s+(\d+)/i);
-            if (colMatch) column = parseInt(colMatch[1], 10);
-        }
-        return res.status(400).json({
+        return failure(res, err.diagnostic ? 400 : 500, {
             success: false,
             phase: 'parser',
             phases,
             tokens,
-            errors: [{
-                message: err.message,
-                userMessage: err.userMessage || null,
-                code: err.code || null,
-                line,
-                column
-            }]
+            errors: [err.diagnostic ? compilerError(err) : internalError('parser')]
         });
     }
 
@@ -132,7 +126,7 @@ router.post('/compile', (req, res) => {
         const semanticResult = SemanticAnalyzer.analyze(ast);
 
         if (!semanticResult.valid) {
-            return res.status(422).json({
+            return failure(res, 422, {
                 success: false,
                 phase: 'semantic',
                 phases: { ...phases, semantic: false },
@@ -151,14 +145,14 @@ router.post('/compile', (req, res) => {
             ir = IRGenerator.generate(ast, semanticResult);
             phases.ir = true;
         } catch (err) {
-            return res.status(500).json({
+            return failure(res, 500, {
                 success: false,
                 phase: 'ir',
                 phases,
                 tokens,
                 ast,
                 symbolTable,
-                errors: [{ message: err.message }]
+                errors: [internalError('ir')]
             });
         }
 
@@ -170,7 +164,7 @@ router.post('/compile', (req, res) => {
             warnings = optResult.warnings || [];
             phases.optimizer = true;
         } catch (err) {
-            return res.status(500).json({
+            return failure(res, 500, {
                 success: false,
                 phase: 'optimizer',
                 phases,
@@ -178,7 +172,7 @@ router.post('/compile', (req, res) => {
                 ast,
                 symbolTable,
                 ir,
-                errors: [{ message: err.message }]
+                errors: [internalError('optimizer')]
             });
         }
 
@@ -189,7 +183,7 @@ router.post('/compile', (req, res) => {
             generatedFiles = codegenResult.files;
             phases.codegen = true;
         } catch (err) {
-            return res.status(500).json({
+            return failure(res, 500, {
                 success: false,
                 phase: 'codegen',
                 phases,
@@ -200,19 +194,19 @@ router.post('/compile', (req, res) => {
                 optimizedIR,
                 optimizations,
                 warnings,
-                errors: [{ message: err.message }]
+                errors: [internalError('codegen')]
             });
         }
 
     } catch (err) {
         // Unexpected semantic phase error
-        return res.status(500).json({
+        return failure(res, 500, {
             success: false,
             phase: 'semantic',
             phases,
             tokens,
             ast,
-            errors: [{ message: err.message }]
+            errors: [internalError('semantic')]
         });
     }
 

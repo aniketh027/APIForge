@@ -21,6 +21,7 @@
 
 const express = require('express');
 const path = require('path');
+const { COMPILER_PHASES, createDiagnostic, internalDiagnostic } = require('./src/utils/diagnostics');
 
 const app = express();
 const PORT = process.env.DEV_PORT || 3001;
@@ -29,6 +30,7 @@ const PORT = process.env.DEV_PORT || 3001;
 app.use(express.json({ limit: '1mb' }));
 
 // ── Serve frontend static files ─────────────────────────────
+app.get('/source-frame.js', (req, res) => res.sendFile(path.join(__dirname, 'src/utils/source-frame.js')));
 app.use(express.static(path.join(__dirname, 'frontend')));
 
 // ── Mount compiler API ──────────────────────────────────────
@@ -43,7 +45,13 @@ app.get('/', (req, res) => {
 // ── Global error handler ────────────────────────────────────
 app.use((err, req, res, next) => {
     console.error('[Server Error]', err.stack);
-    res.status(500).json({ success: false, error: 'Internal Server Error' });
+    const diagnostic = err.type === 'entity.parse.failed'
+        ? createDiagnostic('input', 'MALFORMED_JSON', 'Request body must contain valid JSON.')
+        : internalDiagnostic('input');
+    res.status(500).json({ success: false, error: 'Internal Server Error', phase: 'input',
+        phases: Object.fromEntries(COMPILER_PHASES.map(phase => [phase, false])),
+        phaseStates: Object.fromEntries(COMPILER_PHASES.map(phase => [phase, 'skipped'])),
+        diagnostic, diagnostics: [diagnostic], errors: [{ message: 'Internal Server Error', diagnostic }] });
 });
 
 // ── Start server ────────────────────────────────────────────

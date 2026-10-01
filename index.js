@@ -54,7 +54,8 @@ const SemanticAnalyzer = require('./src/semantic/analyzer');
 const IRGenerator = require('./src/ir/generator');
 const Optimizer = require('./src/optimizer/optimizer');
 const CodeGenerator = require('./src/codegen/codegen');
-const { formatCodeFrame } = require('./src/utils/errors');
+const { formatDiagnostic } = require('./src/utils/source-frame');
+const { internalDiagnostic } = require('./src/utils/diagnostics');
 
 // ── Read the source .apiforge file ──────────────────────────
 
@@ -87,26 +88,13 @@ console.log('');
 console.log(`[INFO] Compiling: ${filePath}`);
 console.log('');
 
-// ── Fatal-error reporter (lexer / parser throws) ────────────
-// The lexer and parser fail fast by throwing on the first error.
-// Rather than let Node dump a raw stack trace, we catch the
-// error, print its message, and — when the message carries a
-// "line X, column Y" position — render a source frame with a
-// caret, mirroring the semantic-error output further below.
-function reportFatalError(err) {
+// Fatal phase failures use the same diagnostic formatter as semantic errors.
+// Structured locations avoid extracting coordinates from presentation text.
+function reportFatalError(err, phase) {
     console.log('');
-    const displayMsg = err.userMessage ? `Syntax Error: ${err.userMessage}` : err.message;
-    console.log(`[✗] ${displayMsg}`);
-    const line = err.line || (err.message && /line (\d+)/i.exec(err.message) ? parseInt(/line (\d+)/i.exec(err.message)[1], 10) : null);
-    const column = err.column || (err.message && /column (\d+)/i.exec(err.message) ? parseInt(/column (\d+)/i.exec(err.message)[1], 10) : null);
-    if (line) {
-        const frame = formatCodeFrame(sourceCode, line, column);
-        if (frame) {
-            frame.split('\n').forEach(frameLine => console.log(`       ${frameLine}`));
-        }
-    }
+    console.log(formatDiagnostic(sourceCode, err.diagnostic || internalDiagnostic(phase)));
     console.log('');
-    console.log('[ABORT] Compilation stopped due to a syntax error.');
+    console.log(`[ABORT] Compilation stopped during ${phase}.`);
     process.exit(1);
 }
 
@@ -120,7 +108,7 @@ let tokens;
 try {
     tokens = Lexer.tokenize(sourceCode);
 } catch (err) {
-    reportFatalError(err);
+    reportFatalError(err, 'lexer');
 }
 console.log(`[✓] Lexer produced ${tokens.length} tokens`);
 console.log('');
@@ -151,7 +139,7 @@ let ast;
 try {
     ast = Parser.parse(tokens);
 } catch (err) {
-    reportFatalError(err);
+    reportFatalError(err, 'parser');
 }
 const relCount = ast.relations ? ast.relations.length : 0;
 const relStr = relCount > 0 ? `, ${relCount} relation/relations` : '';
@@ -203,21 +191,19 @@ console.log('');
 // - Missing primary key, etc.
 
 console.log('─── Phase 3: Semantic Analysis ───');
-const semanticResult = SemanticAnalyzer.analyze(ast);
+let semanticResult;
+try {
+    semanticResult = SemanticAnalyzer.analyze(ast);
+} catch (err) {
+    reportFatalError(err, 'semantic');
+}
 
 if (semanticResult.valid) {
     console.log('[✓] Semantic analysis passed — no errors found');
 } else {
     console.log(`[✗] Semantic analysis failed — ${semanticResult.errors.length} error(s):`);
-    semanticResult.errors.forEach((err, i) => {
-        const pos = err.column ? `Line ${err.line}, Column ${err.column}` : `Line ${err.line}`;
-        console.log(`    ${i + 1}. ${pos}: ${err.message}`);
-
-        // Show a source excerpt with a caret under the offending token.
-        const frame = formatCodeFrame(sourceCode, err.line, err.column);
-        if (frame) {
-            frame.split('\n').forEach(frameLine => console.log(`       ${frameLine}`));
-        }
+    semanticResult.diagnostics.forEach(diagnostic => {
+        console.log(formatDiagnostic(sourceCode, diagnostic));
     });
     console.log('');
     console.log('[ABORT] Compilation stopped due to semantic errors.');
@@ -287,7 +273,7 @@ let ir;
 try {
     ir = IRGenerator.generate(ast, semanticResult);
 } catch (err) {
-    reportFatalError(err);
+    reportFatalError(err, 'ir');
 }
 console.log(`[✓] Intermediate representation generated (${ir.instructions.length} instruction(s))`);
 console.log('');
@@ -328,7 +314,7 @@ try {
     optResult = Optimizer.optimize(ir);
     optimizedIR = optResult.ir;
 } catch (err) {
-    reportFatalError(err);
+    reportFatalError(err, 'optimizer');
 }
 
 const countBefore = ir.instructions.length;
@@ -393,7 +379,7 @@ let codegenResult;
 try {
     codegenResult = CodeGenerator.generate(optimizedIR, true);
 } catch (err) {
-    reportFatalError(err);
+    reportFatalError(err, 'codegen');
 }
 console.log(`[✓] Code generation completed (${codegenResult.files.length} file(s) generated)`);
 console.log('');

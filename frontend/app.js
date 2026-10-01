@@ -215,7 +215,13 @@ function resetAllStatus() {
     if (pipelineState) pipelineState.textContent = 'Waiting for compilation';
 }
 
-function applyPhaseStatuses(phases, isSuccess, failingPhase) {
+function applyPhaseStatuses(phases, isSuccess, failingPhase, phaseStates) {
+    if (phaseStates) {
+        PHASE_ORDER.forEach(phase => setPhaseStatus(phase,
+            phaseStates[phase] === 'succeeded' ? 'success' : phaseStates[phase] === 'failed' ? 'error' : 'skipped'));
+        if (pipelineState) pipelineState.textContent = `${formatPhaseName(failingPhase || 'compiler')} failed`;
+        return;
+    }
     if (!phases) return;
 
     if (isSuccess) {
@@ -323,22 +329,22 @@ function hideSummary() {
 function showError(phase, errors) {
     errorPanel.classList.add('visible');
     const phaseHeader = `${formatPhaseName(phase || 'compiler')} error`;
-    const sourceLines = editor.value.split('\n');
 
     // Register all error lines for highlighting
     errorLines.clear();
 
     const formattedErrors = (errors || []).map(err => {
-        let line = err.line || null;
-        let column = err.column || null;
-        let message = err.userMessage || err.message || String(err);
+        const diagnostic = err.diagnostic || err;
+        let line = diagnostic.line || null;
+        let column = diagnostic.column || null;
+        let message = err.diagnostic ? diagnostic.message : err.userMessage || err.message || String(err);
 
         // Extract line/column from message if not directly set
-        if (!line) {
+        if (!err.diagnostic && !line) {
             const m = message.match(/line\s+(\d+)/i);
             if (m) line = parseInt(m[1], 10);
         }
-        if (!column) {
+        if (!err.diagnostic && !column) {
             const m = message.match(/column\s+(\d+)/i);
             if (m) column = parseInt(m[1], 10);
         }
@@ -360,51 +366,22 @@ function showError(phase, errors) {
             locationText = `Line ${line}`;
         }
 
-        // Source excerpt
-        let excerptHtml = '';
-        if (line && line >= 1 && line <= sourceLines.length) {
-            const lineContent = sourceLines[line - 1];
-            let pointerLine = '';
-
-            if (column && column >= 1) {
-                const colIdx = column - 1;
-                let tokenLen = 1;
-
-                // Try finding token in quotes (e.g. 'name' in Duplicate field 'name')
-                const quoteMatch = displayMessage.match(/['"]([^'"]+)['"]/);
-                if (quoteMatch && quoteMatch[1]) {
-                    const token = quoteMatch[1];
-                    const idxInLine = lineContent.indexOf(token);
-                    if (idxInLine !== -1 && idxInLine <= colIdx) {
-                        tokenLen = token.length;
-                    }
-                } else if (lineContent.length > colIdx) {
-                    const remaining = lineContent.slice(colIdx);
-                    const wordMatch = remaining.match(/^([a-zA-Z0-9_]+)/);
-                    if (wordMatch) {
-                        tokenLen = wordMatch[1].length;
-                    }
-                }
-
-                pointerLine = ' '.repeat(Math.max(0, colIdx)) + '^'.repeat(Math.max(1, tokenLen));
-            }
-
-            excerptHtml = `
-                <div class="error-excerpt">
-                    <div class="error-source-line"><span class="error-line-number">${line} │</span>${escapeHtml(lineContent)}</div>
-                    ${pointerLine ? `<div class="error-pointer-line">${escapeHtml(pointerLine)}</div>` : ''}
-                </div>
-            `;
-        }
+        const frames = APIForgeSourceFrame.sourceFrame(editor.value, { ...diagnostic, line, column });
+        frames.forEach(frame => errorLines.add(frame.line));
+        const excerptHtml = frames.length ? `<div class="error-excerpt">${frames.map(frame => `
+            <div class="error-source-line"><span class="error-line-number">${frame.line} │</span>${escapeHtml(frame.text)}</div>
+            ${frame.pointer ? `<div class="error-pointer-line">${escapeHtml(frame.pointer)}</div>` : ''}
+        `).join('')}</div>` : '';
 
         return `
             <div class="error-card">
                 <div class="error-heading">
-                    <div class="error-phase-title">${escapeHtml(phaseHeader)}</div>
-                    ${err.code ? `<span class="error-code">${escapeHtml(err.code)}</span>` : ''}
+                    <div class="error-phase-title">${escapeHtml(err.diagnostic ? `${formatPhaseName(diagnostic.phase)} error` : phaseHeader)}</div>
+                    ${diagnostic.code ? `<span class="error-code" title="${escapeHtml(diagnostic.symbol || diagnostic.code)}">${escapeHtml(diagnostic.code)}</span>` : ''}
                 </div>
                 <div class="error-message-text">${escapeHtml(displayMessage)}</div>
                 ${excerptHtml}
+                ${diagnostic.hint ? `<div class="error-location">Hint: ${escapeHtml(diagnostic.hint)}</div>` : ''}
                 ${locationText ? `<div class="error-location">${escapeHtml(locationText)}</div>` : ''}
             </div>
         `;
@@ -865,18 +842,6 @@ function loadExample() {
 async function compile() {
     if (isCompiling) return;
 
-    const source = editor.value.trim();
-    if (!source) {
-        hideSummary();
-        resetAllStatus();
-        lastCompileResult = null;
-        downloadSection.classList.remove('visible');
-        resetOutputPanes('No source to compile', 'Write APIForge DSL or load an example before compiling.');
-        showError('input', [{ message: 'Please enter some DSL code before compiling.' }]);
-        if (pipelineState) pipelineState.textContent = 'No source to compile';
-        return;
-    }
-
     // Reset previous UI state
     hideError();
     hideSummary();
@@ -906,7 +871,7 @@ async function compile() {
         setCompilerAvailability(true);
 
         // Update phase statuses
-        applyPhaseStatuses(data.phases, data.success, data.phase);
+        applyPhaseStatuses(data.phases, data.success, data.phase, data.phaseStates);
 
         if (data.success) {
             // ── Render compilation summary & output tabs ──
@@ -930,7 +895,7 @@ async function compile() {
         } else {
             // ── Error occurred ──
             hideSummary();
-            showError(data.phase || 'unknown', data.errors || [{ message: 'Unknown compilation error.' }]);
+            showError(data.phase || 'unknown', data.diagnostics?.map(diagnostic => ({ diagnostic })) || data.errors || [{ message: 'Unknown compilation error.' }]);
             resetOutputPanes(
                 `Unavailable after ${formatPhaseName(data.phase || 'compiler')} failure`,
                 'This output was not produced because compilation stopped earlier.'
