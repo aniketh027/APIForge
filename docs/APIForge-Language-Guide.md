@@ -831,38 +831,51 @@ APIForge generates an OpenAPI 3.0.0 specification in `output/swagger.json`.
 APIForge is built to provide actionable, human-friendly compiler errors.
 
 ### Diagnostics Architecture:
-1. **Precise Coordinates**: Every lexical, syntax, and semantic error includes the exact 1-indexed **line and column** of the offending token.
-2. **Source Code Frames**: The compiler prints the exact source line and places an ASCII caret (`^`) underneath the exact column where the error was detected.
-3. **Typo Suggestions ("Did you mean?")**: The compiler calculates the Levenshtein distance between unrecognized words and valid keywords. If the edit distance is 2 or less, a helpful hint is provided.
-4. **Comprehensive Semantic Reporting**: Unlike the lexer and parser (which fail fast on the first syntax error), the semantic analyzer collects **all errors** across the entire file and reports them together.
 
-### Real Compiler Error Examples:
+Compiler failures expose the shared JSON diagnostic contract: phase, stable code,
+severity, message, symbolic identifier, 1-based line/column, optional exclusive
+end positions and deterministic hint. Unknown positions are null; unavailable
+ranges and hints are omitted. Existing error messages and symbolic identifiers
+remain available for compatibility. See [Structured compiler diagnostics](structured-diagnostics.md)
+for the complete code registry, HTTP statuses and consumer contract.
 
-#### 1. Lexical Error: Unexpected Character
+Lexer/parser failures stop immediately. Semantic analysis retains its existing
+collection of errors; subsequent phases are skipped on failure. Existing typo
+suggestions remain in messages. The CLI and playground share source-frame
+calculation and render actual ranges or a single caret when only a start is known.
+
+### Compiler Error Examples:
+
+#### 1. Malformed Decimal
+
 ```text
-[✗] Lexical Error at line 3, column 15: Unexpected character '@' (char code 64).
-       3 |     email STRING @UNIQUE
-         |                  ^
-[ABORT] Compilation stopped due to a syntax error.
+LEX004: Malformed numeric literal: expected a digit after the decimal point.
+  --> line 2, column 21
+2 | cgpa FLOAT DEFAULT 8.
+  |                     ^
+Hint: A decimal point must be followed by a digit, for example 8.0.
+[ABORT] Compilation stopped during lexer.
 ```
 
-#### 2. Parser Error with Typo Suggestion
+#### 2. Missing Field Datatype
+
 ```text
-[✗] Syntax Error: Expected DATATYPE but found IDENTIFIER "STRIMG". Did you mean 'STRING'?
-       2 |     name STRIMG REQUIRED
-         |          ^
-[ABORT] Compilation stopped due to a syntax error.
+PAR012: Missing data type for field 'age'.
+Expected one of: INT, STRING, FLOAT, BOOLEAN.
+  --> line 2, column 4
+2 | age
+  |    ^
+[ABORT] Compilation stopped during parser.
 ```
 
-#### 3. Semantic Error Collection with Carets
+#### 3. Reversed Numeric Bounds
+
 ```text
-[✗] Semantic analysis failed — 2 error(s):
-    1. Line 5, Column 18: Target entity 'Deparment' in relationship 'OFFERS' does not exist. Did you mean 'Department'?
-       5 | RELATION Deparment OFFERS Course ONE_TO_MANY
-         |          ^
-    2. Line 8, Column 10: MIN value 60 cannot be greater than MAX value 18.
-       8 |     age INT MIN 60 MAX 18
-         |         ^
+SEM017: MIN value 60 cannot be greater than MAX value 18.
+  --> line 2, column 9
+2 | age INT MIN 60 MAX 18
+  |         ^^^^^^
+Hint: MIN must not exceed MAX.
 ```
 
 ---

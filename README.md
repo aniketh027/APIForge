@@ -291,13 +291,19 @@ APIForge is designed to fail helpfully:
 - **All-at-once semantic reporting** — the semantic analyzer collects every error in
   a single pass instead of stopping at the first one.
 
+The compiler, CLI, HTTP API and playground share stable diagnostic codes,
+optional source ranges and deterministic hints. Existing messages and symbolic
+codes remain available. See [Structured compiler diagnostics](docs/structured-diagnostics.md)
+for the format, full registry and compatibility details.
+
 Example:
 
-```
-[✗] Semantic analysis failed — 1 error(s):
-    1. Line 9, Column 23: Target entity 'Studet' in relationship 'LINKS' does not exist. Did you mean 'Student'?
-       9 | RELATION Course LINKS Studet MANY_TO_MANY
-         |                       ^
+```text
+SEM017: MIN value 60 cannot be greater than MAX value 18.
+  --> line 2, column 9
+2 | age INT MIN 60 MAX 18
+  |         ^^^^^^
+Hint: MIN must not exceed MAX.
 ```
 
 ---

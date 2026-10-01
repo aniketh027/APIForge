@@ -9,7 +9,9 @@
 | `src/ir/generator.js` | Target-independent IR generation and IR validation. |
 | `src/optimizer/optimizer.js` | Six normalization and exact-duplicate-elimination passes. |
 | `src/codegen/codegen.js` | MySQL, Express, runtime validation, relationship, and OpenAPI generation. |
-| `src/utils/errors.js` | Suggestions, code frames, and user-facing error formatting. |
+| `src/utils/errors.js` | Existing suggestions and compatibility formatting helpers. |
+| `src/utils/diagnostics.js` | Shared error diagnostic contract and stable code registry. |
+| `src/utils/source-frame.js` | Shared CLI/browser source frames and plain-text diagnostic formatting. |
 | `index.js` | CLI compiler driver; runs all phases and writes `output/`. |
 | `src/api/compiler-api.js` | In-memory `GET /health` and `POST /compile` router for the playground. |
 | `server.js` | Development server; serves `frontend/` and mounts the compiler router at `/api`. |

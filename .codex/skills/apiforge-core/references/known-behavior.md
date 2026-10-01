@@ -58,11 +58,23 @@ Codegen emits seven fixed files plus three files per entity. The generated `pack
 
 | Condition | Status |
 |---|---:|
-| Missing/blank/non-string source | 400 |
+| Missing body/source or non-string source | 400 |
 | Lexer error | 400 |
 | Parser error | 400 |
-| Semantic error | 422 |
+| Semantic error (including empty/blank/comment-only source) | 422 |
 | IR, optimizer, codegen, or unexpected internal error | 500 |
+| Malformed JSON body (existing global handler) | 500 |
 | Successful compilation | 200 |
 
 The current Language Guide's generated CRUD examples include an `/api/<plural>` prefix, but generated `output/server.js` mounts `/<plural>` directly. Follow the implementation and tests unless a task explicitly changes that contract.
+
+## Structured diagnostics
+
+`src/utils/diagnostics.js` owns the stable LEX/PAR/SEM/INP/INT code registry.
+Thrown lexer/parser errors have `.diagnostic`; semantic results have `.diagnostics`
+alongside compatible `.errors` entries. HTTP failures expose `diagnostic`,
+`diagnostics`, legacy `errors`, and explicit `phaseStates`. Internal exceptions
+produce safe INT001 diagnostics. Positions are 1-based with exclusive end ranges;
+unknown starts are null and unavailable ranges/hints are omitted. CLI and browser
+use `src/utils/source-frame.js`. See `docs/structured-diagnostics.md` for the full
+contract. Blank browser input reaches the same semantic rule as API/CLI input.
