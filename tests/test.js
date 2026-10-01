@@ -1027,7 +1027,7 @@ for (const [label, source] of noEntitySources) {
         'APIForge programs must contain at least one ENTITY.');
 }
 
-const singleEntity = lexParseAnalyze('ENTITY Only\nid INT');
+const singleEntity = lexParseAnalyze('ENTITY Only\nvalue INT');
 assertTrue('Single-entity program remains valid', singleEntity.valid);
 
 

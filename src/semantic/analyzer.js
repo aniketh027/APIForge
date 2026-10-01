@@ -304,6 +304,19 @@ class SemanticAnalyzer {
             );
         }
 
+        // MySQL column identifiers are case-insensitive. An explicit key avoids
+        // synthetic allocation; never promote or rename an ordinary id field.
+        if (!entity.fields.some(field => field.constraints?.includes('PRIMARY_KEY'))) {
+            for (const field of entity.fields.filter(field => field.name.toLowerCase() === 'id')) {
+                this.addError(
+                    `Entity '${entity.name}' has no explicit primary key, so APIForge would generate implicit field 'id', which conflicts with declared field '${field.name}'.`,
+                    locate(field, 'name', field.nameColumn),
+                    'IMPLICIT_PRIMARY_KEY_COLLISION',
+                    'Declare an explicit PRIMARY KEY or rename the conflicting field.'
+                );
+            }
+        }
+
         // ── Build the field symbol table for this entity ────
         const fieldTable = {};
         const seenFieldNames = new Set();

@@ -156,8 +156,10 @@ const fail = query => assert.throws(() => parse(query), error => error.statusCod
         const emptySwagger = JSON.parse(emptyFiles.find(f => f.path === 'swagger.json').content);
         assert.equal(emptySwagger.paths['/choices'].get.parameters.find(p => p.name === 'value').allowEmptyValue, true);
     });
-    await test('all pre-codegen phases, 61 diagnostics, five warnings, schemas and unaffected methods/artifacts retain baseline hashes', () => {
-        assert.deepEqual(CODES, baseline.codes); assert.deepEqual(WARNING_CODES, baseline.warnings);
+    await test('all pre-codegen phases, original 61 diagnostics, five warnings, schemas and unaffected methods/artifacts retain baseline hashes', () => {
+        const { IMPLICIT_PRIMARY_KEY_COLLISION, ...originalSemantic } = CODES.semantic;
+        assert.equal(IMPLICIT_PRIMARY_KEY_COLLISION, 'SEM033');
+        assert.deepEqual({ ...CODES, semantic: originalSemantic }, baseline.codes); assert.deepEqual(WARNING_CODES, baseline.warnings);
         for (const [name, source] of Object.entries(baseline.sources)) {
             const tokens = Lexer.tokenize(source), ast = Parser.parse(tokens), semantic = Semantic.analyze(ast);
             const ir = IR.generate(ast, semantic), optimized = Optimizer.optimize(ir).ir;
@@ -166,7 +168,24 @@ const fail = query => assert.throws(() => parse(query), error => error.statusCod
             assert.deepEqual(generated.map(f => f.path), baseline.programs[name].paths);
             for (const f of generated) {
                 if (f.path === 'README.md') { assert(f.content.includes('Collection query options')); continue; }
-                assert.deepEqual(protectedSections(f), baseline.programs[name].files[f.path], name + ':' + f.path);
+                // Keep the old fixture frozen. Project only the two approved
+                // implicit-identity changes back to their legacy representation
+                // so every other protected byte remains checked. The corrective
+                // runtime and complete-file checks live in implicit-pk.test.js.
+                let legacy = f;
+                if (name === 'implicit' && f.path === 'models/Item.js') {
+                    assert(f.content.includes('WHERE id = ?'));
+                    assert(f.content.includes('return { ...data, id: result.insertId };'));
+                    legacy = { ...f, content: f.content.replaceAll('WHERE id = ?', 'WHERE name = ?')
+                        .replace('return { ...data, id: result.insertId };', 'return { name: result.insertId, ...data };') };
+                }
+                if (name === 'implicit' && f.path === 'swagger.json') {
+                    const swagger = JSON.parse(f.content);
+                    assert.deepEqual(swagger.components.schemas.Item.properties.id, { type: 'integer', readOnly: true });
+                    delete swagger.components.schemas.Item.properties.id;
+                    legacy = { ...f, content: JSON.stringify(swagger) };
+                }
+                assert.deepEqual(protectedSections(legacy), baseline.programs[name].files[f.path], name + ':' + f.path);
                 if (f.path.endsWith('.js')) new vm.Script(f.content);
             }
         }

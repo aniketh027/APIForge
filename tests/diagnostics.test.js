@@ -38,7 +38,7 @@ function check(diagnostic, code, phase, line, column) {
     await test('registry has unique, phase-specific codes', () => {
         const all = Object.values(CODES).flatMap(Object.values);
         assert.equal(new Set(all).size, all.length);
-        assert.equal(all.length, 61);
+        assert.equal(all.length, 62);
         for (const [phase, prefix] of Object.entries({ lexer: 'LEX', parser: 'PAR', semantic: 'SEM', input: 'INP', internal: 'INT' })) {
             assert(Object.values(CODES[phase]).every(code => new RegExp(`^${prefix}\\d{3}$`).test(code)));
         }
@@ -152,8 +152,8 @@ function check(diagnostic, code, phase, line, column) {
         ['invalid primary key type', 'ENTITY Student\nage FLOAT PRIMARY KEY', 'SEM011', 2, 5, undefined],
         ['invalid default type', 'ENTITY Student\nage INT DEFAULT "bad"', 'SEM021', 2, 9, undefined],
         ['missing entity', '// empty', 'SEM001', 1, 1, undefined],
-        ['unknown relationship target', 'ENTITY Student\nid INT\nRELATION Student ENROLLS Course MANY_TO_MANY', 'SEM029', 3, 26, undefined],
-        ['unknown relationship source', 'ENTITY Student\nid INT\nRELATION Course ENROLLS Student MANY_TO_MANY', 'SEM028', 3, 10, undefined],
+        ['unknown relationship target', 'ENTITY Student\nvalue INT\nRELATION Student ENROLLS Course MANY_TO_MANY', 'SEM029', 3, 26, undefined],
+        ['unknown relationship source', 'ENTITY Student\nvalue INT\nRELATION Course ENROLLS Student MANY_TO_MANY', 'SEM028', 3, 10, undefined],
         ['multiline modifier', 'ENTITY\nStudent\nage\nSTRING\nMIN 1', 'SEM015', 5, 1, 'Use MIN_LENGTH/MAX_LENGTH for STRING length bounds.']
     ]) {
         await test(`semantic: ${name}`, () => {
@@ -186,7 +186,7 @@ function check(diagnostic, code, phase, line, column) {
     await test('multiline declarations locate their names on the correct line', () => {
         const result = semantic('ENTITY Student\nage INT\nENTITY\nStudent\nage INT');
         check(result.diagnostics.find(d => d.code === 'SEM002'), 'SEM002', 'semantic', 4, 1);
-        const relation = semantic('ENTITY Student\nid INT\nRELATION\nStudent\nENROLLS\nCourse\nMANY_TO_MANY');
+        const relation = semantic('ENTITY Student\nvalue INT\nRELATION\nStudent\nENROLLS\nCourse\nMANY_TO_MANY');
         check(relation.diagnostics[0], 'SEM029', 'semantic', 6, 1);
     });
     await test('semantic analysis still collects existing independent errors', () => {
