@@ -285,7 +285,7 @@ function requestHttp(port, method, requestPath, body) {
                         // Callers report the raw body when JSON is required.
                     }
                 }
-                resolve({ statusCode: response.statusCode, body: responseBody, json });
+                resolve({ statusCode: response.statusCode, headers: response.headers, body: responseBody, json });
             });
         });
         request.once('timeout', () => request.destroy(new Error(`${method} ${requestPath} timed out`)));

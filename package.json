@@ -7,13 +7,14 @@
     "start": "node server.js",
     "compile": "node index.js samples/student.apiforge",
     "dev": "node server.js",
-    "test": "node tests/test.js && node tests/string-length-validation.test.js && node tests/disk-generation.test.js && node tests/generated-backend-mysql-safety.test.js && node tests/diagnostics.test.js && node tests/warnings.test.js && node tests/enum.test.js",
+    "test": "node tests/test.js && node tests/string-length-validation.test.js && node tests/disk-generation.test.js && node tests/generated-backend-mysql-safety.test.js && node tests/diagnostics.test.js && node tests/warnings.test.js && node tests/enum.test.js && node tests/collection-query.test.js",
     "test:warnings": "node tests/warnings.test.js",
     "test:generated-integration": "node tests/generated-backend-integration.test.js",
     "test:generated-mysql": "node tests/generated-backend-mysql.test.js",
     "test:disk-generation": "node tests/disk-generation.test.js",
     "test:string-length": "node tests/string-length-validation.test.js",
-    "test:enum": "node tests/enum.test.js"
+    "test:enum": "node tests/enum.test.js",
+    "test:collection-query": "node tests/collection-query.test.js"
   },
   "keywords": [
     "compiler",

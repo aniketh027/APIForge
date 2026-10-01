@@ -2360,7 +2360,7 @@ console.log('── Codegen Test 12: Model generated ──');
 const studentModel = CodeGenerator.generateModel('Student', [{ name: 'id', dataType: 'INT' }]);
 assertTrue('Model exports class StudentModel', studentModel.includes('class StudentModel'));
 assertTrue('Model contains tableName', studentModel.includes("return 'Student'"));
-assertTrue('Model contains findAll', studentModel.includes('static async findAll()'));
+assertTrue('Model contains findAll', studentModel.includes('static async findAll(options = {})'));
 
 
 // ── Codegen Test 13: Controller generated ─────────────────────
@@ -2670,7 +2670,7 @@ console.log('── Codegen Test 32: Existing entity CRUD unchanged ──');
 const plainGenResult = CodeGenerator.generate(testStudentIR, false);
 assertTrue('Plain generation succeeds', plainGenResult.success);
 const plainStudentModel = plainGenResult.files.find(f => f.path === 'models/Student.js').content;
-assertTrue('Plain Student model has findAll', plainStudentModel.includes('static async findAll()'));
+assertTrue('Plain Student model has findAll', plainStudentModel.includes('static async findAll(options = {})'));
 assertTrue('Plain Student model has findById', plainStudentModel.includes('static async findById(id)'));
 assertTrue('Plain Student model has create', plainStudentModel.includes('static async create(data)'));
 assertTrue('Plain Student model has update', plainStudentModel.includes('static async update(id, data)'));

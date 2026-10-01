@@ -642,7 +642,119 @@ function generateReadme(entities) {
            `## Routes and API specification\n\n` +
            `${routeList}\n` +
            `- \`/health\` reports server health.\n\n` +
-           `The OpenAPI document is at \`swagger.json\` in the project root. The generated server does not serve Swagger UI or expose that file over HTTP.\n`;
+           `The OpenAPI document is at \`swagger.json\` in the project root. The generated server does not serve Swagger UI or expose that file over HTTP.\n\n` +
+           `## Collection query options\n\n` +
+           `Collection GET preserves \`{ success: true, data: [...] }\`. Without \`page\` or \`limit\`, results remain unbounded and no count query runs.\n\n` +
+           `- Exact-match filters use field names, including implicit \`id\`. INT requires a safe integer; FLOAT a finite decimal/exponent number; BOOLEAN accepts only \`true\` or \`false\`; STRING uses raw text; ENUM requires an exact declared member.\n` +
+           `- \`sort=<field>\` accepts known fields; \`order=asc|desc\` defaults to asc and requires sort.\n` +
+           `- \`page\` or \`limit\` enables pagination: defaults page=1, limit=20; maximum limit=100. Both must be positive decimal integers with a safe offset.\n` +
+           `- Pagination returns \`X-Total-Count\`, \`X-Page\`, \`X-Limit\`, \`X-Total-Pages\` headers; counts use the same filters. Pages beyond the last return an empty data array. Pagination uses primary-key ordering/tie-breaking for stable pages.\n` +
+           `- Reserved parameters are \`page\`, \`limit\`, \`sort\`, \`order\`; fields with those names cannot be filtered, but can be sorted. Unknown parameters, repeated/non-scalar parameters and invalid values return HTTP 400. No special null-filter syntax is supported.\n` +
+           `- Item GET, POST/PUT/DELETE and relationship routes do not gain query options. Filter values are bound SQL parameters; column names and ordering come from trusted whitelists.\n\n` +
+           `Examples (use fields declared in your entity):\n\n` +
+           `\`GET /${entities.length ? pluralize(entities[0].name) : 'students'}?age=21\`\n\n` +
+           `\`GET /${entities.length ? pluralize(entities[0].name) : 'students'}?sort=name&order=desc\`\n\n` +
+           `\`GET /${entities.length ? pluralize(entities[0].name) : 'students'}?status=active&sort=name&page=2&limit=20\`\n`;
+}
+
+// Collection metadata is target-specific: implicit SQL ids never enter the IR.
+const COLLECTION_RESERVED_PARAMS = ['page', 'limit', 'sort', 'order'];
+function collectionFields(entity) {
+    const fields = entity.fields || [];
+    return fields.some(field => field.constraints?.includes('PRIMARY_KEY')) || fields.some(field => field.name === 'id')
+        ? fields : [{ name: 'id', dataType: 'INT', constraints: [] }, ...fields];
+}
+
+function generateCollectionMethods(entity) {
+    const primaryKey = getPrimaryKeyField(entity).name;
+    const table = JSON.stringify(quoteIdentifier(entity.name));
+    return `    // Parse HTTP strings once, before any database access.
+    static parseQuery(query = {}) {
+        const fail = message => { throw Object.assign(new Error(message), { statusCode: 400 }); };
+        const reserved = ${JSON.stringify(COLLECTION_RESERVED_PARAMS)};
+        for (const key of Object.keys(query)) {
+            if (!reserved.includes(key) && !QUERY_FIELDS.some(field => field.name === key)) {
+                fail("Unknown query parameter '" + key + "'.");
+            }
+            if (typeof query[key] !== 'string') fail("Query parameter '" + key + "' must have one string value.");
+        }
+        const positiveInteger = (key, fallback) => {
+            if (!Object.prototype.hasOwnProperty.call(query, key)) return fallback;
+            if (!/^[1-9]\\d*$/.test(query[key])) fail('Invalid ' + key + ' parameter.');
+            const value = Number(query[key]);
+            if (!Number.isSafeInteger(value)) fail('Invalid ' + key + ' parameter.');
+            return value;
+        };
+        const paginated = Object.prototype.hasOwnProperty.call(query, 'page') || Object.prototype.hasOwnProperty.call(query, 'limit');
+        const page = positiveInteger('page', 1);
+        const limit = positiveInteger('limit', 20);
+        if (limit > 100) fail('Invalid limit parameter: maximum is 100.');
+        const offset = (page - 1) * limit;
+        if (!Number.isSafeInteger(offset)) fail('Invalid page parameter: offset exceeds safe integer range.');
+        const sort = query.sort;
+        if (sort !== undefined && !QUERY_FIELDS.some(field => field.name === sort)) fail("Invalid sort field '" + sort + "'.");
+        if (query.order !== undefined && sort === undefined) fail('The order parameter requires sort.');
+        const order = query.order === undefined ? 'asc' : query.order;
+        if (order !== 'asc' && order !== 'desc') fail("Invalid sort order '" + order + "'.");
+        const filters = Object.create(null);
+        for (const field of QUERY_FIELDS) {
+            if (reserved.includes(field.name) || !Object.prototype.hasOwnProperty.call(query, field.name)) continue;
+            const raw = query[field.name];
+            let value = raw;
+            if (field.dataType === 'INT') {
+                if (!/^-?\\d+$/.test(raw) || !Number.isSafeInteger(Number(raw))) fail("Invalid value for filter '" + field.name + "'.");
+                value = Number(raw);
+            } else if (field.dataType === 'FLOAT') {
+                if (!/^[+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)(?:[eE][+-]?\\d+)?$/.test(raw) || !Number.isFinite(Number(raw))) fail("Invalid value for filter '" + field.name + "'.");
+                value = Number(raw);
+            } else if (field.dataType === 'BOOLEAN') {
+                if (raw !== 'true' && raw !== 'false') fail("Invalid value for filter '" + field.name + "'.");
+                value = raw === 'true';
+            } else if (field.dataType === 'ENUM' && !field.enumValues.includes(raw)) {
+                fail("Invalid value for ENUM filter '" + field.name + "'.");
+            }
+            filters[field.name] = value;
+        }
+        return { filters, sort, order, paginated, page, limit, offset };
+    }
+
+    static filterQuery(options) {
+        const clauses = [];
+        const values = [];
+        for (const field of QUERY_FIELDS) {
+            if (Object.prototype.hasOwnProperty.call(options.filters || {}, field.name)) {
+                clauses.push(field.column + ' = ?');
+                values.push(options.filters[field.name]);
+            }
+        }
+        return { where: clauses.length ? ' WHERE ' + clauses.join(' AND ') : '', values };
+    }
+
+    static async findAll(options = {}) {
+        const { where, values } = this.filterQuery(options);
+        let sql = 'SELECT * FROM ' + ${table} + where;
+        const sort = QUERY_FIELDS.find(field => field.name === (options.sort || (options.paginated ? ${JSON.stringify(primaryKey)} : undefined)));
+        if (sort) {
+            sql += ' ORDER BY ' + sort.column + (options.order === 'desc' ? ' DESC' : ' ASC');
+            if (options.paginated && sort.name !== ${JSON.stringify(primaryKey)}) {
+                sql += ', ' + QUERY_FIELDS.find(field => field.name === ${JSON.stringify(primaryKey)}).column + ' ASC';
+            }
+        }
+        if (options.paginated) {
+            sql += ' LIMIT ? OFFSET ?';
+            values.push(options.limit, options.offset);
+        }
+        const [rows] = await pool.query(sql, values);
+        return rows;
+    }
+
+    static async countFiltered(options) {
+        const { where, values } = this.filterQuery(options);
+        const [rows] = await pool.query('SELECT COUNT(*) AS total FROM ' + ${table} + where, values);
+        const total = Number(rows[0].total);
+        if (!Number.isSafeInteger(total) || total < 0) throw new Error('Invalid collection count.');
+        return total;
+    }\n\n`;
 }
 
 /**
@@ -658,6 +770,10 @@ function generateReadme(entities) {
  */
 function generateModel(entityName, fields, relations = [], entities = []) {
     const fieldsJson = JSON.stringify(fields, null, 12);
+    const queryFieldsJson = JSON.stringify(collectionFields({ name: entityName, fields }).map(field => ({
+        name: field.name, column: quoteIdentifier(field.name), dataType: field.dataType,
+        ...(field.dataType === 'ENUM' ? { enumValues: [...field.enumValues] } : {})
+    })), null, 4);
     const pkField = (fields || []).find(f => f.constraints && f.constraints.includes('PRIMARY_KEY')) || (fields || [])[0] || { name: 'id' };
     const entityMap = new Map(entities.map(e => [e.name, e]));
 
@@ -748,6 +864,7 @@ function generateModel(entityName, fields, relations = [], entities = []) {
            ` * Generated automatically by APIForge Compiler\n` +
            ` */\n\n` +
            `const pool = require('../config/db');\n\n` +
+           `const QUERY_FIELDS = ${queryFieldsJson};\n\n` +
            `class ${entityName}Model {\n` +
            `    static get tableName() {\n` +
            `        return '${entityName}';\n` +
@@ -755,10 +872,7 @@ function generateModel(entityName, fields, relations = [], entities = []) {
            `    static get fields() {\n` +
            `        return ${fieldsJson};\n` +
            `    }\n\n` +
-           `    static async findAll() {\n` +
-           `        const [rows] = await pool.query('SELECT * FROM ${quoteIdentifier(entityName)}');\n` +
-           `        return rows;\n` +
-           `    }\n\n` +
+           generateCollectionMethods({ name: entityName, fields }) +
            `    static async findById(id) {\n` +
            `        const [rows] = await pool.query('SELECT * FROM ${quoteIdentifier(entityName)} WHERE ${quoteIdentifier(pkField.name)} = ?', [id]);\n` +
            `        return rows.length > 0 ? rows[0] : null;\n` +
@@ -981,10 +1095,17 @@ function generateController(entityName, fieldsOrRelations = [], maybeRelations =
            `}\n\n` +
            `async function ${getPluralFn}(req, res) {\n` +
            `    try {\n` +
-           `        const items = await ${modelVar}.findAll();\n` +
+           `        const options = ${modelVar}.parseQuery(req.query || {});\n` +
+           `        const items = await ${modelVar}.findAll(options);\n` +
+           `        if (options.paginated) {\n` +
+           `            const total = await ${modelVar}.countFiltered(options);\n` +
+           `            res.set({ 'X-Total-Count': String(total), 'X-Page': String(options.page),\n` +
+           `                'X-Limit': String(options.limit), 'X-Total-Pages': String(Math.ceil(total / options.limit)) });\n` +
+           `        }\n` +
            `        res.status(200).json({ success: true, data: items });\n` +
            `    } catch (error) {\n` +
-           `        res.status(500).json({ success: false, error: error.message });\n` +
+           `        const status = error.statusCode === 400 ? 400 : 500;\n` +
+           `        res.status(status).json({ success: false, error: status === 400 ? error.message : 'Unable to retrieve collection.' });\n` +
            `    }\n` +
            `}\n\n` +
            `async function get${entityName}ById(req, res) {\n` +
@@ -1157,6 +1278,27 @@ function generateSwagger(entities, relations = []) {
 
     entities.forEach(entity => {
         const plural = pluralize(entity.name);
+        const queryFields = collectionFields(entity);
+        const queryParameters = [
+            { name: 'page', in: 'query', required: false, description: 'Enables pagination; defaults to 1 when limit alone is supplied. Offset must be a safe integer.', schema: { type: 'integer', minimum: 1, maximum: Number.MAX_SAFE_INTEGER, default: 1 } },
+            { name: 'limit', in: 'query', required: false, description: 'Enables pagination; defaults to 20 when page alone is supplied.', schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 } },
+            { name: 'sort', in: 'query', required: false, description: 'Known field name. Pagination uses primary-key ordering/tie-breaking.', schema: { type: 'string', enum: queryFields.map(field => field.name) } },
+            { name: 'order', in: 'query', required: false, description: 'Requires sort; lowercase asc or desc only.', schema: { type: 'string', enum: ['asc', 'desc'], default: 'asc' } },
+            ...queryFields.filter(field => !COLLECTION_RESERVED_PARAMS.includes(field.name)).map(field => ({
+                name: field.name, in: 'query', required: false, description: 'Exact-match filter. One value only; no special null syntax.',
+                ...(field.dataType === 'STRING' || (field.dataType === 'ENUM' && field.enumValues.includes('')) ? { allowEmptyValue: true } : {}),
+                schema: { type: SWAGGER_TYPE_MAP[field.dataType] || 'string',
+                    ...(field.dataType === 'INT' ? { minimum: Number.MIN_SAFE_INTEGER, maximum: Number.MAX_SAFE_INTEGER } : {}),
+                    ...(field.dataType === 'ENUM' ? { enum: [...field.enumValues] } : {}) }
+            }))
+        ];
+        const paginationHeaders = Object.fromEntries([
+            ['X-Total-Count', 'Total rows matching the same filters.', 0],
+            ['X-Page', 'Requested page.', 1], ['X-Limit', 'Page size (maximum 100).', 1],
+            ['X-Total-Pages', 'Ceiling of total matching rows divided by limit; zero for no matches.', 0]
+        ].map(([name, description, minimum]) => [name, {
+            description: `${description} Present only when page or limit is supplied.`, schema: { type: 'integer', minimum }
+        }]));
         const idParam = [
             {
                 name: "id",
@@ -1168,7 +1310,9 @@ function generateSwagger(entities, relations = []) {
         ];
 
         paths[`/${plural}`] = {
-            get: { summary: `Get all ${plural}`, responses: { "200": { description: "OK" } } },
+            get: { summary: `Get all ${plural}`, description: 'Exact equality filters; unknown/repeated parameters and invalid values return 400. Preserves { success: true, data: [...] }; unpaginated unless page or limit is supplied.',
+                parameters: queryParameters,
+                responses: { "200": { description: "OK", headers: paginationHeaders }, "400": { description: "Invalid collection query options" } } },
             post: {
                 summary: `Create ${entity.name}`,
                 requestBody: {

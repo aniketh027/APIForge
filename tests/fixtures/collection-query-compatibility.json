@@ -1,0 +1,481 @@
+{
+  "commit": "515af8e3f8cf2d3d193fc7f8dfb8d264d33d885a",
+  "sources": {
+    "int": "ENTITY User\nid INT PRIMARY KEY\nname STRING REQUIRED",
+    "string": "ENTITY User\nkey STRING PRIMARY KEY\nname STRING",
+    "implicit": "ENTITY Item\nname STRING",
+    "relationship": "// APIForge DSL Sample with Relationship\n// Demonstrates entities and relationship declaration\n\nENTITY Student\n\nid INT PRIMARY KEY\nname STRING REQUIRED\n\nENTITY Course\n\nid INT PRIMARY KEY\ntitle STRING REQUIRED\n\nRELATION Student ENROLLS_IN Course MANY_TO_MANY\n",
+    "length": "// ============================================\n// APIForge DSL - STRING Length Validation\n// File: string_length_validation.apiforge\n// ============================================\n\nENTITY User\n\n    id       INT    PRIMARY KEY\n    username STRING REQUIRED UNIQUE MIN_LENGTH 3 MAX_LENGTH 20\n    bio      STRING MAX_LENGTH 500\n    role     STRING DEFAULT \"student\" MIN_LENGTH 3 MAX_LENGTH 20\n",
+    "enum": "// ENUM values are case-sensitive strings in declaration order.\nENTITY Account\nid INT PRIMARY KEY\nemail STRING REQUIRED UNIQUE\nstatus ENUM(\"active\", \"suspended\", \"closed\") DEFAULT \"active\"\nrole ENUM(\"student\", \"faculty\", \"admin\") REQUIRED\n",
+    "types": "ENTITY Student\nid INT PRIMARY KEY\nname STRING REQUIRED\nage INT MIN 18 MAX 60\ncgpa FLOAT\nactive BOOLEAN DEFAULT TRUE\nstatus ENUM(\"active\", \"inactive\", \"suspended\") DEFAULT \"active\"",
+    "reserved": "ENTITY Record\nkey STRING PRIMARY KEY\norder STRING\npage INT\nlimit INT\nsort STRING"
+  },
+  "codes": {
+    "lexer": {
+      "UNEXPECTED_CHARACTER": "LEX001",
+      "INVALID_IDENTIFIER": "LEX002",
+      "UNTERMINATED_STRING": "LEX003",
+      "MALFORMED_NUMBER": "LEX004"
+    },
+    "parser": {
+      "EXPECTED_TOKEN": "PAR001",
+      "MISSING_ENTITY_NAME": "PAR002",
+      "MISSING_SOURCE_ENTITY": "PAR003",
+      "MISSING_RELATION_NAME": "PAR004",
+      "MISSING_TARGET_ENTITY": "PAR005",
+      "MISSING_IDENTIFIER": "PAR006",
+      "EXPECTED_ENTITY_DECLARATION": "PAR007",
+      "MISSING_FIELD_NAME": "PAR008",
+      "INVALID_FIELD_TOKEN": "PAR009",
+      "MISSING_RELATION_TYPE": "PAR010",
+      "INVALID_RELATION_TYPE": "PAR011",
+      "MISSING_DATATYPE": "PAR012",
+      "INVALID_DATATYPE": "PAR013",
+      "MISSING_KEY_AFTER_PRIMARY": "PAR014",
+      "STANDALONE_KEY": "PAR015",
+      "MISSING_MIN_VALUE": "PAR016",
+      "MISSING_MAX_VALUE": "PAR017",
+      "MISSING_MIN_LENGTH_VALUE": "PAR018",
+      "MISSING_MAX_LENGTH_VALUE": "PAR019",
+      "MISSING_DEFAULT_VALUE": "PAR020",
+      "UNKNOWN_MODIFIER": "PAR021",
+      "EXPECTED_ENUM_DELIMITER": "PAR022"
+    },
+    "semantic": {
+      "MISSING_ENTITY_DECLARATION": "SEM001",
+      "DUPLICATE_ENTITY": "SEM002",
+      "RESERVED_ENTITY_NAME": "SEM003",
+      "EMPTY_ENTITY": "SEM004",
+      "DUPLICATE_FIELD": "SEM005",
+      "RESERVED_FIELD_NAME": "SEM006",
+      "INVALID_DATATYPE": "SEM007",
+      "INVALID_CONSTRAINT": "SEM008",
+      "DUPLICATE_CONSTRAINT": "SEM009",
+      "MULTIPLE_PRIMARY_KEYS": "SEM010",
+      "INVALID_PRIMARY_KEY_TYPE": "SEM011",
+      "DUPLICATE_VALIDATION": "SEM012",
+      "INVALID_NUMERIC_BOUND": "SEM013",
+      "INVALID_LENGTH_BOUND": "SEM014",
+      "NUMERIC_MODIFIER_TYPE_MISMATCH": "SEM015",
+      "LENGTH_MODIFIER_TYPE_MISMATCH": "SEM016",
+      "MIN_EXCEEDS_MAX": "SEM017",
+      "MIN_LENGTH_EXCEEDS_MAX_LENGTH": "SEM018",
+      "NON_INTEGER_BOUND": "SEM019",
+      "DUPLICATE_DEFAULT": "SEM020",
+      "INVALID_DEFAULT_TYPE": "SEM021",
+      "DEFAULT_OUT_OF_RANGE": "SEM022",
+      "DEFAULT_LENGTH_OUT_OF_RANGE": "SEM023",
+      "DUPLICATE_RELATION": "SEM024",
+      "RESERVED_RELATION_NAME": "SEM025",
+      "INVALID_RELATION_TYPE": "SEM026",
+      "SELF_RELATION": "SEM027",
+      "UNKNOWN_SOURCE_ENTITY": "SEM028",
+      "UNKNOWN_TARGET_ENTITY": "SEM029",
+      "INVALID_ENUM_VALUES": "SEM030",
+      "DUPLICATE_ENUM_VALUE": "SEM031",
+      "INVALID_ENUM_DEFAULT": "SEM032"
+    },
+    "input": {
+      "INVALID_SOURCE": "INP001",
+      "MALFORMED_JSON": "INP002"
+    },
+    "internal": {
+      "FAILURE": "INT001"
+    }
+  },
+  "warnings": {
+    "semantic": {
+      "IMPLICIT_PRIMARY_KEY": "WRN001"
+    },
+    "optimizer": {
+      "CONFLICTING_FIELD": "WRN002",
+      "CONFLICTING_RELATION_TYPE": "WRN003",
+      "CONFLICTING_RELATION_ENDPOINTS": "WRN004",
+      "INVALID_IR": "WRN005"
+    }
+  },
+  "programs": {
+    "int": {
+      "phases": "8b34d71ec75636550b7bdd3476a369a5069b504c548a9635e5b2d703719f60f9",
+      "paths": [
+        "database/schema.sql",
+        "config/db.js",
+        ".env.example",
+        "package.json",
+        "README.md",
+        "models/User.js",
+        "controllers/userController.js",
+        "routes/userRoutes.js",
+        "server.js",
+        "swagger.json"
+      ],
+      "files": {
+        "database/schema.sql": {
+          "content": "6e19af9a6ddf2e2f9b0e9a48910172d088a536db54f97f5e1b46d0cf14a451da"
+        },
+        "config/db.js": {
+          "content": "eb0676c33db434bd7361c6a6f6b89855f34432bbb999fe14324fbb0d66109569"
+        },
+        ".env.example": {
+          "content": "bfcc5a50359e88d9127a837568cfe7a19657f52ef65614b16e95556aa54dba07"
+        },
+        "package.json": {
+          "content": "a53032414a3b6f14d05096213a0e4308ee7ac5ec5db0c31f5b941b90945e8894"
+        },
+        "models/User.js": {
+          "fields": "14c1086510cc2f12522533a02c6bded03c7544fad5f0fbed562e6aa5906faab0",
+          "itemWriteRelationships": "1a6afacbc53dd1e122a7d6cd6c3772355a27e379948cddb8afbce9d51f241bf8"
+        },
+        "controllers/userController.js": {
+          "validationCreate": "751eac5bad862ffdc8d67945e8e5773f91df290baac7697530a2aabeb43402c8",
+          "itemWriteRelationships": "c71f7ae0b37c4f5f8273fea9c215270f2c46aa65ba6061d86246e671d8449a22"
+        },
+        "routes/userRoutes.js": {
+          "content": "deabaa4d52a0357ff0111b7289e12d4546bd7c436ad7e938cb86fccff3a80aa3"
+        },
+        "server.js": {
+          "content": "7b34917fb984cf2e825082ee20b9003e8abe7b27fcea32b5df8c1f475dd281bb"
+        },
+        "swagger.json": {
+          "nonCollectionOpenAPI": "b062f9344ac944523b0c797f5cad05155203933e308a781df9fde6f17d5212b7"
+        }
+      }
+    },
+    "string": {
+      "phases": "79f0f51302808b8b9ab9d7c496eba1a1d479133c529ed2403325e43092e5489e",
+      "paths": [
+        "database/schema.sql",
+        "config/db.js",
+        ".env.example",
+        "package.json",
+        "README.md",
+        "models/User.js",
+        "controllers/userController.js",
+        "routes/userRoutes.js",
+        "server.js",
+        "swagger.json"
+      ],
+      "files": {
+        "database/schema.sql": {
+          "content": "952ed1247abf36fd15aec98d84d7f8bee84c268f53383dfdd3e7271f2eae0431"
+        },
+        "config/db.js": {
+          "content": "eb0676c33db434bd7361c6a6f6b89855f34432bbb999fe14324fbb0d66109569"
+        },
+        ".env.example": {
+          "content": "bfcc5a50359e88d9127a837568cfe7a19657f52ef65614b16e95556aa54dba07"
+        },
+        "package.json": {
+          "content": "a53032414a3b6f14d05096213a0e4308ee7ac5ec5db0c31f5b941b90945e8894"
+        },
+        "models/User.js": {
+          "fields": "c3ca1dcbcf600ab7e39484cb0974341634b224ba4ebb3d8c1435640e3b639c1b",
+          "itemWriteRelationships": "85ecd9d99d546352645068b3853393a2f0fe6b7ce206d7835311285d9b86e1d4"
+        },
+        "controllers/userController.js": {
+          "validationCreate": "751eac5bad862ffdc8d67945e8e5773f91df290baac7697530a2aabeb43402c8",
+          "itemWriteRelationships": "c71f7ae0b37c4f5f8273fea9c215270f2c46aa65ba6061d86246e671d8449a22"
+        },
+        "routes/userRoutes.js": {
+          "content": "deabaa4d52a0357ff0111b7289e12d4546bd7c436ad7e938cb86fccff3a80aa3"
+        },
+        "server.js": {
+          "content": "7b34917fb984cf2e825082ee20b9003e8abe7b27fcea32b5df8c1f475dd281bb"
+        },
+        "swagger.json": {
+          "nonCollectionOpenAPI": "63b9dd1284917379722c81258825708c3b4a034b820d8d6756a0bdac9d20ec7d"
+        }
+      }
+    },
+    "implicit": {
+      "phases": "04b68618df9a77d49628332df2209bed3cc944e5736027ff97da9098f835cab7",
+      "paths": [
+        "database/schema.sql",
+        "config/db.js",
+        ".env.example",
+        "package.json",
+        "README.md",
+        "models/Item.js",
+        "controllers/itemController.js",
+        "routes/itemRoutes.js",
+        "server.js",
+        "swagger.json"
+      ],
+      "files": {
+        "database/schema.sql": {
+          "content": "ba4ff80da0a0a9c99cb15cc61a251cc691d3220a27930cbc3605b327e5030b9f"
+        },
+        "config/db.js": {
+          "content": "eb0676c33db434bd7361c6a6f6b89855f34432bbb999fe14324fbb0d66109569"
+        },
+        ".env.example": {
+          "content": "bfcc5a50359e88d9127a837568cfe7a19657f52ef65614b16e95556aa54dba07"
+        },
+        "package.json": {
+          "content": "a53032414a3b6f14d05096213a0e4308ee7ac5ec5db0c31f5b941b90945e8894"
+        },
+        "models/Item.js": {
+          "fields": "f4aaa8ee4c2bab8d9b89b901668bbc7e96acc47187960b8e4a60ea832632a861",
+          "itemWriteRelationships": "a7eb0e36532d61087383dbad87bb62f11b4d4d46f30d6851f240f267bd7f1da2"
+        },
+        "controllers/itemController.js": {
+          "validationCreate": "61fd0743e20701afe9baea5c19d91406bc0a327167ff9c5409f58669f7db7f83",
+          "itemWriteRelationships": "443e761c57a4425c27cab5c557583fb60d062776d68a6c1e8bd1400afb841bb3"
+        },
+        "routes/itemRoutes.js": {
+          "content": "663f1bdcfc36733e724a19d79a2a41e0c2da92f7850ea6803c94a0d6f85180b9"
+        },
+        "server.js": {
+          "content": "c92f5cdf1183a6684dbc09355de07b79a11d8b06da61ad101ea22cf1597dd5ef"
+        },
+        "swagger.json": {
+          "nonCollectionOpenAPI": "9c74ef96935aca735ba72a083c41b1e2c6f2557a300a9551dab11790803cb2c8"
+        }
+      }
+    },
+    "relationship": {
+      "phases": "3bd681dbae0d9eb3b05ef5fc5a781a7ee1247d2a291e3b70693406e3fb4d9c01",
+      "paths": [
+        "database/schema.sql",
+        "config/db.js",
+        ".env.example",
+        "package.json",
+        "README.md",
+        "models/Student.js",
+        "controllers/studentController.js",
+        "routes/studentRoutes.js",
+        "models/Course.js",
+        "controllers/courseController.js",
+        "routes/courseRoutes.js",
+        "server.js",
+        "swagger.json"
+      ],
+      "files": {
+        "database/schema.sql": {
+          "content": "58e31f48ebdffa788e968349f3b5e173e77abf133be0aec5cd68bf98155cb6d9"
+        },
+        "config/db.js": {
+          "content": "eb0676c33db434bd7361c6a6f6b89855f34432bbb999fe14324fbb0d66109569"
+        },
+        ".env.example": {
+          "content": "bfcc5a50359e88d9127a837568cfe7a19657f52ef65614b16e95556aa54dba07"
+        },
+        "package.json": {
+          "content": "a53032414a3b6f14d05096213a0e4308ee7ac5ec5db0c31f5b941b90945e8894"
+        },
+        "models/Student.js": {
+          "fields": "93b4773948c2b1b4ada0da4795a5ffb57329e94d1f07be6a7194dd8b59304e08",
+          "itemWriteRelationships": "cc2b150f108de28bf551ad63d09e1393a4277fa049e5c3b0278a20c141c6efc6"
+        },
+        "controllers/studentController.js": {
+          "validationCreate": "2019ab3ef5d200bb2929afaa261db3ec1dff1efe1866f9878344e76cd9195944",
+          "itemWriteRelationships": "7f7ba7e156858890dd568dd736a08d521d44bcc7948d8d3c1ea7e36132226c7c"
+        },
+        "routes/studentRoutes.js": {
+          "content": "79cd22391f53e338ca6d72d5a9327263acecc333c7e8efa1471721e3f88dcd7d"
+        },
+        "models/Course.js": {
+          "fields": "e94116914c97e51698d21315e0c4456b6e65dc9bf1ca5d0099e936d1b8226dc4",
+          "itemWriteRelationships": "db3b0a4c7b8db764207dfe58296e9e10288adf5dea094539e4e901e50a2e7dcd"
+        },
+        "controllers/courseController.js": {
+          "validationCreate": "61218aa541a467a86f81d560fa41c01916bea1374352ecb88a6d6d5369580227",
+          "itemWriteRelationships": "b4a16e905b7af91e132ddbb45da4a1daeb40a33983c692bf522f48e463ccf8cf"
+        },
+        "routes/courseRoutes.js": {
+          "content": "1a33c97daa3d235ab7dc16ddf5ae0caf7a7977b3ab0f53c0de2a8161b28d13e9"
+        },
+        "server.js": {
+          "content": "569a67694e3c5470485eda3b980a094a491ea8ddde5dd95c7950fa116cf03914"
+        },
+        "swagger.json": {
+          "nonCollectionOpenAPI": "1ee7ad3c412f2b1fcff430f8f5f54072750777250b294b69f1af26dc0eabb404"
+        }
+      }
+    },
+    "length": {
+      "phases": "bfbc13577ac39182e9cafa6021a197f791339bffa56ae1f7d862b5750d79e440",
+      "paths": [
+        "database/schema.sql",
+        "config/db.js",
+        ".env.example",
+        "package.json",
+        "README.md",
+        "models/User.js",
+        "controllers/userController.js",
+        "routes/userRoutes.js",
+        "server.js",
+        "swagger.json"
+      ],
+      "files": {
+        "database/schema.sql": {
+          "content": "dec391a793255e2210357518fa81e7a531be230da0295fa08a02a2e3063d4120"
+        },
+        "config/db.js": {
+          "content": "eb0676c33db434bd7361c6a6f6b89855f34432bbb999fe14324fbb0d66109569"
+        },
+        ".env.example": {
+          "content": "bfcc5a50359e88d9127a837568cfe7a19657f52ef65614b16e95556aa54dba07"
+        },
+        "package.json": {
+          "content": "a53032414a3b6f14d05096213a0e4308ee7ac5ec5db0c31f5b941b90945e8894"
+        },
+        "models/User.js": {
+          "fields": "6fea2ea18e235d12d5d649efff758b10453216aa9739418a88abc66bfec8f6fb",
+          "itemWriteRelationships": "1a6afacbc53dd1e122a7d6cd6c3772355a27e379948cddb8afbce9d51f241bf8"
+        },
+        "controllers/userController.js": {
+          "validationCreate": "6c994ede2af0221bc0a49bb2df831de7c964a883cf1906510d02ddcea83e5279",
+          "itemWriteRelationships": "c71f7ae0b37c4f5f8273fea9c215270f2c46aa65ba6061d86246e671d8449a22"
+        },
+        "routes/userRoutes.js": {
+          "content": "deabaa4d52a0357ff0111b7289e12d4546bd7c436ad7e938cb86fccff3a80aa3"
+        },
+        "server.js": {
+          "content": "7b34917fb984cf2e825082ee20b9003e8abe7b27fcea32b5df8c1f475dd281bb"
+        },
+        "swagger.json": {
+          "nonCollectionOpenAPI": "843f1f7cd2ca0570985dc02116f06074bc76829749273fdd51620b172f4acc1a"
+        }
+      }
+    },
+    "enum": {
+      "phases": "060d78d1fdc3cf2033c80f59de5198e4c66f32a2a3495a5d5ddc6a4056a49244",
+      "paths": [
+        "database/schema.sql",
+        "config/db.js",
+        ".env.example",
+        "package.json",
+        "README.md",
+        "models/Account.js",
+        "controllers/accountController.js",
+        "routes/accountRoutes.js",
+        "server.js",
+        "swagger.json"
+      ],
+      "files": {
+        "database/schema.sql": {
+          "content": "5f9d15a29fc93d03e7b7c914cded209b235af59b80b315f4b3942e8b166548b3"
+        },
+        "config/db.js": {
+          "content": "eb0676c33db434bd7361c6a6f6b89855f34432bbb999fe14324fbb0d66109569"
+        },
+        ".env.example": {
+          "content": "bfcc5a50359e88d9127a837568cfe7a19657f52ef65614b16e95556aa54dba07"
+        },
+        "package.json": {
+          "content": "a53032414a3b6f14d05096213a0e4308ee7ac5ec5db0c31f5b941b90945e8894"
+        },
+        "models/Account.js": {
+          "fields": "837f8bfb4c058fa516baa2b81c897d2b28db52ee0d6c0c3973582d4bfabe0255",
+          "itemWriteRelationships": "f1c37bb35708ca68c0a38d85d80b30b4ad185d00866c371f3cbcf791808b5bb9"
+        },
+        "controllers/accountController.js": {
+          "validationCreate": "7461e9c2d340b8cdd8fd756d42757080da665f94a4e86a50ec628b21070f5afe",
+          "itemWriteRelationships": "cdd93766113fe1c236224d939c463c74a3208803de7238aac466ae98d2d49470"
+        },
+        "routes/accountRoutes.js": {
+          "content": "03a6b35af370c04d47c541364c1f6bd4b500f10b52288b987967916ccd3b4076"
+        },
+        "server.js": {
+          "content": "371b8403da1b5dd75ceface7008656191bda92a6ed32c3c94044b8acc7a10fa6"
+        },
+        "swagger.json": {
+          "nonCollectionOpenAPI": "06561fcd85410984533fa17a8b4220c6209466d1ba83abf16bc43daad1bb6aa1"
+        }
+      }
+    },
+    "types": {
+      "phases": "0bdc03daf89c505a253dc68fde4b2177aab1062ae4fe48629782576fea9928d4",
+      "paths": [
+        "database/schema.sql",
+        "config/db.js",
+        ".env.example",
+        "package.json",
+        "README.md",
+        "models/Student.js",
+        "controllers/studentController.js",
+        "routes/studentRoutes.js",
+        "server.js",
+        "swagger.json"
+      ],
+      "files": {
+        "database/schema.sql": {
+          "content": "90d72e7ed1996a8a1691c3dc2656ae3b7ef82d033f82e386d57a2755126fbbf7"
+        },
+        "config/db.js": {
+          "content": "eb0676c33db434bd7361c6a6f6b89855f34432bbb999fe14324fbb0d66109569"
+        },
+        ".env.example": {
+          "content": "bfcc5a50359e88d9127a837568cfe7a19657f52ef65614b16e95556aa54dba07"
+        },
+        "package.json": {
+          "content": "a53032414a3b6f14d05096213a0e4308ee7ac5ec5db0c31f5b941b90945e8894"
+        },
+        "models/Student.js": {
+          "fields": "0089c51af1803d7225c9152ca0588e4341c385c921fe6164a8838bfd5864f185",
+          "itemWriteRelationships": "5185bb1959adb9998c5bb021904f3060d6ad557b1559b373f9b26da50a108f21"
+        },
+        "controllers/studentController.js": {
+          "validationCreate": "0f1cd7bae0f6bb12c9fd37caf2b6be8a432cd3453505eed25daea5b1391d5465",
+          "itemWriteRelationships": "8b76c8ca5fcdc4f44c51426c4557e3347e0b4ff0e1c58667d3f1090214d77694"
+        },
+        "routes/studentRoutes.js": {
+          "content": "d82d305c5a438ed8c172c404548d401a8bbc2fa1f4c37349cf6130d32bd26fcc"
+        },
+        "server.js": {
+          "content": "b6974dead19150402922cf9cb82ce48c514c71149060db6999c72066b52622ec"
+        },
+        "swagger.json": {
+          "nonCollectionOpenAPI": "a843dc94890fecfb4f32ebcec77e441d454cffcecb7394125a80a8eb690324b0"
+        }
+      }
+    },
+    "reserved": {
+      "phases": "e607bd92168c84a0ad9e2620e6bb75072d04b0426f10c92490f868b8dfeaf91e",
+      "paths": [
+        "database/schema.sql",
+        "config/db.js",
+        ".env.example",
+        "package.json",
+        "README.md",
+        "models/Record.js",
+        "controllers/recordController.js",
+        "routes/recordRoutes.js",
+        "server.js",
+        "swagger.json"
+      ],
+      "files": {
+        "database/schema.sql": {
+          "content": "8c7fa0fa10df57d599aae1c0d9a9d92207b6f01bce5ee0dfc085687e3d8ef2de"
+        },
+        "config/db.js": {
+          "content": "eb0676c33db434bd7361c6a6f6b89855f34432bbb999fe14324fbb0d66109569"
+        },
+        ".env.example": {
+          "content": "bfcc5a50359e88d9127a837568cfe7a19657f52ef65614b16e95556aa54dba07"
+        },
+        "package.json": {
+          "content": "a53032414a3b6f14d05096213a0e4308ee7ac5ec5db0c31f5b941b90945e8894"
+        },
+        "models/Record.js": {
+          "fields": "60871e4dba0cd8eaec5232e4765274668d73abd03acec3b85b69711140f06b70",
+          "itemWriteRelationships": "22588ae057dc35ebecd7b277d2c1c3811dbc53d618f261344796a377417ed592"
+        },
+        "controllers/recordController.js": {
+          "validationCreate": "d0cf4ad806d49f3c8aae6936480bd6629665fa5085ec9e7b2c3df921a27c2c3e",
+          "itemWriteRelationships": "fb2f7ce3115eeb5642badf253a7802fceb72151808462cc15101c63e5845a813"
+        },
+        "routes/recordRoutes.js": {
+          "content": "9dc5c794973f0aa33474d5dc35b7a0502c93c63515b5ff47125837bd6f064a4c"
+        },
+        "server.js": {
+          "content": "c57a13f8da4b31f06c503db73286f72f4a6aeec4284fad94a0b801592ec29c44"
+        },
+        "swagger.json": {
+          "nonCollectionOpenAPI": "dcbe9ba7988bbc9d1641923f074f7666f3d8d9bd1f3cd069df4f24109f596d95"
+        }
+      }
+    }
+  }
+}

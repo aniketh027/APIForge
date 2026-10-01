@@ -36,6 +36,7 @@ const testDsl = [
     'id INT PRIMARY KEY',
     'name STRING REQUIRED UNIQUE MIN_LENGTH 2 MAX_LENGTH 12',
     'age INT REQUIRED MIN 18 MAX 60',
+    'cgpa FLOAT',
     'active BOOLEAN DEFAULT TRUE',
     `status ENUM("active", "ACTIVE", "inactive", "O'Reilly", "C:\\folder") DEFAULT "active"`,
     `signature ENUM("O'Reilly") DEFAULT "O'Reilly"`,
@@ -267,6 +268,64 @@ async function verifyImportedSchema(connection, databaseName) {
     assert.strictEqual(Number(rejectedRows[0].count), 0, 'Constraint-violating row must not persist');
 }
 
+async function exerciseCollectionQueries(connection, port, existingId) {
+    currentPhase = 'collection filtering, sorting, pagination and injection isolation';
+    const records = [
+        { name: 'Ada', age: 21, cgpa: 8.5, active: true, status: 'active' },
+        { name: 'Zed', age: 22, cgpa: 9.1, active: true, status: 'active' },
+        { name: 'Cora', age: 21, cgpa: 7.25, active: false, status: 'inactive' },
+        { name: 'Nina', age: 21, cgpa: 8.5, active: true, status: 'active' }
+    ];
+    const ids = [];
+    for (const record of records) {
+        const result = assertResponse(await requestHttp(port, 'POST', '/students', record), 201, 'Query fixture POST');
+        ids.push(Number(result.data.id));
+    }
+    const get = async query => {
+        const response = await requestHttp(port, 'GET', '/students' + query);
+        const body = assertResponse(response, 200, 'Collection query ' + query);
+        assert.strictEqual(body.success, true);
+        assert.ok(Array.isArray(body.data), 'Preserve existing data array inside success envelope');
+        assert.deepStrictEqual(Object.keys(body).sort(), ['data', 'success']);
+        return { response, rows: body.data };
+    };
+    const names = result => result.rows.map(row => row.name);
+    const all = await get('');
+    assert.strictEqual(all.rows.length, 5);
+    assert.strictEqual(all.response.headers['x-total-count'], undefined);
+    assert.deepStrictEqual(names(await get('?age=21&sort=name')), ['Ada', 'Bea', 'Cora', 'Nina']);
+    assert.deepStrictEqual(names(await get('?status=active&sort=name')), ['Ada', 'Nina', 'Zed']);
+    assert.deepStrictEqual(names(await get('?active=true&sort=name')), ['Ada', 'Nina', 'Zed']);
+    assert.deepStrictEqual(names(await get('?active=false&sort=name')), ['Bea', 'Cora']);
+    assert.deepStrictEqual(names(await get('?cgpa=8.5&sort=name')), ['Ada', 'Nina']);
+    assert.deepStrictEqual(names(await get('?name=Ada')), ['Ada']);
+    assert.deepStrictEqual(names(await get('?sort=name&order=desc')), ['Zed', 'Nina', 'Cora', 'Bea', 'Ada']);
+    const page = await get('?page=2&limit=2');
+    assert.deepStrictEqual(page.rows.map(row => Number(row.id)), [ids[1], ids[2]]);
+    assert.deepStrictEqual(['x-total-count', 'x-page', 'x-limit', 'x-total-pages'].map(key => page.response.headers[key]), ['5', '2', '2', '3']);
+    const combined = await get('?status=active&age=21&sort=name&order=desc&page=2&limit=1');
+    assert.deepStrictEqual(names(combined), ['Ada']);
+    assert.strictEqual(combined.response.headers['x-total-count'], '2');
+    assert.strictEqual(combined.response.headers['x-total-pages'], '2');
+    const empty = await get('?status=inactive&age=60&page=1&limit=2');
+    assert.deepStrictEqual(empty.rows, []);
+    assert.strictEqual(empty.response.headers['x-total-count'], '0');
+    assert.strictEqual(empty.response.headers['x-total-pages'], '0');
+    assert.deepStrictEqual((await get('?page=99&limit=2')).rows, []);
+    assert.strictEqual((await get('?limit=100')).rows.length, 5);
+    for (const query of ['page=0', 'page=-1', 'page=abc', 'limit=0', 'limit=101', 'active=FALSE', 'age=1.5', 'cgpa=Infinity',
+        'status=deleted', 'unknown=x', 'name=a&name=b', 'sort=name%3BDROP%20TABLE%20Student',
+        'sort=name&order=desc%3BDROP', 'unknown%60field=x', 'page=9007199254740991&limit=100']) {
+        assertResponse(await requestHttp(port, 'GET', '/students?' + query), 400, 'Invalid collection query ' + query);
+    }
+    assert.deepStrictEqual((await get('?name=' + encodeURIComponent("' OR 1=1 --"))).rows, []);
+    assert.strictEqual((await get('')).rows.length, 5, 'Injection attempts leave table and rows intact');
+    const item = assertResponse(await requestHttp(port, 'GET', `/students/${existingId}?unknown=ignored`), 200, 'Item GET unchanged');
+    assert.strictEqual(item.data.name, 'Bea');
+    for (const id of ids) assertResponse(await requestHttp(port, 'DELETE', `/students/${id}`), 200, 'Query fixture DELETE');
+    console.log('Collection MySQL checks passed: typed filters, stable sorting/pages, filtered headers, body compatibility and injection isolation.');
+}
+
 async function exerciseGeneratedApi(connection, port) {
     currentPhase = 'runtime ENUM validation';
     for (const status of ['deleted', 'Active', 1, true]) {
@@ -347,6 +406,7 @@ async function exerciseGeneratedApi(connection, port) {
     assert.strictEqual(updatedRows[0].name, 'Bea', 'Student PUT should persist the new name');
     assert.strictEqual(Number(updatedRows[0].age), 21, 'Student PUT should persist the new age');
     assert.strictEqual(Number(updatedRows[0].active), 0, 'Student PUT should persist the boolean update');
+    await exerciseCollectionQueries(connection, port, studentId);
 
     currentPhase = 'Course POST and default persistence';
     const courseCreated = await requestHttp(port, 'POST', '/courses', { title: 'Compiler Design' });
