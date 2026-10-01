@@ -129,14 +129,19 @@ async function main() {
 
     const required = loadModule(content(compiled.get('required-unique'), 'controllers/memberController.js'), () => ({}));
     assert.equal(required.validateMember({}), null);
-    assert.equal(required.validateMember({ enabled: null }), null);
+    assert.equal(required.validateMember({ enabled: null }), "Field 'enabled' cannot be null.");
+    assert.equal(required.validateMember({}, 'create'), "Field 'email' is required.");
     const account = loadModule(content(compiled.get('account-complete'), 'controllers/accountController.js'), () => ({}));
     assert.equal(account.validateAccount({}), null);
     assert(account.validateAccount({ role: null }));
     const student = compiled.get('student-complete');
     const studentController = loadModule(content(student, 'controllers/studentController.js'), () => ({}));
-    assert.equal(studentController.validateStudent({ age: '21', cgpa: '8.5' }), null);
-    assert.equal(studentController.validateStudent({ age: 21.5 }), null);
+    assert.equal(studentController.validateStudent({ age: '21', cgpa: '8.5' }), "Field 'age' must be an integer.");
+    assert.equal(studentController.validateStudent({ age: 21.5 }), "Field 'age' must be an integer.");
+    assert.equal(studentController.validateStudent({ age: 21, cgpa: 8.5 }), null);
+    assert.equal(studentController.validateStudent({ cgpa: '8.5' }), "Field 'cgpa' must be a finite number.");
+    assert.equal(studentController.validateStudent({ id: 1.5 }), "Field 'id' must be an integer.");
+    assert.equal(studentController.validateStudent({}, 'create'), "Field 'name' is required.");
     assert.equal(studentController.validateStudent({ age: null }), null);
     assert(studentController.validateStudent({ name: 123 }));
     const StudentModel = loadModule(content(student, 'models/Student.js'), () => pool);

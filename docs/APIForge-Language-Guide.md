@@ -284,8 +284,8 @@ omitted returns the database insertId as id and preserves submitted fields.
 OpenAPI components include implicit id as integer with readOnly: true; it is
 never added to required request input. Model fields remain source-declared;
 query/read metadata includes the generated identity. PUT remains a partial update.
-Caller-supplied implicit id is still forwarded to MySQL under existing write
-behavior; no new contract for its auto-increment behavior is established here.
+Caller-supplied implicit id is rejected on POST/PUT with HTTP 400 before model
+access; it is generated read identity, not a source-declared writable field.
 The response assembly uses database insertId after spreading submitted data.
 
 Without an explicit PRIMARY KEY, a declared id, Id, ID or iD collides with the
@@ -302,15 +302,18 @@ renamed. Normal implicit entities retain the same WRN001 wording and location.
 Selects the key field as described in section 6. The parser stores the two-token
 source spelling as PRIMARY_KEY internally; PRIMARY_KEY is not DSL syntax.
 SQL enforces key uniqueness; OpenAPI does not automatically put the key in its
-required array unless REQUIRED is also written.
+required array unless REQUIRED is written and omission cannot be supplied by
+a declared DEFAULT or auto-generated key. Explicit source-declared keys remain
+accepted on POST and PUT; mutable-key behavior remains tracked separately (G13).
 
 ### REQUIRED
 
-Allowed on every supported datatype. Emits SQL NOT NULL and adds the field
-to the OpenAPI component's required array. It does not generate a general
-missing-field check in Express. Supplied null on REQUIRED ENUM is a special
-membership-validation failure; other SQL nullability enforcement is left to the
-database. REQUIRED does not mean non-empty text; use MIN_LENGTH for that.
+Allowed on every supported datatype. Emits SQL NOT NULL. POST rejects an omitted
+REQUIRED field unless it has DEFAULT or is a database-generated auto-increment
+primary key. OpenAPI's required array reflects that POST presence rule.
+PUT is partial: omitted REQUIRED fields retain their current values.
+Supplied REQUIRED null is rejected for every datatype before model access.
+REQUIRED does not mean non-empty text; use MIN_LENGTH for that.
 
 ### UNIQUE
 
@@ -453,10 +456,10 @@ Prefer members without trailing spaces.
 
 Generated POST/PUT validation rejects supplied non-strings and nonmembers before
 model calls. Optional null is allowed; REQUIRED ENUM rejects supplied null.
-Omission is allowed by the controller even for REQUIRED ENUM, leaving database
-defaults/nullability to apply. OpenAPI has type string, the ordered enum
-array, optional default, and REQUIRED membership in the parent required array.
-It does not emit nullable: true for optional fields.
+POST requires omitted REQUIRED ENUM unless DEFAULT supplies it; PUT permits
+omission. OpenAPI preserves type string, the ordered enum array and optional
+default; required reflects POST presence. Optional null is not fully represented
+by the reused OpenAPI components (G11 remains separate).
 
 ## 9. Relationships
 
@@ -507,23 +510,46 @@ documentation; the server does not load a schema validator.
 | Rule | Compile time | Generated POST/PUT | SQL / OpenAPI |
 |---|---|---|---|
 | Default type/range/length/membership | Enforced by semantics | No default injection | DEFAULT / default |
-| Numeric MIN/MAX | Type/range consistency, inclusive default check | Compare provided non-null values using JavaScript comparisons | CHECK / minimum, maximum |
-| STRING length | Non-negative integer bounds and code-point default length | Provided non-null value must be string and satisfy code-point length | CHAR_LENGTH CHECK / minLength, maxLength |
-| ENUM membership | Unique members and exact default membership | Exact string membership; null policy as in section 8 | Native ENUM / string enum |
-| REQUIRED | Valid modifier; duplicate rejected | No general omission check | NOT NULL / required array |
-| UNIQUE / key | Valid declaration/type; duplicate rejected | No uniqueness precheck | Database constraint; no OpenAPI uniqueness marker |
+| Numeric MIN/MAX | Type/range consistency, inclusive default check | Typed finite values, inclusive comparisons | CHECK / minimum, maximum |
+| STRING length | Non-negative integer bounds and code-point default length | String type and code-point length | CHAR_LENGTH CHECK / minLength, maxLength |
+| ENUM membership | Unique members and exact default membership | Exact case-sensitive member string | Native ENUM / ordered string enum |
+| REQUIRED | Valid modifier; duplicate rejected | POST presence unless DEFAULT/generated key; supplied null rejected; PUT partial | NOT NULL / POST required array |
+| UNIQUE / key | Valid declaration/type; duplicate rejected | No uniqueness precheck; declared PK write acceptance preserved | Database constraint; no OpenAPI uniqueness marker |
 
-Numeric write checks do not independently enforce JSON number type, INT
-integrality, or safe/finite numeric values; JavaScript coercion can affect
-comparisons. Unbounded ordinary fields have no general generated datatype check.
-Bounds skip omitted/null values. Database acceptance still depends on column
-types, constraints, capacity, and SQL configuration.
+POST/PUT require JSON objects. Unknown own properties, synthetic implicit id,
+and SQL-added relationship FK properties are rejected. The controller forwards a
+new object containing only approved supplied source fields, never raw req.body.
+Inherited properties do not authorize writes. JSON parsing retains its usual
+last-key behavior for duplicate properties; duplicate detection is not added.
 
-Controller validation failures return HTTP 400 with
-`{ "success": false, "error": "<message>" }`. Database failures caught by CRUD
-controllers use HTTP 500, including database-enforced nullability/uniqueness
-failures; they are not automatically mapped to validation 400 responses.
-Supplied update fields are passed to the model; omitted fields are unchanged.
+Non-null supplied INT must be a JavaScript number, finite and a safe integer.
+FLOAT must be a finite number (integer-valued numbers accepted); BOOLEAN a
+boolean; STRING a string even without length bounds; ENUM an exact member string.
+No JSON scalar coercion is performed. Optional null is accepted; REQUIRED null
+is rejected. MIN/MAX remain inclusive; STRING length uses Array.from(value).length.
+Safe-integer validation does not enforce MySQL's INT32 range. Physical numeric
+capacity and other database target limits remain separate work.
+
+POST REQUIRED omission is rejected unless DEFAULT or an auto-increment primary
+key supplies it. DEFAULT values are never injected in Express: POST omission lets
+MySQL apply defaults, and PUT omission retains stored values. Empty POST is valid
+when required values can be supplied; its model uses a database default-row insert.
+PUT remains partial and an empty object returns the current record.
+
+Validation returns HTTP 400 with `{ "success": false, "error": "<message>" }`.
+Only the first error is returned: body shape; unknown own keys in received
+Object.keys order; fields in declaration order, each checking POST required
+omission, required null, datatype, then MIN/MAX/length/membership. ENUM type and
+membership share their existing exact-member message. Strict Express JSON
+parsing rejects scalar JSON before the controller and emits a sanitized 400;
+arrays reach the controller shape check. Malformed JSON also returns sanitized
+400 in the generated backend. The separate compiler API retains 500/INP002.
+
+POST/PUT database failures return HTTP 500 with `Unable to create item.` or
+`Unable to update item.` instead of private SQL/driver messages. UNIQUE remains
+database-enforced without a race-prone precheck; duplicate-key failures are not
+mapped to 409. Item GET, DELETE and relationship error semantics are unchanged.
+Explicit PK creation/default semantics (G12) and mutation (G13) remain separate.
 
 ## 11. Diagnostics
 
@@ -707,7 +733,7 @@ controller does not turn a missing association into 404.
 ### OpenAPI
 
 swagger.json describes CRUD/relationship paths at the root, shared POST/PUT
-entity schemas, REQUIRED arrays, defaults, numeric/length bounds, ENUM members,
+entity schemas, POST required arrays, defaults, numeric/length bounds, ENUM members,
 typed collection filters, sort/order controls, pagination bounds and conditional
 headers. Path parameter type follows the owning explicit key (INT → integer,
 STRING → string), or implicit integer id.
@@ -717,7 +743,9 @@ CRUD responses have descriptions only, and relationship response schemas describ
 the related array/object without modeling its success/data envelope. Component
 schemas include implicit integer IDs with readOnly: true, omit SQL-added
 relationship columns, and are reused for PUT despite the runtime's omitted-field
-tolerance. This identity fix does not redesign request/response schema reuse.
+tolerance. Write schemas reject additional properties and exempt defaulted/generated keys
+from POST presence requirements. PUT still reuses the schema despite partial
+updates; nullable response/write modeling remains incomplete (G11).
 
 ## 13. Complete Examples
 

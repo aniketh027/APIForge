@@ -196,6 +196,23 @@ reports valid implicit-key use; a declared id in any casing without an explicit
 key fails SEM033. Source AST/symbols/IR remain unchanged, and OpenAPI marks the
 generated id readOnly without requiring it as request input.
 
+### Generated write requests
+
+POST and PUT bodies must be JSON objects containing only source-declared fields.
+Unknown fields, implicit generated id and SQL-added relationship columns return
+400 before model access. INT requires a finite safe integer, FLOAT a finite
+number, BOOLEAN a boolean, STRING a string, and ENUM an exact member string.
+Existing bounds and Unicode code-point lengths still apply.
+
+POST requires REQUIRED fields unless DEFAULT or an auto-increment key supplies
+omission. PUT remains partial, including `{}`. REQUIRED null is rejected;
+optional null is accepted. Defaults remain database-applied. Declared explicit
+primary keys retain their current write acceptance. Generated POST/PUT DB errors
+are sanitized 500 responses; UNIQUE remains database-enforced. Generated malformed
+JSON returns sanitized 400; the compiler API retains its 500/INP002 contract.
+See [verification and remaining limits](docs/generated-request-validation-verification.md).
+
+
 ---
 
 ## Collection query options

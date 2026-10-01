@@ -27,7 +27,7 @@ swagger.json
 - `package.json`: generated-project metadata, `npm start`, and the required runtime dependencies using APIForge-compatible version ranges.
 - `README.md`: concise install, environment, MySQL schema-import, startup, route, and OpenAPI-location instructions.
 - `models/`: parameterized CRUD queries and source-side relationship query helpers.
-- `controllers/`: CRUD handlers, numeric and STRING-length validation, relationship handlers, and JSON responses.
+- `controllers/`: CRUD handlers, typed write validation and field authority, relationship handlers, and JSON responses.
 - `routes/`: per-entity CRUD and source-side relationship routes.
 - `server.js`: dotenv loading, JSON middleware, route mounts, `/health`, global error handler, and startup.
 - `swagger.json`: OpenAPI 3.0.0 paths and component schemas.
@@ -69,17 +69,16 @@ Relationship SQL:
 
 ## Express and route contract
 
-- Models use promise-based MySQL queries with value placeholders and `INSERT/UPDATE ... SET ?` payload binding.
-- A shared codegen effective key selects the explicit PRIMARY KEY or implicit integer id for SQL, item predicates, relationships, collections and OpenAPI. Implicit create returns `{ ...data, id: result.insertId }`; normal supported creates omit id. Caller-supplied implicit id is still forwarded and its database behavior is not redefined. Explicit create/default/key-mutation semantics remain unchanged.
+- Models use promise-based MySQL queries with value placeholders and `INSERT/UPDATE ... SET ?` payload binding. Empty valid creates use `INSERT ... () VALUES ()` for database-supplied values.
+- A shared codegen effective key selects the explicit PRIMARY KEY or implicit integer id for SQL, item predicates, relationships, collections and OpenAPI. Implicit create returns `{ ...data, id: result.insertId }`; normal supported creates omit id. Caller-supplied implicit id is rejected by POST/PUT before model access. Explicit create/default/key-mutation semantics remain unchanged.
 - Model fields remain source-declared; query/read metadata includes implicit id. OpenAPI marks it integer/readOnly and does not require it in requests. No-PK declared id in any casing fails semantic SEM033 before generation; explicit keys permit ordinary id-like fields. AST/source symbols/IR/optimized IR do not gain synthetic fields.
 - Controllers return `201` for create, `200` for successful reads/updates/deletes, `404` for missing CRUD or singular related records, `400` for generated validation failures, and `500` for caught database/runtime errors.
-- Generated request validation enforces `MIN`/`MAX` and `MIN_LENGTH`/`MAX_LENGTH` only when a value is present and non-null. STRING-length validation rejects non-string supplied values and counts Unicode code points with `Array.from(value).length`. SQL enforces `NOT NULL`, uniqueness, defaults, and checks; OpenAPI marks `REQUIRED` fields and exposes ranges, lengths, and defaults.
+- Generated writes require JSON objects and reject unknown own keys, implicit id and synthetic FK columns. Trusted declared-field metadata validates type, REQUIRED presence/null and inclusive bounds/Unicode lengths before model calls; sanitized forwarding uses a fresh object. POST requiredness exempts DEFAULT and auto-generated keys, PUT stays partial, optional null is accepted and defaults stay database-applied. INT requires a finite safe integer, FLOAT finite number, BOOLEAN boolean, STRING string, ENUM exact member string. SQL is unchanged; OpenAPI reflects POST requiredness and rejects additional properties while retaining shared-schema/nullability limitations. POST/PUT DB errors are sanitized 500 without uniqueness prechecks or duplicate status mapping; generated malformed JSON is sanitized 400. Item GET, DELETE and relationship error behavior is unchanged.
 - Per-entity routers expose `GET /`, `GET /:id`, `POST /`, `PUT /:id`, and `DELETE /:id`.
 - The generated server mounts routers directly at lowercase plural paths such as `/students`, without an `/api` prefix, and exposes `/health`.
 - Relationship model/controller/routes are generated on the source entity. `MANY_TO_MANY` supports list/add/remove; `ONE_TO_MANY` supports list; `MANY_TO_ONE` and `ONE_TO_ONE` support singular lookup.
 - ENUM POST/PUT checks enforce exact string membership before model calls. Optional
-  null is allowed; supplied REQUIRED null is rejected. Omitted fields retain existing
-  DB-default and required-omission behavior. OpenAPI uses string + enum + default.
+  null is allowed; supplied REQUIRED null is rejected. POST REQUIRED omission needs DEFAULT; PUT omission retains stored values. OpenAPI uses string + enum + default.
   The offline ENUM tests execute real emitted routers with mocked model methods;
   the opt-in MySQL harness also verifies native ENUM values, defaults and rejection.
 
