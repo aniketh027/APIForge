@@ -78,6 +78,7 @@
 // ── Reserved Words ──────────────────────────────────────────
 // Entity names, field names, and relation names must NOT use any of these.
 
+const { createDiagnostic, locate } = require('../utils/diagnostics');
 const { didYouMeanSuffix } = require('../utils/errors');
 
 const RESERVED_WORDS = new Set([
@@ -146,17 +147,16 @@ class SemanticAnalyzer {
     // ── Error Helper ────────────────────────────────────────
 
     /**
-     * addError(message, line, column)
+     * addError(message, location, symbol, hint)
      * Records a semantic error. We don't throw — we collect.
-     * `column` is optional; when present it lets the CLI and the
-     * web UI render a caret under the offending token.
+     * Locations come from parser metadata when available, otherwise declarations.
+     * Legacy error entries retain their message and expose the shared diagnostic.
      */
-    addError(message, line, column, code) {
-        const error = { message, line, column };
-        if (code) {
-            error.code = code;
-            error.userMessage = message;
-        }
+    addError(message, location, symbol, hint) {
+        const diagnostic = createDiagnostic('semantic', symbol, message, location, hint);
+        const error = { message, line: diagnostic.line, column: diagnostic.column,
+            code: symbol, diagnostic };
+        if (symbol === 'MISSING_ENTITY_DECLARATION') error.userMessage = message;
         this.errors.push(error);
     }
 
@@ -187,8 +187,7 @@ class SemanticAnalyzer {
         if (!ast.entities || !Array.isArray(ast.entities) || ast.entities.length === 0) {
             this.addError(
                 'APIForge programs must contain at least one ENTITY.',
-                1,
-                1,
+                { line: 1, column: 1 },
                 'MISSING_ENTITY_DECLARATION'
             );
         }
@@ -226,6 +225,7 @@ class SemanticAnalyzer {
         return {
             valid: this.errors.length === 0,
             errors: this.errors,
+            diagnostics: this.errors.map(error => error.diagnostic),
             symbolTable: this.symbolTable,
             entities: this.symbolTable,
             relations: this.relationsTable
@@ -249,8 +249,8 @@ class SemanticAnalyzer {
             if (seen.has(entity.name)) {
                 this.addError(
                     `Duplicate entity '${entity.name}'. Entity names must be unique.`,
-                    entity.line,
-                    entity.nameColumn
+                    locate(entity, 'name', entity.nameColumn),
+                    'DUPLICATE_ENTITY'
                 );
             } else {
                 seen.add(entity.name);
@@ -280,8 +280,8 @@ class SemanticAnalyzer {
         if (RESERVED_WORDS.has(entity.name)) {
             this.addError(
                 `Entity name '${entity.name}' is a reserved word and cannot be used as an identifier.`,
-                entity.line,
-                entity.nameColumn
+                locate(entity, 'name', entity.nameColumn),
+                'RESERVED_ENTITY_NAME'
             );
         }
 
@@ -289,8 +289,8 @@ class SemanticAnalyzer {
         if (entity.fields.length === 0) {
             this.addError(
                 `Entity '${entity.name}' must contain at least one field.`,
-                entity.line,
-                entity.nameColumn
+                locate(entity, 'name', entity.nameColumn),
+                'EMPTY_ENTITY'
             );
         }
 
@@ -305,8 +305,8 @@ class SemanticAnalyzer {
             if (seenFieldNames.has(field.name)) {
                 this.addError(
                     `Duplicate field '${field.name}' in entity '${entity.name}'.`,
-                    field.line,
-                    field.nameColumn
+                    locate(field, 'name', field.nameColumn),
+                    'DUPLICATE_FIELD'
                 );
             } else {
                 seenFieldNames.add(field.name);
@@ -324,8 +324,8 @@ class SemanticAnalyzer {
             if (RESERVED_WORDS.has(field.name)) {
                 this.addError(
                     `Field name '${field.name}' in entity '${entity.name}' is a reserved word and cannot be used as an identifier.`,
-                    field.line,
-                    field.nameColumn
+                    locate(field, 'name', field.nameColumn),
+                    'RESERVED_FIELD_NAME'
                 );
             }
 
@@ -334,26 +334,26 @@ class SemanticAnalyzer {
                 this.addError(
                     `Invalid data type '${field.dataType}' for field '${field.name}' in entity '${entity.name}'. Allowed types: INT, STRING, FLOAT, BOOLEAN.` +
                         didYouMeanSuffix(field.dataType, Array.from(VALID_DATA_TYPES)),
-                    field.line,
-                    field.typeColumn
+                    locate(field, 'type', field.typeColumn),
+                    'INVALID_DATATYPE'
                 );
             }
 
             // ── Rule: Constraint validity & duplicates ───────
             const constraints = field.constraints || [];
             const seenConstraints = new Set();
-            for (const c of constraints) {
+            for (const [constraintIndex, c] of constraints.entries()) {
                 if (!VALID_CONSTRAINTS.has(c)) {
                     this.addError(
                         `Invalid constraint '${c}' on field '${field.name}' in entity '${entity.name}'. Allowed constraints: PRIMARY KEY, REQUIRED, UNIQUE.`,
-                        field.line,
-                        field.nameColumn
+                        locate(field, c, field.nameColumn),
+                        'INVALID_CONSTRAINT'
                     );
                 } else if (seenConstraints.has(c)) {
                     this.addError(
                         `Duplicate constraint '${c}' on field '${field.name}' in entity '${entity.name}'.`,
-                        field.line,
-                        field.nameColumn
+                        locate(field, c, field.nameColumn, constraints.slice(0, constraintIndex).filter(value => value === c).length),
+                        'DUPLICATE_CONSTRAINT'
                     );
                 } else {
                     seenConstraints.add(c);
@@ -368,8 +368,8 @@ class SemanticAnalyzer {
                 if (primaryKeyCount > 1) {
                     this.addError(
                         `Entity '${entity.name}' cannot have multiple primary keys. Field '${field.name}' is an extra primary key.`,
-                        field.line,
-                        field.nameColumn
+                        locate(field, 'PRIMARY_KEY', field.nameColumn),
+                        'MULTIPLE_PRIMARY_KEYS'
                     );
                 }
 
@@ -377,8 +377,8 @@ class SemanticAnalyzer {
                 if (!PRIMARY_KEY_ALLOWED_TYPES.has(field.dataType)) {
                     this.addError(
                         `PRIMARY KEY on field '${field.name}' in entity '${entity.name}' requires INT or STRING, but found '${field.dataType}'.`,
-                        field.line,
-                        field.typeColumn
+                        locate(field, 'type', field.typeColumn),
+                        'INVALID_PRIMARY_KEY_TYPE'
                     );
                 }
             }
@@ -394,8 +394,8 @@ class SemanticAnalyzer {
             if (minList.length > 1) {
                 this.addError(
                     `Duplicate MIN validation for field '${field.name}'.`,
-                    field.line,
-                    field.nameColumn
+                    locate(field, 'MIN', field.nameColumn, 1),
+                    'DUPLICATE_VALIDATION'
                 );
             }
 
@@ -403,24 +403,24 @@ class SemanticAnalyzer {
             if (maxList.length > 1) {
                 this.addError(
                     `Duplicate MAX validation for field '${field.name}'.`,
-                    field.line,
-                    field.nameColumn
+                    locate(field, 'MAX', field.nameColumn, 1),
+                    'DUPLICATE_VALIDATION'
                 );
             }
 
             if (minLengthList.length > 1) {
                 this.addError(
                     `Duplicate MIN_LENGTH validation for field '${field.name}'.`,
-                    field.line,
-                    field.nameColumn
+                    locate(field, 'MIN_LENGTH', field.nameColumn, 1),
+                    'DUPLICATE_VALIDATION'
                 );
             }
 
             if (maxLengthList.length > 1) {
                 this.addError(
                     `Duplicate MAX_LENGTH validation for field '${field.name}'.`,
-                    field.line,
-                    field.nameColumn
+                    locate(field, 'MAX_LENGTH', field.nameColumn, 1),
+                    'DUPLICATE_VALIDATION'
                 );
             }
 
@@ -430,8 +430,8 @@ class SemanticAnalyzer {
                     if (typeof val.value !== 'number' || Number.isNaN(val.value)) {
                         this.addError(
                             `Validation '${val.type}' value on field '${field.name}' must be a number.`,
-                            field.line,
-                            field.nameColumn
+                            locate(field, val.type, field.nameColumn, validations.filter(v => v.type === val.type).indexOf(val)),
+                            'INVALID_NUMERIC_BOUND'
                         );
                     }
                 }
@@ -439,8 +439,8 @@ class SemanticAnalyzer {
                     if (typeof val.value !== 'number' || !Number.isInteger(val.value) || val.value < 0) {
                         this.addError(
                             `Validation '${val.type}' value on field '${field.name}' must be a non-negative integer.`,
-                            field.line,
-                            field.nameColumn
+                            locate(field, val.type, field.nameColumn, validations.filter(v => v.type === val.type).indexOf(val)),
+                            'INVALID_LENGTH_BOUND'
                         );
                     }
                 }
@@ -451,8 +451,8 @@ class SemanticAnalyzer {
                 if (field.dataType !== 'INT' && field.dataType !== 'FLOAT') {
                     this.addError(
                         `Validation 'MIN' is only allowed for INT or FLOAT fields.`,
-                        field.line,
-                        field.typeColumn || field.nameColumn
+                        locate(field, 'MIN', field.typeColumn || field.nameColumn),
+                        'NUMERIC_MODIFIER_TYPE_MISMATCH', field.dataType === 'STRING' ? 'Use MIN_LENGTH/MAX_LENGTH for STRING length bounds.' : undefined
                     );
                 }
             }
@@ -461,8 +461,8 @@ class SemanticAnalyzer {
                 if (field.dataType !== 'INT' && field.dataType !== 'FLOAT') {
                     this.addError(
                         `Validation 'MAX' is only allowed for INT or FLOAT fields.`,
-                        field.line,
-                        field.typeColumn || field.nameColumn
+                        locate(field, 'MAX', field.typeColumn || field.nameColumn),
+                        'NUMERIC_MODIFIER_TYPE_MISMATCH', field.dataType === 'STRING' ? 'Use MIN_LENGTH/MAX_LENGTH for STRING length bounds.' : undefined
                     );
                 }
             }
@@ -470,16 +470,18 @@ class SemanticAnalyzer {
             if (minLengthList.length > 0 && field.dataType !== 'STRING') {
                 this.addError(
                     `Validation 'MIN_LENGTH' is only allowed for STRING fields.`,
-                    field.line,
-                    field.typeColumn || field.nameColumn
+                    locate(field, 'MIN_LENGTH', field.typeColumn || field.nameColumn),
+                    'LENGTH_MODIFIER_TYPE_MISMATCH',
+                    ['INT', 'FLOAT'].includes(field.dataType) ? 'Use MIN/MAX for numeric bounds.' : undefined
                 );
             }
 
             if (maxLengthList.length > 0 && field.dataType !== 'STRING') {
                 this.addError(
                     `Validation 'MAX_LENGTH' is only allowed for STRING fields.`,
-                    field.line,
-                    field.typeColumn || field.nameColumn
+                    locate(field, 'MAX_LENGTH', field.typeColumn || field.nameColumn),
+                    'LENGTH_MODIFIER_TYPE_MISMATCH',
+                    ['INT', 'FLOAT'].includes(field.dataType) ? 'Use MIN/MAX for numeric bounds.' : undefined
                 );
             }
 
@@ -491,8 +493,8 @@ class SemanticAnalyzer {
                     if (minVal > maxVal) {
                         this.addError(
                             `MIN value ${minVal} cannot be greater than MAX value ${maxVal}.`,
-                            field.line,
-                            field.nameColumn
+                            locate(field, 'MIN', field.nameColumn),
+                            'MIN_EXCEEDS_MAX', 'MIN must not exceed MAX.'
                         );
                     }
                 }
@@ -504,8 +506,8 @@ class SemanticAnalyzer {
                 if (Number.isInteger(minLength) && Number.isInteger(maxLength) && minLength >= 0 && maxLength >= 0 && minLength > maxLength) {
                     this.addError(
                         `MIN_LENGTH value ${minLength} cannot be greater than MAX_LENGTH value ${maxLength}.`,
-                        field.line,
-                        field.nameColumn
+                        locate(field, 'MIN_LENGTH', field.nameColumn),
+                        'MIN_LENGTH_EXCEEDS_MAX_LENGTH', 'MIN_LENGTH must not exceed MAX_LENGTH.'
                     );
                 }
             }
@@ -516,8 +518,8 @@ class SemanticAnalyzer {
                     if (typeof val.value === 'number' && !Number.isInteger(val.value)) {
                         this.addError(
                             `Validation 'MIN' value for INT field '${field.name}' must be an integer, but found ${val.value}.`,
-                            field.line,
-                            field.nameColumn
+                            locate(field, 'MIN', field.nameColumn, minList.indexOf(val)),
+                            'NON_INTEGER_BOUND'
                         );
                     }
                 }
@@ -525,8 +527,8 @@ class SemanticAnalyzer {
                     if (typeof val.value === 'number' && !Number.isInteger(val.value)) {
                         this.addError(
                             `Validation 'MAX' value for INT field '${field.name}' must be an integer, but found ${val.value}.`,
-                            field.line,
-                            field.nameColumn
+                            locate(field, 'MAX', field.nameColumn, maxList.indexOf(val)),
+                            'NON_INTEGER_BOUND'
                         );
                     }
                 }
@@ -536,15 +538,15 @@ class SemanticAnalyzer {
             if (Array.isArray(field.defaultValue) && field.defaultValue.length > 1) {
                 this.addError(
                     `Duplicate DEFAULT value for field '${field.name}'.`,
-                    field.line,
-                    field.nameColumn
+                    locate(field, 'DEFAULT', field.nameColumn, 1),
+                    'DUPLICATE_DEFAULT'
                 );
             }
             if (field.defaultValues && field.defaultValues.length > 1) {
                 this.addError(
                     `Duplicate DEFAULT value for field '${field.name}'.`,
-                    field.line,
-                    field.nameColumn
+                    locate(field, 'DEFAULT', field.nameColumn, 1),
+                    'DUPLICATE_DEFAULT'
                 );
             }
 
@@ -556,38 +558,38 @@ class SemanticAnalyzer {
                     if (def.type !== 'NUMBER') {
                         this.addError(
                             `Default value for INT field '${field.name}' must be an integer.`,
-                            field.line,
-                            field.nameColumn
+                            locate(field, 'DEFAULT', field.nameColumn, Math.max(0, (field.sourceLocations?.DEFAULT?.length || 1) - 1)),
+                            'INVALID_DEFAULT_TYPE'
                         );
                     } else if (!Number.isInteger(def.value)) {
                         this.addError(
                             `Default value for INT field '${field.name}' must be an integer, but found ${def.value}.`,
-                            field.line,
-                            field.nameColumn
+                            locate(field, 'DEFAULT', field.nameColumn, Math.max(0, (field.sourceLocations?.DEFAULT?.length || 1) - 1)),
+                            'INVALID_DEFAULT_TYPE'
                         );
                     }
                 } else if (field.dataType === 'FLOAT') {
                     if (def.type !== 'NUMBER' || typeof def.value !== 'number' || Number.isNaN(def.value)) {
                         this.addError(
                             `Default value for FLOAT field '${field.name}' must be a number.`,
-                            field.line,
-                            field.nameColumn
+                            locate(field, 'DEFAULT', field.nameColumn, Math.max(0, (field.sourceLocations?.DEFAULT?.length || 1) - 1)),
+                            'INVALID_DEFAULT_TYPE'
                         );
                     }
                 } else if (field.dataType === 'STRING') {
                     if (def.type !== 'STRING') {
                         this.addError(
                             `Default value for STRING field '${field.name}' must be a string.`,
-                            field.line,
-                            field.nameColumn
+                            locate(field, 'DEFAULT', field.nameColumn, Math.max(0, (field.sourceLocations?.DEFAULT?.length || 1) - 1)),
+                            'INVALID_DEFAULT_TYPE'
                         );
                     }
                 } else if (field.dataType === 'BOOLEAN') {
                     if (def.type !== 'BOOLEAN') {
                         this.addError(
                             `Default value for BOOLEAN field '${field.name}' must be a boolean (TRUE or FALSE).`,
-                            field.line,
-                            field.nameColumn
+                            locate(field, 'DEFAULT', field.nameColumn, Math.max(0, (field.sourceLocations?.DEFAULT?.length || 1) - 1)),
+                            'INVALID_DEFAULT_TYPE'
                         );
                     }
                 }
@@ -603,20 +605,20 @@ class SemanticAnalyzer {
                         if (hasMin && hasMax) {
                             this.addError(
                                 `Default value ${def.value} is outside the allowed range [${minVal}, ${maxVal}].`,
-                                field.line,
-                                field.nameColumn
+                                locate(field, 'DEFAULT', field.nameColumn, Math.max(0, (field.sourceLocations?.DEFAULT?.length || 1) - 1)),
+                                'DEFAULT_OUT_OF_RANGE'
                             );
                         } else if (hasMin) {
                             this.addError(
                                 `Default value ${def.value} is less than MIN value ${minVal}.`,
-                                field.line,
-                                field.nameColumn
+                                locate(field, 'DEFAULT', field.nameColumn, Math.max(0, (field.sourceLocations?.DEFAULT?.length || 1) - 1)),
+                                'DEFAULT_OUT_OF_RANGE'
                             );
                         } else if (hasMax) {
                             this.addError(
                                 `Default value ${def.value} is greater than MAX value ${maxVal}.`,
-                                field.line,
-                                field.nameColumn
+                                locate(field, 'DEFAULT', field.nameColumn, Math.max(0, (field.sourceLocations?.DEFAULT?.length || 1) - 1)),
+                                'DEFAULT_OUT_OF_RANGE'
                             );
                         }
                     }
@@ -633,20 +635,20 @@ class SemanticAnalyzer {
                         if (hasMinLength && hasMaxLength) {
                             this.addError(
                                 `Default value for field '${field.name}' has length ${defaultLength}, outside the allowed range [${minLength}, ${maxLength}].`,
-                                field.line,
-                                field.nameColumn
+                                locate(field, 'DEFAULT', field.nameColumn, Math.max(0, (field.sourceLocations?.DEFAULT?.length || 1) - 1)),
+                                'DEFAULT_LENGTH_OUT_OF_RANGE'
                             );
                         } else if (hasMinLength) {
                             this.addError(
                                 `Default value for field '${field.name}' has length ${defaultLength}, less than MIN_LENGTH value ${minLength}.`,
-                                field.line,
-                                field.nameColumn
+                                locate(field, 'DEFAULT', field.nameColumn, Math.max(0, (field.sourceLocations?.DEFAULT?.length || 1) - 1)),
+                                'DEFAULT_LENGTH_OUT_OF_RANGE'
                             );
                         } else if (hasMaxLength) {
                             this.addError(
                                 `Default value for field '${field.name}' has length ${defaultLength}, greater than MAX_LENGTH value ${maxLength}.`,
-                                field.line,
-                                field.nameColumn
+                                locate(field, 'DEFAULT', field.nameColumn, Math.max(0, (field.sourceLocations?.DEFAULT?.length || 1) - 1)),
+                                'DEFAULT_LENGTH_OUT_OF_RANGE'
                             );
                         }
                     }
@@ -692,8 +694,8 @@ class SemanticAnalyzer {
             if (seenRelNames.has(rel.name)) {
                 this.addError(
                     `Duplicate relationship '${rel.name}'. Relationship names must be unique.`,
-                    rel.line,
-                    rel.nameColumn
+                    locate(rel, 'name', rel.nameColumn),
+                    'DUPLICATE_RELATION'
                 );
             } else {
                 seenRelNames.add(rel.name);
@@ -710,8 +712,8 @@ class SemanticAnalyzer {
             if (RESERVED_WORDS.has(rel.name)) {
                 this.addError(
                     `Relationship name '${rel.name}' is a reserved word and cannot be used as an identifier.`,
-                    rel.line,
-                    rel.nameColumn
+                    locate(rel, 'name', rel.nameColumn),
+                    'RESERVED_RELATION_NAME'
                 );
             }
 
@@ -719,8 +721,8 @@ class SemanticAnalyzer {
             if (!VALID_RELATION_TYPES.has(rel.relationType)) {
                 this.addError(
                     `Invalid relationship type '${rel.relationType}' in relationship '${rel.name}'. Allowed types: ONE_TO_ONE, ONE_TO_MANY, MANY_TO_ONE, MANY_TO_MANY.`,
-                    rel.line,
-                    rel.typeColumn
+                    locate(rel, 'type', rel.typeColumn),
+                    'INVALID_RELATION_TYPE'
                 );
             }
 
@@ -728,8 +730,8 @@ class SemanticAnalyzer {
             if (rel.sourceEntity === rel.targetEntity) {
                 this.addError(
                     `Self-referential relationships are not supported: '${rel.sourceEntity}' cannot relate to itself in relationship '${rel.name}'.`,
-                    rel.line,
-                    rel.sourceColumn
+                    locate(rel, 'source', rel.sourceColumn),
+                    'SELF_RELATION'
                 );
             }
 
@@ -738,8 +740,8 @@ class SemanticAnalyzer {
                 this.addError(
                     `Source entity '${rel.sourceEntity}' in relationship '${rel.name}' does not exist.` +
                         didYouMeanSuffix(rel.sourceEntity, entityNameList),
-                    rel.line,
-                    rel.sourceColumn
+                    locate(rel, 'source', rel.sourceColumn),
+                    'UNKNOWN_SOURCE_ENTITY'
                 );
             }
 
@@ -748,8 +750,8 @@ class SemanticAnalyzer {
                 this.addError(
                     `Target entity '${rel.targetEntity}' in relationship '${rel.name}' does not exist.` +
                         didYouMeanSuffix(rel.targetEntity, entityNameList),
-                    rel.line,
-                    rel.targetColumn
+                    locate(rel, 'target', rel.targetColumn),
+                    'UNKNOWN_TARGET_ENTITY'
                 );
             }
         }

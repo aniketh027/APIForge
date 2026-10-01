@@ -139,29 +139,17 @@ function didYouMeanSuffix(word, candidates, maxDistance = 2) {
  * @returns {string}
  */
 function formatCodeFrame(source, line, column, length = 1) {
-    if (typeof source !== 'string' || !Number.isInteger(line) || line < 1) {
-        return '';
+    const { sourceFrame } = require('./source-frame');
+    const location = { line, column };
+    if (Number.isInteger(column) && column > 0) {
+        location.endLine = line;
+        location.endColumn = column + Math.max(1, Number.isInteger(length) ? length : 1);
     }
-
-    const lines = source.split('\n');
-    if (line > lines.length) {
-        return '';
-    }
-
-    const srcLine = lines[line - 1];
-    const lineStr = String(line);
-    const gutter = `${lineStr} | `;
-    const padGutter = `${' '.repeat(lineStr.length)} | `;
-
-    // Without a usable column we still show the offending line.
-    if (!Number.isInteger(column) || column < 1) {
-        return `${gutter}${srcLine}`;
-    }
-
-    const caretLen = Math.max(1, Number.isInteger(length) ? length : 1);
-    const caretLine = `${padGutter}${' '.repeat(column - 1)}${'^'.repeat(caretLen)}`;
-
-    return `${gutter}${srcLine}\n${caretLine}`;
+    return sourceFrame(source, location).map(frame => {
+        const gutter = `${frame.line} | `;
+        const text = `${gutter}${frame.text}`;
+        return frame.pointer ? `${text}\n${' '.repeat(String(frame.line).length)} | ${frame.pointer}` : text;
+    }).join('\n');
 }
 
 /**

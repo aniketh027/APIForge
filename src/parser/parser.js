@@ -46,6 +46,7 @@
  */
 
 const { ProgramNode, EntityNode, FieldNode, RelationNode } = require('../ast/ast');
+const { attachDiagnostic } = require('../utils/diagnostics');
 const { didYouMeanSuffix } = require('../utils/errors');
 
 // ── Candidate lists for "did you mean?" suggestions ─────────
@@ -158,7 +159,7 @@ class Parser {
             err.column = token.column;
             err.code = code;
             err.userMessage = userMessage || `Expected ${expected} but found ${token.type} "${token.value}".`;
-            throw err;
+            throw attachDiagnostic(err, 'parser', this.current());
         }
 
         return this.advance();
@@ -195,7 +196,7 @@ class Parser {
                 err.column = token.column;
                 err.code = 'EXPECTED_ENTITY_DECLARATION';
                 err.userMessage = `Expected ENTITY or RELATION declaration, but found ${token.type} "${token.value}".`;
-                throw err;
+                throw attachDiagnostic(err, 'parser', this.current());
             }
         }
 
@@ -246,6 +247,7 @@ class Parser {
 
         // Create the entity AST node
         const entity = new EntityNode(nameToken.value, entityKeyword.line, nameToken.column);
+        Object.defineProperty(entity, 'sourceLocations', { value: { name: [nameToken] } });
 
         // Step 3: Parse fields until we hit another ENTITY, RELATION, or EOF.
         while (!this.isAtEntityEnd()) {
@@ -268,7 +270,7 @@ class Parser {
                 err.column = token.column;
                 err.code = isEof ? 'MISSING_FIELD_NAME' : 'INVALID_FIELD_TOKEN';
                 err.userMessage = userMessage;
-                throw err;
+                throw attachDiagnostic(err, 'parser', this.current());
             }
         }
 
@@ -319,11 +321,11 @@ class Parser {
             err.column = relationTypeTok.column;
             err.code = isEof ? 'MISSING_RELATION_TYPE' : 'INVALID_RELATION_TYPE';
             err.userMessage = userMessage;
-            throw err;
+            throw attachDiagnostic(err, 'parser', this.current());
         }
         const relationTypeToken = this.advance();
 
-        return new RelationNode(
+        const relation = new RelationNode(
             sourceEntityToken.value,
             nameToken.value,
             targetEntityToken.value,
@@ -334,6 +336,10 @@ class Parser {
             targetEntityToken.column,
             relationTypeToken.column
         );
+        Object.defineProperty(relation, 'sourceLocations', { value: {
+            name: [nameToken], source: [sourceEntityToken], target: [targetEntityToken], type: [relationTypeToken]
+        } });
+        return relation;
     }
 
     // ════════════════════════════════════════════════════════
@@ -375,12 +381,23 @@ class Parser {
             err.column = typeToken.column;
             err.code = isEof ? 'MISSING_DATATYPE' : 'INVALID_DATATYPE';
             err.userMessage = userMessage;
-            throw err;
+            throw attachDiagnostic(err, 'parser', this.current());
         }
         const dataTypeToken = this.advance();
 
         // Step 3: Parse zero or more field modifiers (constraints, validations, defaults)
+        const modifierStart = this.pos;
         const { constraints, validations, defaultValue, defaultValues } = this.parseFieldModifiers();
+        const sourceLocations = { name: [nameToken], type: [dataTypeToken] };
+        for (let i = modifierStart; i < this.pos; i++) {
+            const token = this.tokens[i];
+            if (token.type !== 'MODIFIER' || token.value === 'KEY') continue;
+            const key = token.value === 'PRIMARY' ? 'PRIMARY_KEY' : token.value;
+            let end = token;
+            if (['PRIMARY', 'MIN', 'MAX', 'MIN_LENGTH', 'MAX_LENGTH', 'DEFAULT'].includes(token.value)) end = this.tokens[i + 1];
+            (sourceLocations[key] ||= []).push({ line: token.line, column: token.column,
+                ...(end.endLine ? { endLine: end.endLine, endColumn: end.endColumn } : {}) });
+        }
 
         const fieldNode = new FieldNode(
             nameToken.value,
@@ -396,6 +413,7 @@ class Parser {
             fieldNode.defaultValues = defaultValues;
         }
 
+        Object.defineProperty(fieldNode, 'sourceLocations', { value: sourceLocations });
         return fieldNode;
     }
 
@@ -454,7 +472,7 @@ class Parser {
                         err.column = next.column;
                         err.code = 'MISSING_KEY_AFTER_PRIMARY';
                         err.userMessage = userMessage;
-                        throw err;
+                        throw attachDiagnostic(err, 'parser', this.current());
                     }
                     break;
 
@@ -468,7 +486,7 @@ class Parser {
                     errKey.column = token.column;
                     errKey.code = 'STANDALONE_KEY';
                     errKey.userMessage = `"KEY" must be preceded by "PRIMARY". Found standalone "KEY".`;
-                    throw errKey;
+                    throw attachDiagnostic(errKey, 'parser', this.current());
 
                 case 'REQUIRED':
                     this.advance();
@@ -501,7 +519,7 @@ class Parser {
                         err.column = valToken.column;
                         err.code = 'MISSING_MIN_VALUE';
                         err.userMessage = userMessage;
-                        throw err;
+                        throw attachDiagnostic(err, 'parser', this.current());
                     }
                     break;
                 }
@@ -527,7 +545,7 @@ class Parser {
                         err.column = valToken.column;
                         err.code = 'MISSING_MAX_VALUE';
                         err.userMessage = userMessage;
-                        throw err;
+                        throw attachDiagnostic(err, 'parser', this.current());
                     }
                     break;
                 }
@@ -553,7 +571,7 @@ class Parser {
                         err.column = valToken.column;
                         err.code = 'MISSING_MIN_LENGTH_VALUE';
                         err.userMessage = userMessage;
-                        throw err;
+                        throw attachDiagnostic(err, 'parser', this.current());
                     }
                     break;
                 }
@@ -579,7 +597,7 @@ class Parser {
                         err.column = valToken.column;
                         err.code = 'MISSING_MAX_LENGTH_VALUE';
                         err.userMessage = userMessage;
-                        throw err;
+                        throw attachDiagnostic(err, 'parser', this.current());
                     }
                     break;
                 }
@@ -614,7 +632,7 @@ class Parser {
                         err.column = valToken.column;
                         err.code = 'MISSING_DEFAULT_VALUE';
                         err.userMessage = userMessage;
-                        throw err;
+                        throw attachDiagnostic(err, 'parser', this.current());
                     }
                     break;
                 }
@@ -628,7 +646,7 @@ class Parser {
                     errMod.column = token.column;
                     errMod.code = 'UNKNOWN_MODIFIER';
                     errMod.userMessage = `Unknown modifier "${token.value}".`;
-                    throw errMod;
+                    throw attachDiagnostic(errMod, 'parser', this.current());
             }
         }
 

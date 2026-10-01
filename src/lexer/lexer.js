@@ -66,6 +66,8 @@
  * ENTITY - Entity declaration
  * RELATION - Relationship declaration
  */
+const { attachDiagnostic } = require('../utils/diagnostics');
+
 const KEYWORDS = new Set([
     'ENTITY',
     'RELATION'
@@ -185,8 +187,8 @@ function isWhitespace(ch) {
  * @param {number} column - Column number where the token starts (1-indexed)
  * @returns {Object}      - The token object
  */
-function createToken(type, value, line, column) {
-    return { type, value, line, column };
+function createToken(type, value, line, column, endColumn) {
+    return { type, value, line, column, ...(endColumn ? { endLine: line, endColumn } : {}) };
 }
 
 
@@ -258,6 +260,7 @@ function tokenize(sourceCode) {
             // Advance past all characters until newline or EOF
             while (pos < sourceCode.length && sourceCode[pos] !== '\n') {
                 pos++;
+                column++;
             }
             // Don't increment line here — the newline character
             // will be handled by Case 1 in the next iteration.
@@ -302,7 +305,7 @@ function tokenize(sourceCode) {
                 type = 'IDENTIFIER';
             }
 
-            tokens.push(createToken(type, word, line, startColumn));
+            tokens.push(createToken(type, word, line, startColumn, column));
             continue;
         }
 
@@ -341,6 +344,19 @@ function tokenize(sourceCode) {
                 }
             }
 
+            if (sourceCode[pos] === '.') {
+                const err = new Error(`Lexical Error at line ${line}, column ${column}: Malformed numeric literal.`);
+                err.line = line;
+                err.column = column;
+                err.code = 'MALFORMED_NUMBER';
+                err.userMessage = numStr.includes('.')
+                    ? 'Malformed numeric literal: a number cannot contain multiple decimal points.'
+                    : 'Malformed numeric literal: expected a digit after the decimal point.';
+                throw attachDiagnostic(err, 'lexer', { line, column, endLine: line, endColumn: column + 1 },
+                    err.code, numStr.includes('.') ? 'Use a single decimal point in a number.'
+                        : 'A decimal point must be followed by a digit, for example 8.0.');
+            }
+
             // If followed by a letter/underscore, it's an invalid identifier
             if (pos < sourceCode.length && isAlpha(sourceCode[pos])) {
                 let badToken = numStr;
@@ -357,10 +373,10 @@ function tokenize(sourceCode) {
                 err.column = startColumn;
                 err.code = 'INVALID_IDENTIFIER';
                 err.userMessage = `Identifier "${badToken}" cannot start with a digit at line ${line}, column ${startColumn}.`;
-                throw err;
+                throw attachDiagnostic(err, 'lexer', { line, column: startColumn, endLine: line, endColumn: column });
             }
 
-            tokens.push(createToken('NUMBER', numStr, line, startColumn));
+            tokens.push(createToken('NUMBER', numStr, line, startColumn, column));
             continue;
         }
 
@@ -388,13 +404,13 @@ function tokenize(sourceCode) {
                 err.column = startColumn;
                 err.code = 'UNTERMINATED_STRING';
                 err.userMessage = `Unterminated string literal at line ${line}, column ${startColumn}.`;
-                throw err;
+                throw attachDiagnostic(err, 'lexer', { line, column: startColumn, endLine: line, endColumn: column });
             }
 
             pos++;      // skip closing quote
             column++;
 
-            tokens.push(createToken('STRING_LITERAL', str, line, startColumn));
+            tokens.push(createToken('STRING_LITERAL', str, line, startColumn, column));
             continue;
         }
 
@@ -423,7 +439,7 @@ function tokenize(sourceCode) {
                 }
             }
             
-            tokens.push(createToken('NUMBER', num, line, startColumn));
+            tokens.push(createToken('NUMBER', num, line, startColumn, column));
             continue;
         }
 
@@ -439,7 +455,7 @@ function tokenize(sourceCode) {
         err.column = column;
         err.code = 'UNEXPECTED_CHARACTER';
         err.userMessage = `Unexpected character '${ch}' at line ${line}, column ${column}.`;
-        throw err;
+        throw attachDiagnostic(err, 'lexer', { line, column, endLine: line, endColumn: column + 1 });
     }
 
     // ── Append EOF token ────────────────────────────────────
