@@ -30,8 +30,12 @@ function projectHardeningChanges(files, source) {
                 if (operation.requestBody) operation.requestBody.content['application/json'].schema = prev.requestBody.content['application/json'].schema;
             }
             assert.deepEqual(current, original, 'all non-response/request-role OpenAPI bytes unchanged');
+        } else if (file.path === 'package.json') {
+            const current = JSON.parse(file.content), original = JSON.parse(previous.content);
+            assert.deepEqual(current.engines, { node: '>=18' }); delete current.engines;
+            assert.deepEqual(current, original);
         } else if (file.path === 'README.md') {
-            assert.equal(file.content.replace('OpenAPI uses Entity.Create/Update/Read roles and response envelopes. Update omits immutable keys; optional inputs are nullable; synthetic FK columns are readOnly. Declared BOOLEAN rows return booleans on source and target reads.',
+            assert.equal(file.content.replace(/## Supported target\n[^]*?(?=## Setup)/, '').replace('OpenAPI uses Entity.Create/Update/Read roles and response envelopes. Update omits immutable keys; optional inputs are nullable; synthetic FK columns are readOnly. Declared BOOLEAN rows return booleans on source and target reads.',
                 'OpenAPI reuses entity schemas for POST/PUT, so an explicit key may still appear generically despite PUT immutability; partial-update and nullability modeling remain limited.'), previous.content, file.path);
         } else assert.equal(file.content, previous.content, file.path);
         return previous;

@@ -54,6 +54,11 @@ const DATA_TYPES = ['INT', 'STRING', 'FLOAT', 'BOOLEAN', 'ENUM'];
 const RELATION_TYPES = ['ONE_TO_ONE', 'ONE_TO_MANY', 'MANY_TO_ONE', 'MANY_TO_MANY'];
 
 // ── Value token types that can follow MIN, MAX, DEFAULT ─────
+function numericSource(value, token) {
+    Object.defineProperties(value, { rawNumber: { value: token.value }, numberLocation: { value: token } });
+    return value;
+}
+
 const VALUE_TYPES = new Set(['NUMBER', 'STRING_LITERAL', 'BOOLEAN_LITERAL']);
 
 // ── Parser Class ────────────────────────────────────────────
@@ -532,7 +537,7 @@ class Parser {
 
                     if (valToken.type === 'NUMBER') {
                         this.advance();
-                        validations.push({ type: 'MIN', value: parseFloat(valToken.value) });
+                        validations.push(numericSource({ type: 'MIN', value: parseFloat(valToken.value) }, valToken));
                     } else {
                         const isEof = valToken.type === 'EOF';
                         const userMessage = isEof
@@ -558,7 +563,7 @@ class Parser {
 
                     if (valToken.type === 'NUMBER') {
                         this.advance();
-                        validations.push({ type: 'MAX', value: parseFloat(valToken.value) });
+                        validations.push(numericSource({ type: 'MAX', value: parseFloat(valToken.value) }, valToken));
                     } else {
                         const isEof = valToken.type === 'EOF';
                         const userMessage = isEof
@@ -584,7 +589,7 @@ class Parser {
 
                     if (valToken.type === 'NUMBER') {
                         this.advance();
-                        validations.push({ type: 'MIN_LENGTH', value: parseFloat(valToken.value) });
+                        validations.push(numericSource({ type: 'MIN_LENGTH', value: parseFloat(valToken.value) }, valToken));
                     } else {
                         const isEof = valToken.type === 'EOF';
                         const userMessage = isEof
@@ -610,7 +615,7 @@ class Parser {
 
                     if (valToken.type === 'NUMBER') {
                         this.advance();
-                        validations.push({ type: 'MAX_LENGTH', value: parseFloat(valToken.value) });
+                        validations.push(numericSource({ type: 'MAX_LENGTH', value: parseFloat(valToken.value) }, valToken));
                     } else {
                         const isEof = valToken.type === 'EOF';
                         const userMessage = isEof
@@ -636,7 +641,7 @@ class Parser {
 
                     if (valToken.type === 'NUMBER') {
                         this.advance();
-                        defaultValue = { type: 'NUMBER', value: parseFloat(valToken.value) };
+                        defaultValue = numericSource({ type: 'NUMBER', value: parseFloat(valToken.value) }, valToken);
                         defaultValues.push(defaultValue);
                     } else if (valToken.type === 'STRING_LITERAL') {
                         this.advance();

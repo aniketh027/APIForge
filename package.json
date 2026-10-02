@@ -7,7 +7,7 @@
     "start": "node server.js",
     "compile": "node index.js samples/student.apiforge",
     "dev": "node server.js",
-    "test": "node tests/test.js && node tests/string-length-validation.test.js && node tests/disk-generation.test.js && node tests/generated-backend-mysql-safety.test.js && node tests/diagnostics.test.js && node tests/warnings.test.js && node tests/enum.test.js && node tests/collection-query.test.js && node tests/implicit-pk.test.js && node tests/request-validation.test.js && node tests/primary-key-contract.test.js && node tests/generated-naming.test.js && node tests/relationship-safety.test.js && node tests/openapi-fidelity.test.js",
+    "test": "node tests/test.js && node tests/string-length-validation.test.js && node tests/disk-generation.test.js && node tests/generated-backend-mysql-safety.test.js && node tests/diagnostics.test.js && node tests/warnings.test.js && node tests/enum.test.js && node tests/collection-query.test.js && node tests/implicit-pk.test.js && node tests/request-validation.test.js && node tests/primary-key-contract.test.js && node tests/generated-naming.test.js && node tests/relationship-safety.test.js && node tests/openapi-fidelity.test.js && node tests/mysql-target.test.js",
     "test:implicit-pk": "node tests/implicit-pk.test.js",
     "test:warnings": "node tests/warnings.test.js",
     "test:generated-integration": "node tests/generated-backend-integration.test.js",
@@ -20,7 +20,8 @@
     "test:primary-key-contract": "node tests/primary-key-contract.test.js",
     "test:generated-naming": "node tests/generated-naming.test.js",
     "test:relationship-safety": "node tests/relationship-safety.test.js",
-    "test:openapi-fidelity": "node tests/openapi-fidelity.test.js"
+    "test:openapi-fidelity": "node tests/openapi-fidelity.test.js",
+    "test:mysql-target": "node tests/mysql-target.test.js"
   },
   "keywords": [
     "compiler",

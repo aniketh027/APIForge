@@ -200,6 +200,10 @@ class SemanticAnalyzer {
 
             // Step 2: Check for duplicate entity names
             this.checkDuplicateEntities(ast.entities);
+            for (const issue of require('../utils/mysql-target').targetIssues(ast.entities, ast.relations || [])) {
+                this.addError(issue.message, locate(issue.node, issue.locationKey, issue.node.nameColumn),
+                    'MYSQL_TARGET_LIMIT', 'Shorten the identifier or lower the declared STRING capacity for the supported MySQL target.');
+            }
             for (const conflict of require('../utils/target-names').namingConflicts(ast.entities, ast.relations || [])) {
                 this.addError(`${conflict.owner} conflicts with ${conflict.previous} in generated ${conflict.namespace} '${conflict.name}'.`,
                     locate(conflict.node, 'name', conflict.node.nameColumn), 'GENERATED_NAME_COLLISION',
@@ -328,6 +332,10 @@ class SemanticAnalyzer {
         let primaryKeyCount = 0;
 
         for (const field of entity.fields) {
+            for (const issue of require('../utils/mysql-target').numericIssues(field)) {
+                this.addError(issue.message, issue.value.numberLocation || locate(field, issue.value.type === 'NUMBER' ? 'DEFAULT' : issue.value.type, field.nameColumn),
+                    'UNSAFE_NUMERIC_LITERAL', 'Use a finite literal; INT and length operands must remain exact safe integers.');
+            }
 
             // ── Rule: Duplicate field names ─────────────────
             if (seenFieldNames.has(field.name)) {
@@ -376,6 +384,11 @@ class SemanticAnalyzer {
                 } else {
                     const seenValues = new Set();
                     field.enumValues.forEach((value, index) => {
+                        if (value.endsWith(' ')) {
+                            this.addError(`ENUM member ${JSON.stringify(value)} in field '${field.name}' has trailing spaces that MySQL would remove.`,
+                                locate(field, 'enumValues', field.typeColumn, index), 'ENUM_TRAILING_SPACE',
+                                'Remove trailing spaces from the source member and any matching DEFAULT; values are never trimmed automatically.');
+                        }
                         if (seenValues.has(value)) {
                             this.addError(`Duplicate ENUM value ${JSON.stringify(value)} for field '${field.name}'.`,
                                 locate(field, 'enumValues', field.typeColumn, index), 'DUPLICATE_ENUM_VALUE');

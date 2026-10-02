@@ -1,5 +1,12 @@
 # Current generated-project contract
 
+V1 target preflight checks source/composed identifier lengths, single VARCHAR
+capacities and individual/composite STRING index bytes under MySQL >=8.0.16,
+utf8mb4, InnoDB DYNAMIC/16 KiB. Strict mode with NO_BACKSLASH_ESCAPES disabled is
+required for import/runtime; database defaults are caller-configured. Whole-row
+layout and scalar storage limits remain DB-authoritative. STRING/ENUM literals
+share escaping. Generated Node engines require >=18; G19 transactions are deferred.
+
 This reference describes current implementation behavior. It is not a promise that missing standalone-project features already exist.
 
 ## Generation modes and file set

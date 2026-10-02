@@ -70,7 +70,7 @@ async function main() {
     const { IMPLICIT_PRIMARY_KEY_COLLISION, ...originalSemantic } = CODES.semantic;
     assert.equal(IMPLICIT_PRIMARY_KEY_COLLISION, 'SEM033');
     assert.deepEqual(require('../tests/v1-hardening-helpers').retainedCodes(CODES, baselineCodes), baselineCodes);
-    assert.equal(Object.values(CODES).flatMap(Object.values).length, 63);
+    assert.equal(Object.values(CODES).flatMap(Object.values).length, 66);
     const compiled = new Map();
     let javascript = 0;
     for (const example of valid) {

@@ -1,5 +1,13 @@
 # Known current behavior
 
+V1 hardening adds SEM034 generated entity/field/relationship allocation checks,
+prototype-safe own-key registries, SEM035 finite/raw safe numeric checks, SEM036
+native ENUM trailing-space rejection and SEM037 MySQL deterministic preflight.
+The supported target is MySQL >=8.0.16, utf8mb4, InnoDB DYNAMIC with 16 KiB pages,
+strict mode and NO_BACKSLASH_ESCAPES disabled. Caller configures server defaults.
+STRING/ENUM literal escaping is unified; generated Node engines require >=18.
+Whole-row/page and scalar storage limits remain DB-authoritative; G19 is deferred.
+
 Treat these as implementation facts to verify when the relevant code changes, not as reasons to preserve accidental defects forever.
 
 ## Tests and pipeline

@@ -104,11 +104,11 @@ ENTITY Item id INT PRIMARY KEY label STRING // trailing comment
 | String | Double quotes around text | Empty text is allowed. A line feed or EOF before the closing quote produces LEX003. |
 | Boolean | `TRUE` or `FALSE` | Lowercase true/false are not boolean literal tokens. |
 
-Numbers become JavaScript numbers through parseFloat. Integral decimal values
-such as 1.0 satisfy integer checks; checks concern the parsed value.
-The compiler does not generally enforce MySQL storage limits or safe-integer
-precision on DSL literals. Use representable values; do not infer the collection
-query's stricter numeric rules apply to source literals.
+Numbers retain raw token metadata non-enumerably while semantic checks run. INT
+numeric defaults/bounds must be finite safe integers; raw nonzero fractional digits
+cannot silently round into an integer. FLOAT operands must be finite. SEM035 rejects
+unsafe/non-finite literals before targets. Integral decimal syntax such as 1.0 is
+retained. MySQL scalar storage ranges remain database-authoritative.
 
 Strings have **no escape syntax**. Backslashes are literal characters:
 `"C:\folder"` contains a backslash and `"line\n"` contains backslash followed by
@@ -233,9 +233,9 @@ invalid (SEM021).
 SQL capacity is `max(255, declared MIN_LENGTH, declared MAX_LENGTH)`, considering
 bounds that exist. MAX_LENGTH 20 still uses VARCHAR(255) with a length
 check; MAX_LENGTH 500 widens it to VARCHAR(500). A larger MIN_LENGTH alone
-also widens capacity. There is no general compile-time check of physical MySQL
-column/key limits. Without a length modifier, no controller string-length/type
-check is generated for an ordinary STRING field.
+also widens capacity. SEM037 preflights the supported utf8mb4 single-column and
+indexed/composite-key limits. Whole-row layout remains database-authoritative.
+All ordinary STRING writes are type-checked regardless of length modifiers.
 
 <!-- example: valid datatype-string -->
 ~~~apiforge
@@ -381,8 +381,8 @@ default values into request bodies or reload the inserted record for create
 responses. Omitted insert fields are left to MySQL; the response resolves an
 omitted defaulted primary key from typed DEFAULT metadata as described in section
 6, while other omitted defaults may remain absent. Omitted PUT fields retain
-their existing values; PUT does not reset them to defaults. STRING SQL-backslash
-default escaping remains the separate G15 target limitation.
+their existing values; PUT does not reset them to defaults. STRING and ENUM literals
+share apostrophe/backslash escaping for the documented supported SQL mode.
 
 ### MIN
 
@@ -481,24 +481,23 @@ as ordinary strings apply.
 | Malformed direct AST value array | Semantic SEM030 (the source parser already rejects malformed lists) |
 
 SQL uses native `ENUM(...) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin`.
-Apostrophes are doubled in SQL literals. ENUM members/defaults also double
-literal backslashes, assuming MySQL's normal backslash-escaping mode.
-Ordinary STRING defaults only double apostrophes; their legacy backslash
-handling is different. Generated JavaScript/JSON represents ENUM values using
-JSON escaping without changing the DSL values.
+Apostrophes and backslashes are escaped by the same MySQL literal helper for
+STRING and ENUM. This supports NO_BACKSLASH_ESCAPES disabled; source backslashes
+remain literal. ENUM members ending in ASCII space fail SEM036 because MySQL
+strips trailing declaration spaces. Leading spaces and empty members remain legal.
 
 Native MySQL behavior remains relevant: trailing spaces in declared members are
 removed, strict SQL mode affects direct database rejection, numeric indexes can
 be used by direct database writers, and ENUM sorting follows declaration
 indexes. These are target rules, not additional accepted DSL syntax.
 See the [MySQL ENUM reference](https://dev.mysql.com/doc/refman/8.4/en/enum.html).
-Prefer members without trailing spaces.
+Members with trailing ASCII spaces are rejected by SEM036 before generation.
 
 Generated POST/PUT validation rejects supplied non-strings and nonmembers before
 model calls. Optional null is allowed; REQUIRED ENUM rejects supplied null.
 POST requires omitted REQUIRED ENUM unless DEFAULT supplies it; PUT permits
 omission. OpenAPI preserves type string, the ordered enum array and optional
-default; required reflects POST presence. Optional null is not fully represented
+default; required reflects POST presence. Optional null is represented
 by operation-specific OpenAPI schemas, including nullable ENUM null membership.
 
 ## 9. Relationships
@@ -596,7 +595,7 @@ Explicit PK creation/default semantics (G12) and mutation (G13) remain separate.
 ## 11. Diagnostics
 
 Public error codes have a prefix and three digits. The registry contains
-63 errors: LEX001–LEX004, PAR001–PAR022, SEM001–SEM034, INP001–INP002, and INT001.
+66 errors: LEX001–LEX004, PAR001–PAR022, SEM001–SEM037, INP001–INP002, and INT001.
 The symbolic identifier is separate: a semantic compatibility error may have
 `code: "DUPLICATE_FIELD"`, while its nested diagnostic has `code: "SEM005"`.
 Do not confuse the legacy symbolic code with the public code.
@@ -921,6 +920,10 @@ than one semantic diagnostic.
 | enum-duplicate | `ENTITY Item ↵ value ENUM("a", "a")` | `SEM031` |
 | enum-wrong-case-default | `ENTITY Item ↵ value ENUM("active") DEFAULT "ACTIVE"` | `SEM032` |
 | implicit-id-collision | `ENTITY Item ↵ ID STRING ↵ name STRING` | `SEM033` |
+| generated-column-collision | `ENTITY Item ↵ id INT PRIMARY KEY ↵ name STRING ↵ Name INT` | `SEM034` |
+| unsafe-int-literal | `ENTITY Item ↵ value INT DEFAULT 9007199254740993` | `SEM035` |
+| enum-trailing-space | `ENTITY Item ↵ value ENUM("a ")` | `SEM036` |
+| mysql-varchar-capacity | `ENTITY Item ↵ value STRING MAX_LENGTH 100000` | `SEM037` |
 | enum-nonstring-default | `ENTITY Item ↵ value ENUM("a") DEFAULT TRUE` | `SEM021` |
 | enum-key | `ENTITY Item ↵ value ENUM("a") PRIMARY KEY` | `SEM011` |
 | enum-numeric-bound | `ENTITY Item ↵ value ENUM("a") MIN 1` | `SEM015` |
@@ -937,6 +940,20 @@ Parser codes depend on the actual token position: missing datatype at EOF is
 PAR012, whereas `value REQUIRED` produces PAR013. Unrecognized modifier
 spellings are ordinary identifiers and may start an attempted next field; do
 not assume they produce the registry's direct-token PAR021.
+
+### Supported MySQL target and preflight
+
+Use MySQL >=8.0.16, utf8mb4, InnoDB DYNAMIC row format and 16 KiB pages,
+with strict mode and NO_BACKSLASH_ESCAPES disabled for import and runtime connections.
+Configure server/database defaults; generated DDL does not override them. Ordinary
+STRING equality uses the configured collation; native ENUM uses utf8mb4_bin.
+SEM037 checks 64-character table/column/FK/junction/constraint identifiers, including
+automatic CHECK/FK composed names; single VARCHAR capacity floor((65535-2)/4)=16383;
+3072-byte individual STRING indexes and combined junction primary keys. Invalid
+configurations reject before IR or disk writes. No truncation or silent renaming.
+Whole-row/page layout, column/index counts, scalar storage ranges and actual server
+configuration remain database-authoritative. G19 filesystem transaction work is
+intentionally deferred. Node.js >=18 is required by generated Express dependencies.
 
 ## 15. Current Language Boundaries
 

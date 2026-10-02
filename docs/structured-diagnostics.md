@@ -11,6 +11,18 @@ names, model/controller helpers and paths. It reports the offending relationship
 name range and the conflicting allocation owner. No additional code is needed
 for the same target-allocation rule.
 
+Milestone 4 appends:
+
+| Code | Symbol | Meaning |
+|---|---|---|
+| SEM035 | UNSAFE_NUMERIC_LITERAL | Non-finite numeric operand or unsafe/lost-fraction INT/length operand; exact numeric token range |
+| SEM036 | ENUM_TRAILING_SPACE | Native ENUM member ends in ASCII space; exact member range |
+| SEM037 | MYSQL_TARGET_LIMIT | Source/composed identifier or STRING individual/composite key capacity exceeds supported MySQL assumptions |
+
+There are now 66 public error assignments. All original 62 and WRN001–WRN005
+retain their mapping. Target errors are semantic HTTP 422/CLI exit 1; no artifacts
+are generated. Raw numeric source metadata is non-enumerable and never enters IR.
+
 APIForge exposes errors and non-fatal warnings through one JSON contract, implemented in
 `src/utils/diagnostics.js`. The six compiler phases and DSL rules are unchanged.
 Lexer and parser failures still stop immediately; semantic analysis retains its
