@@ -499,7 +499,7 @@ model calls. Optional null is allowed; REQUIRED ENUM rejects supplied null.
 POST requires omitted REQUIRED ENUM unless DEFAULT supplies it; PUT permits
 omission. OpenAPI preserves type string, the ordered enum array and optional
 default; required reflects POST presence. Optional null is not fully represented
-by the reused OpenAPI components (G11 remains separate).
+by operation-specific OpenAPI schemas, including nullable ENUM null membership.
 
 ## 9. Relationships
 
@@ -533,7 +533,8 @@ nullability, referential actions, foreign-key names, or relationship column name
 
 Relationship routes are generated on the source only. Path segments and
 handler names derive from T, not the relationship name. SQL-added FK columns
-do not become source DSL fields or OpenAPI component properties. Apart from
+do not become source DSL fields. They appear as readOnly nullable properties in
+Entity.Read schemas, matching SELECT * output. Apart from
 MANY_TO_MANY association routes, no dedicated linking/unlinking endpoint is
 generated. See section 12 for paths and section 13 for all four forms.
 
@@ -588,13 +589,14 @@ arrays reach the controller shape check. Malformed JSON also returns sanitized
 POST/PUT database failures return HTTP 500 with `Unable to create item.` or
 `Unable to update item.` instead of private SQL/driver messages. UNIQUE remains
 database-enforced without a race-prone precheck; duplicate-key failures are not
-mapped to 409. Item GET, DELETE and relationship error semantics are unchanged.
+mapped to 409. Item GET, DELETE and relationship caught DB errors are also
+sanitized 500 responses.
 Explicit PK creation/default semantics (G12) and mutation (G13) remain separate.
 
 ## 11. Diagnostics
 
 Public error codes have a prefix and three digits. The registry contains
-62 errors: LEX001–LEX004, PAR001–PAR022, SEM001–SEM033, INP001–INP002, and INT001.
+63 errors: LEX001–LEX004, PAR001–PAR022, SEM001–SEM034, INP001–INP002, and INT001.
 The symbolic identifier is separate: a semantic compatibility error may have
 `code: "DUPLICATE_FIELD"`, while its nested diagnostic has `code: "SEM005"`.
 Do not confuse the legacy symbolic code with the public code.
@@ -773,22 +775,24 @@ controller does not turn a missing association into 404.
 
 ### OpenAPI
 
-swagger.json describes CRUD/relationship paths at the root, shared POST/PUT
-entity schemas, POST required arrays, defaults, numeric/length bounds, ENUM members,
-typed collection filters, sort/order controls, pagination bounds and conditional
-headers. Path parameter type follows the owning explicit key (INT → integer,
-STRING → string), or implicit integer id.
+swagger.json documents root CRUD/relationship paths, query parameters and conditional
+pagination headers. Entity.Create models POST writable fields and required-on-create
+presence. Entity.Update omits immutable keys and has no required array for partial
+PUT. Entity.Read models effective identity, declared fields and readOnly nullable
+SQL-added FK columns. Optional declared inputs use nullable; REQUIRED inputs do not.
+Optional ENUM role schemas append null while retaining source member order/case.
+INT write schemas include safe-integer limits. Defaults and declared bounds remain.
+Legacy source-name components are retained; operations use the new role components.
 
-The generated specification is not a complete runtime response contract: most
-CRUD responses have descriptions only, and relationship response schemas describe
-the related array/object without modeling its success/data envelope. Component
-schemas include implicit integer IDs with readOnly: true, omit SQL-added
-relationship columns, and are reused for PUT despite the runtime's omitted-field
-tolerance. Write schemas reject additional properties and exempt defaulted/generated keys
-from POST presence requirements. PUT still reuses the schema despite partial
-updates and may still expose an explicit key generically despite PUT immutability;
-nullable response/write modeling remains incomplete (G11). No operation-specific
-schema hierarchy was introduced for the primary-key contract.
+Reusable envelopes describe success/data, success/message and success/error bodies,
+including 400/404/500 where the handlers emit them. CreateResult permits omitted
+non-key database defaults because create echoes supplied fields plus resolved identity
+without reloading the row. Association add echoes URL FK values as strings.
+
+All row-returning models normalize numeric declared BOOLEAN columns to true/false,
+including related target rows, preserving optional null and arbitrary INT fields.
+The server does not load an OpenAPI runtime validator or serve Swagger UI.
+See [fidelity verification](openapi-runtime-fidelity-verification.md).
 
 ## 13. Complete Examples
 

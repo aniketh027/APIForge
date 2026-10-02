@@ -66,7 +66,7 @@ async function test(name, fn) { await fn(); groups++; console.log('  PASS ' + na
         for (const kind of kinds) {
             const source = `ENTITY Parent id INT PRIMARY KEY ENTITY Child id INT PRIMARY KEY ENTITY Other id INT PRIMARY KEY RELATION Parent first Child ${kind} RELATION Parent second Other ${kind}`;
             const c = compile(source); syntax(c.files);
-            assert.deepEqual(c.files, oldGenerator.generate(c.optimized, false).files);
+            assert.deepEqual(require('./hardening-compatibility').projectHardeningChanges(c.files, source), oldGenerator.generate(c.optimized, false).files);
         }
     });
     console.log(`Relationship safety: ${groups} groups PASS; ${executions} emitted helper calls; live MySQL unverified.`);

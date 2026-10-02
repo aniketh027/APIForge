@@ -635,7 +635,7 @@ function generateReadme(entities) {
            `POST requires REQUIRED fields unless a declared DEFAULT or generated auto-increment key supplies omission. REQUIRED null is rejected; optional null is allowed. Defaults remain database-applied.\n\n` +
            `Create identity uses a supplied explicit primary key first (including a caller-supplied INT auto-increment key), otherwise the generated insertId, otherwise the explicit key's declared DEFAULT. Explicit STRING keys are supported. A non-generated key without DEFAULT is left to the database; PRIMARY KEY alone does not make it required by request validation. The create response resolves only the key and submitted fields, without rereading arbitrary database defaults.\n\n` +
            `PUT is partial, including an empty object that rereads the existing row. The URL \`:id\` identifies the resource even when its primary key has another name or STRING type. Primary keys are immutable: any supplied explicit primary-key field returns HTTP 400 before model access, even the same value or null. Direct model updates also reject key properties before SQL.\n\n` +
-           `OpenAPI reuses entity schemas for POST/PUT, so an explicit key may still appear generically despite PUT immutability; partial-update and nullability modeling remain limited.\n\n` +
+           `OpenAPI uses Entity.Create/Update/Read roles and response envelopes. Update omits immutable keys; optional inputs are nullable; synthetic FK columns are readOnly. Declared BOOLEAN rows return booleans on source and target reads.\n\n` +
            `Malformed JSON returns sanitized HTTP 400. POST/PUT database failures return sanitized HTTP 500; UNIQUE remains database-enforced without prechecks or duplicate-key status mapping.\n\n` +
            `## Collection query options\n\n` +
            `Collection GET preserves \`{ success: true, data: [...] }\`. Without \`page\` or \`limit\`, results remain unbounded and no count query runs.\n\n` +
@@ -770,6 +770,23 @@ function select${entity.name}WriteData(body) {
 `;
 }
 
+function generateReadNormalization() {
+    return `// Read normalization: declared BOOLEAN columns only.
+function normalizeRow(row, booleanFields) {
+    if (row == null) return row;
+    const result = { ...row };
+    for (const name of booleanFields) {
+        if (Object.prototype.hasOwnProperty.call(result, name) && result[name] != null) {
+            if (typeof result[name] === 'number') result[name] = result[name] !== 0;
+        }
+    }
+    return result;
+}
+// End read normalization
+
+`;
+}
+
 function generateCollectionMethods(entity) {
     const primaryKey = getEffectiveKey(entity).name;
     const table = JSON.stringify(quoteIdentifier(entity.name));
@@ -850,7 +867,7 @@ function generateCollectionMethods(entity) {
             values.push(options.limit, options.offset);
         }
         const [rows] = await pool.query(sql, values);
-        return rows;
+        return rows.map(row => normalizeRow(row, ${JSON.stringify(entity.fields.filter(f => f.dataType === 'BOOLEAN').map(f => f.name))}));
     }
 
     static async countFiltered(options) {
@@ -905,7 +922,7 @@ function generateModel(entityName, fields, relations = [], entities = []) {
                     `            'SELECT t.* FROM ${quoteIdentifier(rel.targetEntity)} t JOIN ${quoteIdentifier(junctionTable)} j ON t.${quoteIdentifier(targetPk.name)} = j.${quoteIdentifier(targetFkCol)} WHERE j.${quoteIdentifier(sourceFkCol)} = ?',\n` +
                     `            [${lowerFirst(entityName)}Id]\n` +
                     `        );\n` +
-                    `        return rows;\n` +
+                    `        return rows.map(row => normalizeRow(row, ${JSON.stringify(targetEntity.fields.filter(f => f.dataType === 'BOOLEAN').map(f => f.name))}));\n` +
                     `    }\n\n` +
                     `    static async add${upperFirst(rel.targetEntity)}(${lowerFirst(entityName)}Id, ${targetParam}) {\n` +
                     `        await pool.query(\n` +
@@ -931,7 +948,7 @@ function generateModel(entityName, fields, relations = [], entities = []) {
                     `            'SELECT * FROM ${quoteIdentifier(rel.targetEntity)} WHERE ${quoteIdentifier(sourceFkCol)} = ?',\n` +
                     `            [${lowerFirst(entityName)}Id]\n` +
                     `        );\n` +
-                    `        return rows;\n` +
+                    `        return rows.map(row => normalizeRow(row, ${JSON.stringify(targetEntity.fields.filter(f => f.dataType === 'BOOLEAN').map(f => f.name))}));\n` +
                     `    }`
                 );
             } else if (rel.relationType === 'MANY_TO_ONE') {
@@ -943,7 +960,7 @@ function generateModel(entityName, fields, relations = [], entities = []) {
                     `            'SELECT t.* FROM ${quoteIdentifier(rel.targetEntity)} t JOIN ${quoteIdentifier(entityName)} s ON t.${quoteIdentifier(targetPk.name)} = s.${quoteIdentifier(targetFkCol)} WHERE s.${quoteIdentifier(sourcePk.name)} = ?',\n` +
                     `            [${lowerFirst(entityName)}Id]\n` +
                     `        );\n` +
-                    `        return rows.length > 0 ? rows[0] : null;\n` +
+                    `        return rows.length > 0 ? normalizeRow(rows[0], ${JSON.stringify(targetEntity.fields.filter(f => f.dataType === 'BOOLEAN').map(f => f.name))}) : null;\n` +
                     `    }`
                 );
             } else if (rel.relationType === 'ONE_TO_ONE') {
@@ -955,7 +972,7 @@ function generateModel(entityName, fields, relations = [], entities = []) {
                     `            'SELECT * FROM ${quoteIdentifier(rel.targetEntity)} WHERE ${quoteIdentifier(sourceFkCol)} = ?',\n` +
                     `            [${lowerFirst(entityName)}Id]\n` +
                     `        );\n` +
-                    `        return rows.length > 0 ? rows[0] : null;\n` +
+                    `        return rows.length > 0 ? normalizeRow(rows[0], ${JSON.stringify(targetEntity.fields.filter(f => f.dataType === 'BOOLEAN').map(f => f.name))}) : null;\n` +
                     `    }`
                 );
             }
@@ -971,6 +988,7 @@ function generateModel(entityName, fields, relations = [], entities = []) {
            `const pool = require('../config/db');\n\n` +
            `const QUERY_FIELDS = ${queryFieldsJson};\n\n` +
            generatePrimaryKeyPolicy({ name: entityName, fields }, true) +
+           generateReadNormalization() +
            `class ${entityName}Model {\n` +
            `    static get tableName() {\n` +
            `        return '${entityName}';\n` +
@@ -981,7 +999,7 @@ function generateModel(entityName, fields, relations = [], entities = []) {
            generateCollectionMethods({ name: entityName, fields }) +
            `    static async findById(id) {\n` +
            `        const [rows] = await pool.query('SELECT * FROM ${quoteIdentifier(entityName)} WHERE ${quoteIdentifier(pkField.name)} = ?', [id]);\n` +
-           `        return rows.length > 0 ? rows[0] : null;\n` +
+           `        return rows.length > 0 ? normalizeRow(rows[0], ${JSON.stringify(fields.filter(f => f.dataType === 'BOOLEAN').map(f => f.name))}) : null;\n` +
            `    }\n\n` +
            `    static async create(data) {\n` +
            `        const [result] = Object.keys(data).length === 0\n` +
@@ -992,7 +1010,7 @@ function generateModel(entityName, fields, relations = [], entities = []) {
            `        if (identity.resolved) {\n` +
            `            Object.defineProperty(response, PRIMARY_KEY.name, { value: identity.value, enumerable: true, writable: true, configurable: true });\n` +
            `        }\n` +
-           `        return response;\n` +
+           `        return normalizeRow(response, ${JSON.stringify(fields.filter(f => f.dataType === 'BOOLEAN').map(f => f.name))});\n` +
            `    }\n\n` +
            `    static async update(id, data) {\n` +
            `        const keyError = primaryKeyUpdateError(data);\n` +
@@ -1067,7 +1085,7 @@ function generateController(entityName, fieldsOrRelations = [], maybeRelations =
                     `        const items = await ${modelVar}.${getRelFn}(req.params.id);\n` +
                     `        res.status(200).json({ success: true, data: items });\n` +
                     `    } catch (error) {\n` +
-                    `        res.status(500).json({ success: false, error: error.message });\n` +
+                    `        res.status(500).json({ success: false, error: 'Unable to complete request.' });\n` +
                     `    }\n` +
                     `}\n\n` +
                     `async function ${addRelFn}(req, res) {\n` +
@@ -1075,7 +1093,7 @@ function generateController(entityName, fieldsOrRelations = [], maybeRelations =
                     `        const result = await ${modelVar}.${addRelFn}(req.params.id, req.params.${targetParam});\n` +
                     `        res.status(201).json({ success: true, data: result });\n` +
                     `    } catch (error) {\n` +
-                    `        res.status(500).json({ success: false, error: error.message });\n` +
+                    `        res.status(500).json({ success: false, error: 'Unable to complete request.' });\n` +
                     `    }\n` +
                     `}\n\n` +
                     `async function ${removeRelFn}(req, res) {\n` +
@@ -1083,7 +1101,7 @@ function generateController(entityName, fieldsOrRelations = [], maybeRelations =
                     `        const success = await ${modelVar}.${removeRelFn}(req.params.id, req.params.${targetParam});\n` +
                     `        res.status(200).json({ success: true, message: 'Association removed successfully' });\n` +
                     `    } catch (error) {\n` +
-                    `        res.status(500).json({ success: false, error: error.message });\n` +
+                    `        res.status(500).json({ success: false, error: 'Unable to complete request.' });\n` +
                     `    }\n` +
                     `}`
                 );
@@ -1097,7 +1115,7 @@ function generateController(entityName, fieldsOrRelations = [], maybeRelations =
                     `        const items = await ${modelVar}.${getRelFn}(req.params.id);\n` +
                     `        res.status(200).json({ success: true, data: items });\n` +
                     `    } catch (error) {\n` +
-                    `        res.status(500).json({ success: false, error: error.message });\n` +
+                    `        res.status(500).json({ success: false, error: 'Unable to complete request.' });\n` +
                     `    }\n` +
                     `}`
                 );
@@ -1113,7 +1131,7 @@ function generateController(entityName, fieldsOrRelations = [], maybeRelations =
                     `        }\n` +
                     `        res.status(200).json({ success: true, data: item });\n` +
                     `    } catch (error) {\n` +
-                    `        res.status(500).json({ success: false, error: error.message });\n` +
+                    `        res.status(500).json({ success: false, error: 'Unable to complete request.' });\n` +
                     `    }\n` +
                     `}`
                 );
@@ -1167,7 +1185,7 @@ function generateController(entityName, fieldsOrRelations = [], maybeRelations =
            `        }\n` +
            `        res.status(200).json({ success: true, data: item });\n` +
            `    } catch (error) {\n` +
-           `        res.status(500).json({ success: false, error: error.message });\n` +
+           `        res.status(500).json({ success: false, error: 'Unable to complete request.' });\n` +
            `    }\n` +
            `}\n\n` +
            `async function update${entityName}(req, res) {\n` +
@@ -1194,7 +1212,7 @@ function generateController(entityName, fieldsOrRelations = [], maybeRelations =
            `        }\n` +
            `        res.status(200).json({ success: true, message: '${entityName} deleted successfully' });\n` +
            `    } catch (error) {\n` +
-           `        res.status(500).json({ success: false, error: error.message });\n` +
+           `        res.status(500).json({ success: false, error: 'Unable to complete request.' });\n` +
            `    }\n` +
            `}${extraFunctionsStr}\n\n` +
            `module.exports = {\n` +
@@ -1536,12 +1554,12 @@ function generateSwagger(entities, relations = []) {
         }
     });
 
-    return JSON.stringify({
+    return JSON.stringify(require('./openapi-fidelity').enrich({
         openapi: "3.0.0",
         info: { title: "APIForge Generated REST API", version: "1.0.0" },
         paths,
         components: { schemas }
-    }, null, 2);
+    }, entities, relations, { key: getEffectiveKey, lowerFirst, pluralize }), null, 2);
 }
 
 // ════════════════════════════════════════════════════════════

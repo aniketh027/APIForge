@@ -2629,7 +2629,7 @@ const swaggerRelObj = JSON.parse(swaggerRelJson);
 
 assertTrue('Swagger has /students/{id}/courses path', Boolean(swaggerRelObj.paths['/students/{id}/courses']));
 assertTrue('Swagger has GET on /students/{id}/courses', Boolean(swaggerRelObj.paths['/students/{id}/courses'].get));
-assertTrue('Swagger response references Course schema', swaggerRelObj.paths['/students/{id}/courses'].get.responses['200'].content['application/json'].schema.items['$ref'] === '#/components/schemas/Course');
+assertTrue('Swagger response references Course envelope', swaggerRelObj.paths['/students/{id}/courses'].get.responses['200'].content['application/json'].schema['$ref'] === '#/components/schemas/Course.ListResponse');
 assertTrue('Swagger has /students/{id}/courses/{courseId} path', Boolean(swaggerRelObj.paths['/students/{id}/courses/{courseId}']));
 
 

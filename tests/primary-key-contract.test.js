@@ -182,7 +182,7 @@ async function baselineProof() {
                 assert.deepEqual(Object.fromEntries(old.files.map(f => [f.path, hash(f.content)])), program.files, name + ' pinned Git baseline');
                 assert.deepEqual(projectPrimaryKeyChanges(files, program.source), old.files);
                 for (const file of files) {
-                    if (!/^(models|controllers)\//.test(file.path) && file.path !== 'README.md') assert.equal(hash(file.content), program.files[file.path], name + '/' + file.path);
+                    if (!/^(models|controllers)\//.test(file.path) && !['README.md', 'swagger.json'].includes(file.path)) assert.equal(hash(file.content), program.files[file.path], name + '/' + file.path);
                     if (file.path.endsWith('.js')) {
                         const filename = path.join(temp, file.path.replaceAll('/', '-')); fs.writeFileSync(filename, file.content);
                         const checked = spawnSync(process.execPath, ['--check', filename], { encoding: 'utf8', windowsHide: true });

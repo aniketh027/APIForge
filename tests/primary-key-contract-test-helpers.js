@@ -25,6 +25,7 @@ function compile(source, generator = require('../src/codegen/codegen')) {
 // Only the approved PK policy helpers, create assembly, update guard and README
 // write section may differ. Historical fixtures are never refreshed.
 function projectPrimaryKeyChanges(files, source) {
+    files = require('./hardening-compatibility').projectHardeningChanges(files, source);
     const old = new Map(compile(source, baselineGenerator()).files.map(file => [file.path, file]));
     assert.deepEqual(files.map(file => file.path), [...old.keys()]);
     return files.map(file => {

@@ -1,0 +1,85 @@
+// Operation roles use a dot separator, which cannot occur in a DSL identifier.
+// This avoids allocating ItemRead over a user's legitimate entity of that name.
+function enrich(doc, entities, relations, { key, lowerFirst, pluralize }) {
+    const schemas = doc.components.schemas;
+    const ref = name => ({ $ref: '#/components/schemas/' + name });
+    const envelope = data => ({ type: 'object', additionalProperties: false,
+        required: ['success', 'data'], properties: { success: { type: 'boolean', enum: [true] }, data } });
+    schemas['.Error'] = { type: 'object', additionalProperties: false, required: ['success', 'error'],
+        properties: { success: { type: 'boolean', enum: [false] }, error: { type: 'string' } } };
+    schemas['.Message'] = { type: 'object', additionalProperties: false, required: ['success', 'message'],
+        properties: { success: { type: 'boolean', enum: [true] }, message: { type: 'string' } } };
+    const response = (name, description = 'OK') => ({ description, content: { 'application/json': { schema: ref(name) } } });
+    const byName = new Map(entities.map(e => [e.name, e]));
+    for (const entity of entities) {
+        const base = schemas[entity.name], effectiveKey = key(entity);
+        const createProperties = Object.create(null), updateProperties = Object.create(null), readProperties = Object.create(null);
+        for (const field of entity.fields) {
+            const prop = { ...base.properties[field.name], nullable: !(field.constraints || []).includes('REQUIRED') };
+            if (field.dataType === 'INT') {
+                prop.minimum = Math.max(Number.MIN_SAFE_INTEGER, prop.minimum ?? Number.MIN_SAFE_INTEGER);
+                prop.maximum = Math.min(Number.MAX_SAFE_INTEGER, prop.maximum ?? Number.MAX_SAFE_INTEGER);
+            }
+            if (prop.enum && prop.nullable) prop.enum = [...prop.enum, null];
+            createProperties[field.name] = prop;
+            if (field.name !== effectiveKey.name) updateProperties[field.name] = { ...prop };
+            readProperties[field.name] = { ...prop, nullable: field.name === effectiveKey.name ? false : prop.nullable };
+        }
+        if (effectiveKey.origin === 'implicit') readProperties[effectiveKey.name] = { type: 'integer', readOnly: true };
+        for (const rel of relations) {
+            const receiver = rel.relationType === 'MANY_TO_ONE' ? rel.sourceEntity : rel.targetEntity;
+            if (rel.relationType === 'MANY_TO_MANY' || receiver !== entity.name) continue;
+            const referenced = byName.get(rel.relationType === 'MANY_TO_ONE' ? rel.targetEntity : rel.sourceEntity);
+            const foreignKey = key(referenced);
+            readProperties[lowerFirst(referenced.name) + '_' + foreignKey.name] = {
+                type: foreignKey.dataType === 'STRING' ? 'string' : 'integer', nullable: true, readOnly: true
+            };
+        }
+        schemas[entity.name + '.Create'] = { type: 'object', additionalProperties: false, properties: createProperties,
+            ...(base.required?.length ? { required: [...base.required] } : {}) };
+        schemas[entity.name + '.Update'] = { type: 'object', additionalProperties: false, properties: updateProperties };
+        schemas[entity.name + '.Read'] = { type: 'object', additionalProperties: false, properties: readProperties, required: [effectiveKey.name] };
+        // Create echoes only supplied declared fields plus the resolved identity;
+        // arbitrary database defaults and synthetic FKs are not reloaded.
+        const createResultProperties = Object.assign(Object.create(null), createProperties);
+        if (effectiveKey.origin === 'implicit') createResultProperties[effectiveKey.name] = readProperties[effectiveKey.name];
+        schemas[entity.name + '.CreateResult'] = { type: 'object', additionalProperties: false, properties: createResultProperties };
+        schemas[entity.name + '.Response'] = envelope(ref(entity.name + '.Read'));
+        schemas[entity.name + '.CreateResponse'] = envelope(ref(entity.name + '.CreateResult'));
+        schemas[entity.name + '.ListResponse'] = envelope({ type: 'array', items: ref(entity.name + '.Read') });
+        const root = doc.paths['/' + pluralize(entity.name)], item = doc.paths['/' + pluralize(entity.name) + '/{id}'];
+        root.post.requestBody.content['application/json'].schema = ref(entity.name + '.Create');
+        item.put.requestBody.content['application/json'].schema = ref(entity.name + '.Update');
+        root.get.responses['200'] = { ...response(entity.name + '.ListResponse'), headers: root.get.responses['200'].headers };
+        root.post.responses['201'] = response(entity.name + '.CreateResponse', 'Created');
+        item.get.responses['200'] = response(entity.name + '.Response');
+        item.put.responses['200'] = response(entity.name + '.Response');
+        item.delete.responses['200'] = response('.Message');
+        for (const op of [root.get, root.post, item.put]) op.responses['400'] = response('.Error', 'Invalid request');
+        for (const op of [item.get, item.put, item.delete]) op.responses['404'] = response('.Error', 'Record not found');
+        for (const op of [root.get, root.post, item.get, item.put, item.delete]) op.responses['500'] = response('.Error', 'Database or runtime failure');
+    }
+    for (const rel of relations) {
+        const many = ['ONE_TO_MANY', 'MANY_TO_MANY'].includes(rel.relationType);
+        const prefix = '/' + pluralize(rel.sourceEntity) + '/{id}/' + (many ? pluralize(rel.targetEntity) : lowerFirst(rel.targetEntity));
+        const get = doc.paths[prefix].get;
+        get.responses['200'] = response(rel.targetEntity + (many ? '.ListResponse' : '.Response'));
+        get.responses['500'] = response('.Error', 'Database or runtime failure');
+        if (!many) get.responses['404'] = response('.Error', 'Related record not found');
+        if (rel.relationType === 'MANY_TO_MANY') {
+            const source = byName.get(rel.sourceEntity), target = byName.get(rel.targetEntity);
+            const associationName = rel.sourceEntity + '.' + rel.targetEntity + '.Association';
+            const properties = Object.create(null);
+            for (const entity of [source, target]) properties[lowerFirst(entity.name) + '_' + key(entity).name] = {
+                type: 'string', description: 'Echoed URL parameter; database binding retains the declared key type.'
+            };
+            schemas[associationName] = envelope({ type: 'object', additionalProperties: false, required: Object.keys(properties), properties });
+            const association = doc.paths[prefix + '/{' + lowerFirst(rel.targetEntity) + 'Id}'];
+            association.post.responses['201'] = response(associationName, 'Associated');
+            association.delete.responses['200'] = response('.Message');
+            for (const op of [association.post, association.delete]) op.responses['500'] = response('.Error', 'Database or runtime failure');
+        }
+    }
+    return doc;
+}
+module.exports = { enrich };

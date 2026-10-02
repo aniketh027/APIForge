@@ -216,9 +216,11 @@ optional null is accepted. Defaults remain database-applied. POST accepts explic
 primary keys; create responses prefer a supplied explicit key, then a generated
 insertId, then the declared key DEFAULT, without reloading arbitrary defaults.
 PUT rejects any explicit key property with 400 before model access, even the same
-value or null; identity comes from URL `:id`. Shared OpenAPI schemas may still
-expose the key generically despite PUT immutability. Generated POST/PUT DB errors
-are sanitized 500 responses; UNIQUE remains database-enforced. Generated malformed
+value or null; identity comes from URL `:id`. OpenAPI uses distinct Create/Update/Read operation roles; Update omits the immutable
+key and optional inputs are nullable. Generated POST/PUT DB errors
+are sanitized 500 responses; item/delete/relationship DB errors are sanitized too.
+Declared BOOLEAN database rows normalize to booleans, including related targets.
+Read schemas expose SQL-added FK columns as readOnly; UNIQUE remains database-enforced. Generated malformed
 JSON returns sanitized 400; the compiler API retains its 500/INP002 contract.
 See [verification and remaining limits](docs/generated-request-validation-verification.md).
 The [primary-key contract verification](docs/primary-key-contract-verification.md)

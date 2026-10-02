@@ -139,7 +139,7 @@ async function close(server) { await new Promise(resolve => server.close(resolve
         assert.deepEqual(swagger.components.schemas.User.properties.status, { type: 'string', enum: ['active', 'inactive', "O'Reilly", 'C:\\folder', ''], default: 'active' });
         for (const verb of ['post', 'put']) {
             const route = swagger.paths[verb === 'post' ? '/users' : '/users/{id}'][verb];
-            assert.equal(route.requestBody.content['application/json'].schema.$ref, '#/components/schemas/User');
+            assert.equal(route.requestBody.content['application/json'].schema.$ref, '#/components/schemas/User.' + (verb === 'post' ? 'Create' : 'Update'));
         }
         const required = JSON.parse(compileProject(prefix + 'ENUM("a") REQUIRED UNIQUE').find(f => f.path === 'swagger.json').content);
         assert(required.components.schemas.User.required.includes('status'));

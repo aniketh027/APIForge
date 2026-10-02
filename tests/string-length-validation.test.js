@@ -257,8 +257,8 @@ phase('codegen', () => {
         assert.strictEqual(properties.tag.minLength, 2);
         assert.strictEqual(properties.bio.maxLength, 500);
         assert.strictEqual(properties.role.default, 'student');
-        assert.strictEqual(swagger.paths['/users'].post.requestBody.content['application/json'].schema.$ref, '#/components/schemas/User');
-        assert.strictEqual(swagger.paths['/users/{id}'].put.requestBody.content['application/json'].schema.$ref, '#/components/schemas/User');
+    assert.strictEqual(swagger.paths['/users'].post.requestBody.content['application/json'].schema.$ref, '#/components/schemas/User.Create');
+        assert.strictEqual(swagger.paths['/users/{id}'].put.requestBody.content['application/json'].schema.$ref, '#/components/schemas/User.Update');
     });
 });
 

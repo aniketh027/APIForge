@@ -187,7 +187,8 @@ async function main() {
         assert(relationshipSwagger.paths[route], route);
     }
     assert(!relationshipSwagger.components.schemas.Employee.properties.department_code);
-    assert.equal(relationshipSwagger.paths['/students/{id}/courses'].get.responses['200'].content['application/json'].schema.type, 'array');
+    assert.equal(relationshipSwagger.paths['/students/{id}/courses'].get.responses['200'].content['application/json'].schema.$ref, '#/components/schemas/Course.ListResponse');
+    assert.equal(relationshipSwagger.components.schemas['Employee.Read'].properties.department_code.readOnly, true);
     assert.match(content(relationships, 'routes/invoiceRoutes.js'), /router.get\('\/:id\/customer'/);
 
     // Synthetic-id and repeated relationship target allocations are rejected.

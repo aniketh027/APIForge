@@ -38,7 +38,7 @@ async function test(name, fn) { await fn(); console.log('  PASS ' + name); group
             'ENTITY Student id INT PRIMARY KEY name STRING REQUIRED ENTITY Course code STRING PRIMARY KEY RELATION Student enrolls Course MANY_TO_MANY',
             'ENTITY Item value STRING']) {
             const c = compile(source); syntax(c.files);
-            assert.deepEqual(c.files, baselineCodegen.generate(c.optimized, false).files);
+            assert.deepEqual(require('./hardening-compatibility').projectHardeningChanges(c.files, source), baselineCodegen.generate(c.optimized, false).files);
             const old = analyze(source, baselineSemantic);
             assert.deepEqual(JSON.parse(JSON.stringify(c.ast)), JSON.parse(JSON.stringify(old.ast)));
             assert.deepEqual(JSON.parse(JSON.stringify(c.semantic.symbolTable)), JSON.parse(JSON.stringify(old.semantic.symbolTable)));
