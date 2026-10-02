@@ -167,6 +167,12 @@ APIForge/
 
 ## 📦 Generated Artifacts
 
+Generated names are allocated without silent renaming. SEM034 rejects colliding
+table/column names, case-insensitive model/controller/route files and pluralized
+resource paths, including Student/student and Category/Categorie. Prototype-sensitive
+identifiers remain supported through own-key registries. See
+[naming verification](docs/generated-naming-collision-verification.md).
+
 Compiling a `.apiforge` file writes a complete backend into `output/`:
 
 | File | Description |

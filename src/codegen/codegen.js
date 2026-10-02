@@ -115,26 +115,13 @@ function writeGeneratedFiles(files) {
  * Pluralizes a noun for REST API routes.
  * e.g., Student -> students, Course -> courses, Category -> categories
  */
-function pluralize(word) {
-    if (!word) return '';
-    const lower = word.toLowerCase();
-    if (lower.endsWith('y') && !/[aeiou]y$/.test(lower)) {
-        return lower.slice(0, -1) + 'ies';
-    }
-    if (lower.endsWith('s') || lower.endsWith('ch') || lower.endsWith('sh') || lower.endsWith('x')) {
-        return lower + 'es';
-    }
-    return lower + 's';
-}
+function pluralize(word) { return require('../utils/target-names').pluralize(word); }
 
 /**
  * Converts a string to camelCase with lowercase first letter.
  * e.g., Student -> student, Course -> course
  */
-function lowerFirst(str) {
-    if (!str) return '';
-    return str.charAt(0).toLowerCase() + str.slice(1);
-}
+function lowerFirst(str) { return require('../utils/target-names').lowerFirst(str); }
 
 /**
  * Capitalizes the first letter of a string.
@@ -1341,7 +1328,7 @@ function generateServer(entities) {
  */
 function generateSwagger(entities, relations = []) {
     const paths = {};
-    const schemas = {};
+    const schemas = Object.create(null);
     const entityMap = new Map(entities.map(entity => [entity.name, entity]));
 
     entities.forEach(entity => {
@@ -1412,7 +1399,7 @@ function generateSwagger(entities, relations = []) {
             delete: { summary: `Delete ${entity.name}`, responses: { "200": { description: "OK" } } }
         };
 
-        const properties = {};
+        const properties = Object.create(null);
         const effectiveKey = getEffectiveKey(entity);
         if (effectiveKey.origin === 'implicit') {
             properties[effectiveKey.name] = { type: SWAGGER_TYPE_MAP[effectiveKey.dataType], readOnly: true };
@@ -1579,6 +1566,8 @@ function generate(optimizedIR, writeToDisk = true) {
 
     const entities = extractEntitiesFromIR(optimizedIR);
     const relations = extractRelationsFromIR(optimizedIR);
+    const conflicts = require('../utils/target-names').namingConflicts(entities);
+    if (conflicts.length) throw new Error('Cannot generate target code: ' + conflicts.map(c => `${c.namespace} '${c.name}' collision`).join(', '));
     const entityMap = new Map(entities.map(e => [e.name, e]));
 
     // Validate that referenced relationship entities exist

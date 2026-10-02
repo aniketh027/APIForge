@@ -136,12 +136,12 @@ class SemanticAnalyzer {
         /**
          * symbolTable - Records every entity and its fields.
          */
-        this.symbolTable = {};
+        this.symbolTable = Object.create(null);
 
         /**
          * relationsTable - Records every relationship.
          */
-        this.relationsTable = {};
+        this.relationsTable = Object.create(null);
     }
 
     // ── Error Helper ────────────────────────────────────────
@@ -200,6 +200,11 @@ class SemanticAnalyzer {
 
             // Step 2: Check for duplicate entity names
             this.checkDuplicateEntities(ast.entities);
+            for (const conflict of require('../utils/target-names').namingConflicts(ast.entities)) {
+                this.addError(`${conflict.owner} conflicts with ${conflict.previous} in generated ${conflict.namespace} '${conflict.name}'.`,
+                    locate(conflict.node, 'name', conflict.node.nameColumn), 'GENERATED_NAME_COLLISION',
+                    'Rename one of the conflicting source constructs; generated names are not silently changed.');
+            }
         }
 
         // Step 3: Check relationships (if present)
@@ -208,14 +213,14 @@ class SemanticAnalyzer {
         }
 
         // Attach non-enumerable properties on symbolTable for compatibility
-        Object.defineProperty(this.symbolTable, 'relations', {
+        if (!Object.hasOwn(this.symbolTable, 'relations')) Object.defineProperty(this.symbolTable, 'relations', {
             value: this.relationsTable,
             enumerable: false,
             writable: true,
             configurable: true
         });
 
-        Object.defineProperty(this.symbolTable, 'entities', {
+        if (!Object.hasOwn(this.symbolTable, 'entities')) Object.defineProperty(this.symbolTable, 'entities', {
             value: this.symbolTable,
             enumerable: false,
             writable: true,
@@ -318,7 +323,7 @@ class SemanticAnalyzer {
         }
 
         // ── Build the field symbol table for this entity ────
-        const fieldTable = {};
+        const fieldTable = Object.create(null);
         const seenFieldNames = new Set();
         let primaryKeyCount = 0;
 

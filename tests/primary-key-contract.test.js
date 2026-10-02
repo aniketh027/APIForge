@@ -171,8 +171,8 @@ async function baselineProof() {
         assert.equal(implicit.queries.length, 0);
     });
     await test('nine pinned fixtures retain all compiler phases, 62 diagnostics, five warnings, SQL/routes/dependencies and all unaffected emitted sections', () => {
-        assert.deepEqual(CODES, fixture.codes); assert.deepEqual(WARNING_CODES, fixture.warnings);
-        assert.equal(Object.values(CODES).flatMap(Object.values).length, 62);
+        assert.deepEqual(require('./v1-hardening-helpers').retainedCodes(CODES, fixture.codes), fixture.codes); assert.deepEqual(WARNING_CODES, fixture.warnings);
+        assert.equal(Object.values(CODES).flatMap(Object.values).length, 63);
         const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'apiforge-pk-syntax-'));
         try {
             for (const [name, program] of Object.entries(fixture.programs)) {

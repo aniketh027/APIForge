@@ -1,5 +1,11 @@
 # Structured compiler diagnostics
 
+V1 hardening appends SEM034 / GENERATED_NAME_COLLISION. It identifies the source
+construct, conflicting owner, generated namespace/name and a rename hint at the
+source name range. The original 62 error assignments and WRN001–WRN005 remain
+unchanged. A collision fails semantic analysis (HTTP 422, CLI exit 1); later
+phases and artifact generation are skipped.
+
 APIForge exposes errors and non-fatal warnings through one JSON contract, implemented in
 `src/utils/diagnostics.js`. The six compiler phases and DSL rules are unchanged.
 Lexer and parser failures still stop immediately; semantic analysis retains its

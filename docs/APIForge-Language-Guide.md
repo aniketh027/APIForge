@@ -47,8 +47,13 @@ a name; subsequent characters may also be decimal digits. Unicode letters,
 hyphens, dots, quoted identifiers, and digit-first names are not identifier syntax.
 `1name` produces LEX002; unsupported characters produce LEX001.
 
-Entity, field, and relationship names are case-sensitive. Student and student
-are different DSL names, although generated lowercase names can collide.
+Entity, field, and relationship names are case-sensitive. Generated allocations
+must also be distinct: SEM034 rejects Student/student, Foo/FOO, resource-path
+collisions such as Category/Categorie, case-distinct physical columns and Windows
+device model filenames. No suffix or public route rename is applied.
+Prototype-sensitive names such as __proto__, constructor, toString, entities and
+relations remain legal when their generated allocations are distinct. Own-key
+registries preserve them through symbols, the playground and OpenAPI.
 PascalCase entities and simple field names are conventions, not grammar rules.
 
 These exact uppercase words are reserved:

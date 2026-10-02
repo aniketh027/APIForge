@@ -38,7 +38,7 @@ function check(diagnostic, code, phase, line, column) {
     await test('registry has unique, phase-specific codes', () => {
         const all = Object.values(CODES).flatMap(Object.values);
         assert.equal(new Set(all).size, all.length);
-        assert.equal(all.length, 62);
+        assert.equal(all.length, 63);
         for (const [phase, prefix] of Object.entries({ lexer: 'LEX', parser: 'PAR', semantic: 'SEM', input: 'INP', internal: 'INT' })) {
             assert(Object.values(CODES[phase]).every(code => new RegExp(`^${prefix}\\d{3}$`).test(code)));
         }

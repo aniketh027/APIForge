@@ -199,8 +199,8 @@ async function listen(app, fn) {
         } finally { console.error = saved; }
     });
     await test('17 baseline programs retain every phase hash, registry assignment and unaffected generated section; emitted JS passes node --check', () => {
-        assert.deepEqual(CODES, fixture.codes); assert.deepEqual(WARNING_CODES, fixture.warnings);
-        assert.equal(Object.values(CODES).flatMap(Object.values).length, 62);
+        assert.deepEqual(require('./v1-hardening-helpers').retainedCodes(CODES, fixture.codes), fixture.codes); assert.deepEqual(WARNING_CODES, fixture.warnings);
+        assert.equal(Object.values(CODES).flatMap(Object.values).length, 63);
         const L = require('../src/lexer/lexer'), P = require('../src/parser/parser'), S = require('../src/semantic/analyzer');
         const I = require('../src/ir/generator'), O = require('../src/optimizer/optimizer');
         const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'apiforge-write-syntax-'));

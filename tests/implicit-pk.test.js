@@ -70,8 +70,8 @@ function zipEntries(bytes) {
     await test('original 61 errors and five warnings are frozen; SEM033 is the only addition', () => {
         const { IMPLICIT_PRIMARY_KEY_COLLISION, ...original } = CODES.semantic;
         assert.equal(IMPLICIT_PRIMARY_KEY_COLLISION, 'SEM033');
-        assert.deepEqual({ ...CODES, semantic: original }, baseline.codes);
-        assert.equal(Object.values(CODES).flatMap(Object.values).length, 62);
+        assert.deepEqual(require('./v1-hardening-helpers').retainedCodes(CODES, baseline.codes), baseline.codes);
+        assert.equal(Object.values(CODES).flatMap(Object.values).length, 63);
         assert.deepEqual(WARNING_CODES, baseline.warnings);
     });
     await test('explicit id controls and a non-first key retain declared identity', async () => {

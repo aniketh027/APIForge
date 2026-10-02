@@ -160,7 +160,7 @@ const fail = query => assert.throws(() => parse(query), error => error.statusCod
     await test('all pre-codegen phases, original 61 diagnostics, five warnings, schemas and unaffected methods/artifacts retain baseline hashes', () => {
         const { IMPLICIT_PRIMARY_KEY_COLLISION, ...originalSemantic } = CODES.semantic;
         assert.equal(IMPLICIT_PRIMARY_KEY_COLLISION, 'SEM033');
-        assert.deepEqual({ ...CODES, semantic: originalSemantic }, baseline.codes); assert.deepEqual(WARNING_CODES, baseline.warnings);
+        assert.deepEqual(require('./v1-hardening-helpers').retainedCodes(CODES, baseline.codes), baseline.codes); assert.deepEqual(WARNING_CODES, baseline.warnings);
         for (const [name, source] of Object.entries(baseline.sources)) {
             const tokens = Lexer.tokenize(source), ast = Parser.parse(tokens), semantic = Semantic.analyze(ast);
             const ir = IR.generate(ast, semantic), optimized = Optimizer.optimize(ir).ir;
