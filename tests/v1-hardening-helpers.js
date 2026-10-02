@@ -5,9 +5,9 @@ const vm = require('vm');
 const { execFileSync } = require('child_process');
 const { createRequire } = require('module');
 const BASE = 'a0168682254550dc99fa8782f14f2827402852b9';
-function baselineModule(relative) {
+function baselineModule(relative, revision = BASE) {
     const filename = path.resolve(__dirname, '..', relative);
-    const source = execFileSync('git', ['show', BASE + ':' + relative], { encoding: 'utf8', windowsHide: true, maxBuffer: 2e6 });
+    const source = execFileSync('git', ['show', revision + ':' + relative], { encoding: 'utf8', windowsHide: true, maxBuffer: 2e6 });
     const module = { exports: {} };
     vm.compileFunction(source, ['require', 'module', 'exports', '__dirname'])(createRequire(filename), module, module.exports, path.dirname(filename));
     return module.exports;

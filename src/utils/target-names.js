@@ -52,6 +52,7 @@ function namingConflicts(entities, relations = []) {
         if (rel.relationType === 'MANY_TO_MANY') {
             const junction = source.name + '_' + target.name;
             allocate('table', junction, rel, owner);
+            for (const suffix of ['_ibfk_1', '_ibfk_2']) allocate('foreign key constraint', junction + suffix, rel, owner);
             // Distinct endpoint spellings can still compose to the same FK column.
             allocate('column in ' + junction, sourceFk, rel, owner + ' source');
             allocate('column in ' + junction, targetFk, rel, owner + ' target');

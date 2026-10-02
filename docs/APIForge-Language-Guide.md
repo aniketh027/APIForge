@@ -943,6 +943,13 @@ not assume they produce the registry's direct-token PAR021.
 
 ### Supported MySQL target and preflight
 
+Generated SQL quotes reserved identifiers across supported MySQL 8.0 versions,
+including LATERAL, INTERSECT, ARRAY and MEMBER. Valid declared columns named
+`__proto__`, `__defineGetter__`, `__defineSetter__`, `__lookupGetter__` or
+`__lookupSetter__` use mysql2 static array parsing and own-property row
+reconstruction in generated config/db.js; composed relationship columns receive
+the same protection. Automatic keys are readOnly in operation Read schemas.
+
 Use MySQL >=8.0.16, utf8mb4, InnoDB DYNAMIC row format and 16 KiB pages,
 with strict mode and NO_BACKSLASH_ESCAPES disabled for import and runtime connections.
 Configure server/database defaults; generated DDL does not override them. Ordinary

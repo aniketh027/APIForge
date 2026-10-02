@@ -207,6 +207,7 @@ const SWAGGER_TYPE_MAP = {
  * MySQL reserved words that must be quoted with backticks when used as table or column identifiers.
  */
 const MYSQL_RESERVED_WORDS = new Set([
+    'LATERAL', 'INTERSECT', 'ARRAY', 'MEMBER',
     'ACCESSIBLE', 'ADD', 'ALL', 'ALTER', 'ANALYZE', 'AND', 'AS', 'ASC', 'ASENSITIVE',
     'BEFORE', 'BETWEEN', 'BIGINT', 'BINARY', 'BLOB', 'BOTH', 'BY', 'CALL', 'CASCADE',
     'CASE', 'CHANGE', 'CHAR', 'CHARACTER', 'CHECK', 'COLLATE', 'COLUMN', 'CONDITION',
@@ -523,7 +524,22 @@ function generateSQL(ir) {
  * 
  * @returns {string} - DB connection file content
  */
-function generateDBConfig() {
+function generateDBConfig(entities = [], relations = []) {
+    const privateColumns = new Set(['__proto__', '__defineGetter__', '__defineSetter__', '__lookupGetter__', '__lookupSetter__']);
+    const hasPrototypeColumn = entities.some(e => e.fields.some(f => privateColumns.has(f.name))) || relations.some(rel => {
+        return entities.some(entity => [rel.sourceEntity, rel.targetEntity].includes(entity.name) &&
+            privateColumns.has(`${lowerFirst(entity.name)}_${getEffectiveKey(entity).name}`));
+    });
+    const safeRows = hasPrototypeColumn ? `// Preserve own prototype-sensitive columns before mysql2 object assignment.
+const rawQuery = pool.query.bind(pool);
+pool.query = async (sql, values) => {
+    const options = typeof sql === 'string' ? { sql } : sql;
+    const [result, fields] = await rawQuery({ ...options, rowsAsArray: true, disableEval: true }, values);
+    if (!Array.isArray(result) || !fields) return [result, fields];
+    return [result.map(row => Object.fromEntries(fields.map((field, index) => [field.name, row[index]]))), fields];
+};
+
+` : '';
     return `/**\n` +
            ` * Database Connection Pool\n` +
            ` * Generated automatically by APIForge Compiler\n` +
@@ -539,7 +555,7 @@ function generateDBConfig() {
            `    connectionLimit: 10,\n` +
            `    queueLimit: 0\n` +
            `});\n\n` +
-           `module.exports = pool;\n`;
+           safeRows + `module.exports = pool;\n`;
 }
 
 /**
@@ -933,7 +949,7 @@ function generateModel(entityName, fields, relations = [], entities = []) {
                     `            'INSERT INTO ${quoteIdentifier(junctionTable)} (${quoteIdentifier(sourceFkCol)}, ${quoteIdentifier(targetFkCol)}) VALUES (?, ?)',\n` +
                     `            [${lowerFirst(entityName)}Id, ${targetParam}]\n` +
                     `        );\n` +
-                    `        return { ${sourceFkCol}: ${lowerFirst(entityName)}Id, ${targetFkCol}: ${targetParam} };\n` +
+                    `        return { ${sourceFkCol === '__proto__' ? '["__proto__"]' : sourceFkCol}: ${lowerFirst(entityName)}Id, ${targetFkCol === '__proto__' ? '["__proto__"]' : targetFkCol}: ${targetParam} };\n` +
                     `    }\n\n` +
                     `    static async remove${upperFirst(rel.targetEntity)}(${lowerFirst(entityName)}Id, ${targetParam}) {\n` +
                     `        const [result] = await pool.query(\n` +
@@ -1608,7 +1624,7 @@ function generate(optimizedIR, writeToDisk = true) {
 
     const files = [
         { path: 'database/schema.sql', content: generateSQL(optimizedIR) },
-        { path: 'config/db.js', content: generateDBConfig() },
+        { path: 'config/db.js', content: generateDBConfig(entities, relations) },
         { path: '.env.example', content: generateEnvExample() },
         { path: 'package.json', content: generatePackageJson() },
         { path: 'README.md', content: generateReadme(entities) }
