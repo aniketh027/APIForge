@@ -202,7 +202,7 @@ class SemanticAnalyzer {
             this.checkDuplicateEntities(ast.entities);
             for (const issue of require('../utils/mysql-target').targetIssues(ast.entities, ast.relations || [])) {
                 this.addError(issue.message, locate(issue.node, issue.locationKey, issue.node.nameColumn),
-                    'MYSQL_TARGET_LIMIT', 'Shorten the identifier or lower the declared STRING capacity for the supported MySQL target.');
+                    'MYSQL_TARGET_LIMIT', issue.hint || 'Shorten the identifier or lower the declared STRING capacity for the supported MySQL target.');
             }
             for (const conflict of require('../utils/target-names').namingConflicts(ast.entities, ast.relations || [])) {
                 this.addError(`${conflict.owner} conflicts with ${conflict.previous} in generated ${conflict.namespace} '${conflict.name}'.`,

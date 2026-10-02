@@ -83,6 +83,13 @@ precedence; omitted auto keys, defaulted keys, optional-null validation and PUT
 immutability are unchanged. CreateResult marks explicit auto keys nonnullable,
 while Create still accepts optional null input.
 
+For source-declared explicit auto INT keys, POST rejects negative integers with
+400 before model/DB access; ordinary INT and INT DEFAULT keys are unaffected.
+Create/CreateResult/Read use minimum0 for this key. MIN/MAX on a no-DEFAULT INT
+PK fails SEM037 at the first bound before IR/codegen because MySQL CHECK cannot
+reference AUTO_INCREMENT. Do not silently drop bounds or change the resolver's
+NULL/zero behavior. Direct model general validation architecture is unchanged.
+
 - Models use promise-based MySQL queries with value placeholders and `INSERT/UPDATE ... SET ?` payload binding. Empty valid creates use `INSERT ... () VALUES ()` for database-supplied values.
 - A shared codegen effective key selects the explicit PRIMARY KEY or implicit integer id for SQL, item predicates, relationships, collections and OpenAPI. Create resolves a supplied explicit key first, otherwise generated insertId, otherwise typed declared key DEFAULT; unresolved non-generated omissions remain database-authoritative. Responses copy submitted data then safely define the resolved own key, without reloading arbitrary defaults or mutating input. Caller-supplied implicit id is rejected by POST/PUT before model access; explicit INT/STRING keys remain accepted on POST.
 - PUT takes identity from URL :id and rejects any explicit own PK property with 400 `Field '<key>' is immutable.`, even the same value/null. Order: shape, unknown own keys, immutable PK, then declaration-order field checks. A shared generated policy/metadata also guards direct model updates before SQL, including implicit effective-key own properties. Non-key updates still use the original key in UPDATE/reread; empty PUT only rereads. WRITE_FIELDS remains the create-authorized declared set; PRIMARY_KEY carries origin, generation and typed default metadata and narrows the update policy, without introducing synthetic writable fields.

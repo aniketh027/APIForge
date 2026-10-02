@@ -17,7 +17,7 @@ Milestone 4 appends:
 |---|---|---|
 | SEM035 | UNSAFE_NUMERIC_LITERAL | Non-finite numeric operand or unsafe/lost-fraction INT/length operand; exact numeric token range |
 | SEM036 | ENUM_TRAILING_SPACE | Native ENUM member ends in ASCII space; exact member range |
-| SEM037 | MYSQL_TARGET_LIMIT | Source/composed identifier or STRING individual/composite key capacity exceeds supported MySQL assumptions |
+| SEM037 | MYSQL_TARGET_LIMIT | Source/composed identifier or STRING capacity exceeds supported MySQL assumptions; MIN/MAX CHECK constraints on an explicit auto-generated INT key are unrepresentable |
 
 There are now 66 public error assignments. All original 62 and WRN001–WRN005
 retain their mapping. Target errors are semantic HTTP 422/CLI exit 1; no artifacts

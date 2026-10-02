@@ -9,7 +9,7 @@ const key = entity => entity.fields.find(f => f.constraints?.includes('PRIMARY_K
 const keyBytes = field => field.dataType === 'STRING' ? capacity(field) * CHARACTER_BYTES : 4;
 function targetIssues(entities, relations = []) {
     const issues = [];
-    const issue = (node, message, locationKey = 'name') => issues.push({ node, message, locationKey });
+    const issue = (node, message, locationKey = 'name', hint) => issues.push({ node, message, locationKey, ...(hint ? { hint } : {}) });
     const identifier = (name, node, kind) => {
         if (name.length > IDENTIFIER_LIMIT) issue(node, `Generated MySQL ${kind} '${name}' exceeds ${IDENTIFIER_LIMIT} characters.`);
     };
@@ -19,6 +19,11 @@ function targetIssues(entities, relations = []) {
         let checkCount = 0;
         for (const field of entity.fields) {
             identifier(field.name, field, 'column');
+            const autoBound = (field.validations || []).find(v => v.type === 'MIN' || v.type === 'MAX');
+            if (field.dataType === 'INT' && field.constraints?.includes('PRIMARY_KEY') && field.defaultValue == null && autoBound) {
+                issue(field, `Supported MySQL cannot represent MIN/MAX CHECK constraints on AUTO_INCREMENT column '${entity.name}.${field.name}'.`,
+                    autoBound.type, 'Remove MIN/MAX, or declare an explicit INT DEFAULT to use a non-AUTO_INCREMENT key with bounds.');
+            }
             if ((field.validations || []).length) identifier(entity.name + '_chk_' + (++checkCount), field, 'automatic CHECK constraint');
             if (field.dataType === 'STRING') {
                 const width = capacity(field);

@@ -71,7 +71,7 @@ async function baselineProof() {
             ['id INT PRIMARY KEY', { id: 0, name: 'Alice' }, 42, 'id', 42],
             ['id INT PRIMARY KEY', { id: 0, name: 'Alice' }, 0, 'id', 0], // NO_AUTO_VALUE_ON_ZERO stores zero.
             ['id INT PRIMARY KEY', { id: 100, name: 'Alice' }, 999, 'id', 100],
-            ['id INT PRIMARY KEY', { id: -5, name: 'Alice' }, 999, 'id', -5],
+            ['id INT PRIMARY KEY DEFAULT -5', { id: -5, name: 'Alice' }, 999, 'id', -5],
             ['id INT PRIMARY KEY', { name: 'Alice' }, 42, 'id', 42],
             ['', { name: 'Alice' }, 42, 'id', 42],
             ['key INT PRIMARY KEY DEFAULT 7', { name: 'Alice' }, 0, 'key', 7],
@@ -94,6 +94,7 @@ async function baselineProof() {
                 assert(!schemas['Item.Create'].required?.includes(key));
                 assert(!Object.hasOwn(schemas['Item.Update'].properties, key));
                 assert.equal(schemas['Item.CreateResult'].properties[key].nullable, auto ? false : true);
+                if (auto) for (const role of ['Create', 'CreateResult', 'Read']) assert.equal(schemas['Item.' + role].properties[key].minimum, 0);
             } else assert(!Object.hasOwn(schemas['Item.Create'].properties, key));
             assert.equal(doc.paths['/items'].post.responses['201'].content['application/json'].schema.$ref, '#/components/schemas/Item.CreateResponse');
             const app = express(); app.use(express.json()); app.use('/items', router);
@@ -118,6 +119,35 @@ async function baselineProof() {
         const required = runtime('ENTITY Item id INT PRIMARY KEY REQUIRED name STRING', 'id', 42);
         assert.equal((await invoke(required, 'create', { id: null })).code, 400);
         assert.equal(required.queries.length, 0);
+    });
+    await test('ff3dbde accepts negative auto INT input; corrected HTTP rejects before model and DB while other INT negatives remain legal', async () => {
+        const source = 'ENTITY Item id INT PRIMARY KEY name STRING amount INT';
+        const old = require('./v1-hardening-helpers').baselineModule('src/codegen/codegen.js', 'ff3dbde10ad07ca52b60eccb8828fb6d33a9c54c');
+        const baseline = runtime(source, 'id', -5, old);
+        const accepted = await invoke(baseline, 'create', { id: -5, name: 'Alice' });
+        assert.equal(accepted.code, 201); assert.equal(accepted.body.data.id, -5);
+        assert.equal(baseline.modelCalls.length, 1); assert.equal(baseline.queries.length, 1);
+        for (const declaration of ['id INT PRIMARY KEY', 'code INT PRIMARY KEY', '__proto__ INT PRIMARY KEY']) {
+            const key = declaration.split(' ')[0], r = runtime(`ENTITY Item ${declaration} name STRING amount INT`, key, 42);
+            const router = load(content(r.files, 'routes/itemRoutes.js'), name => name === 'express' ? express : r.controller);
+            const app = express(); app.use(express.json()); app.use('/items', router);
+            const server = app.listen(0, '127.0.0.1'); await new Promise(resolve => server.once('listening', resolve));
+            try {
+                const response = await fetch('http://127.0.0.1:' + server.address().port + '/items', {
+                    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ [key]: -5, name: 'Alice' }) }); requests++;
+                assert.equal(response.status, 400);
+                assert.deepEqual(await response.json(), { success: false, error: `Field '${key}' must be zero or a positive integer.` });
+                assert.equal(r.modelCalls.length, 0); assert.equal(r.queries.length, 0);
+                assert.equal(r.controller.validateItem({ [key]: -0, amount: -5 }, 'create'), null);
+                assert.equal(r.controller.validateItem({ [key]: '0' }, 'create'), `Field '${key}' must be an integer.`);
+                assert.equal(r.controller.validateItem({ [key]: -0.5 }, 'create'), `Field '${key}' must be an integer.`);
+                assert.equal(r.controller.validateItem({ [key]: -5 }, 'update'), `Field '${key}' is immutable.`);
+            } finally { await new Promise(resolve => server.close(resolve)); }
+        }
+        const defaults = runtime('ENTITY Item id INT PRIMARY KEY DEFAULT -5 name STRING amount INT', 'id', -5);
+        const res = await invoke(defaults, 'create', { id: -9, amount: -3 });
+        assert.equal(res.code, 201); assert.equal(res.body.data.id, -9); assert.equal(res.body.data.amount, -3);
+        assert.equal((await invoke(defaults, 'create', {})).body.data.id, -5);
     });
     await test('all eight create identity classes resolve actual logical keys without input mutation or reread', async () => {
         const cases = [

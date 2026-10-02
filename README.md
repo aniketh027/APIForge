@@ -219,6 +219,12 @@ For explicit auto-generated INT keys only, supplied null or numeric zero uses
 the actual insertId: generated values replace the input, and insertId zero
 preserves stored zero under NO_AUTO_VALUE_ON_ZERO. Supplied nonzero keys and
 defaulted INT/STRING key precedence remain unchanged.
+An explicit INT PRIMARY KEY without DEFAULT is AUTO_INCREMENT. The generated
+API rejects negative supplied keys with HTTP 400 before model/DB access; positive
+safe integers, zero, omission and optional null remain supported. Ordinary INT
+fields and INT keys WITH DEFAULT retain negative values. MIN/MAX on an INT key
+without DEFAULT fails SEM037 because MySQL CHECK constraints cannot reference
+AUTO_INCREMENT columns; bounded keys WITH DEFAULT remain supported.
 PUT rejects any explicit key property with 400 before model access, even the same
 value or null; identity comes from URL `:id`. OpenAPI uses distinct Create/Update/Read operation roles; Update omits the immutable
 key and optional inputs are nullable. Generated POST/PUT DB errors

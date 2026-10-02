@@ -299,7 +299,7 @@ access; it is generated read identity, not a source-declared writable field.
 Create identity is resolved once in the generated model, in this order:
 
 1. A supplied own source-declared primary-key value in sanitized POST data wins,
-   including an ordinary nonzero explicit INT AUTO_INCREMENT value supplied by
+   including a positive explicit INT AUTO_INCREMENT value supplied by
    the caller. For an explicit auto-generated INT key, supplied null or numeric
    zero instead resolves from the actual result.insertId: 42 returns 42; a
    header of zero preserves zero stored under NO_AUTO_VALUE_ON_ZERO.
@@ -316,6 +316,20 @@ reload other database defaults. Optional null validation remains unchanged;
 Create accepts nullable non-REQUIRED keys, while CreateResult's explicit
 auto-generated key is nonnullable after successful identity resolution. Native
 MySQL persistence and SQL modes require separate live database verification.
+
+An explicit INT PRIMARY KEY without DEFAULT becomes AUTO_INCREMENT. Its generated
+POST contract accepts omitted keys, optional null under existing REQUIRED rules,
+numeric zero and positive safe integers. Negative supplied keys return HTTP 400
+`Field '<key>' must be zero or a positive integer.` before model/DB access.
+Ordinary INT fields and explicit INT keys WITH DEFAULT retain negative values.
+Operation Create/CreateResult/Read schemas use minimum 0 for explicit auto keys;
+CreateResult remains nonnullable, and Update omits immutable keys.
+
+MIN/MAX on an explicit INT PRIMARY KEY without DEFAULT fails SEM037 target
+preflight: MySQL forbids CHECK constraints referencing AUTO_INCREMENT columns.
+The diagnostic points to the first MIN/MAX modifier; MIN plus MAX gives one
+target error. No CHECK is silently dropped. Ordinary numeric bounds, bounded INT
+keys WITH DEFAULT and STRING key length bounds remain supported.
 
 PUT is partial and takes resource identity from the URL :id. Source-declared
 primary-key fields are immutable: supplying the field, even with the same value,
@@ -929,6 +943,9 @@ than one semantic diagnostic.
 | unsafe-int-literal | `ENTITY Item ↵ value INT DEFAULT 9007199254740993` | `SEM035` |
 | enum-trailing-space | `ENTITY Item ↵ value ENUM("a ")` | `SEM036` |
 | mysql-varchar-capacity | `ENTITY Item ↵ value STRING MAX_LENGTH 100000` | `SEM037` |
+| auto-key-min | `ENTITY Item ↵ id INT PRIMARY KEY MIN 1 ↵ name STRING` | `SEM037` |
+| auto-key-max | `ENTITY Item ↵ id INT PRIMARY KEY MAX 100 ↵ name STRING` | `SEM037` |
+| auto-key-both | `ENTITY Item ↵ id INT PRIMARY KEY MIN 1 MAX 100 ↵ name STRING` | `SEM037` |
 | enum-nonstring-default | `ENTITY Item ↵ value ENUM("a") DEFAULT TRUE` | `SEM021` |
 | enum-key | `ENTITY Item ↵ value ENUM("a") PRIMARY KEY` | `SEM011` |
 | enum-numeric-bound | `ENTITY Item ↵ value ENUM("a") MIN 1` | `SEM015` |

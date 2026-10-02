@@ -2,6 +2,8 @@ const assert = require('assert/strict');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const express = require('express');
+const { spawnSync } = require('child_process');
 const { analyze, compile, baselineModule, content, syntax } = require('./v1-hardening-helpers');
 const oldSemantic = baselineModule('src/semantic/analyzer.js'), oldGenerator = baselineModule('src/codegen/codegen.js');
 const Codegen = require('../src/codegen/codegen');
@@ -18,6 +20,47 @@ function decode(literal) {
     return result;
 }
 (async () => {
+    await test('ff3dbde permits invalid auto INT CHECKs; one located SEM037 rejects MIN/MAX before IR/output and direct IR writes', async () => {
+        const revision = 'ff3dbde10ad07ca52b60eccb8828fb6d33a9c54c';
+        const oldTarget = baselineModule('src/utils/mysql-target.js', revision), generator = baselineModule('src/codegen/codegen.js', revision);
+        const oldDiagnostics = baselineModule('src/utils/diagnostics.js', revision), diagnostics = require('../src/utils/diagnostics');
+        assert.deepEqual(diagnostics.CODES, oldDiagnostics.CODES); assert.deepEqual(diagnostics.WARNING_CODES, oldDiagnostics.WARNING_CODES);
+        assert.equal(Object.values(diagnostics.CODES).flatMap(Object.values).length, 66);
+        const app = express(); app.use(express.json()); app.use('/api', require('../src/api/compiler-api'));
+        const server = app.listen(0, '127.0.0.1'); await new Promise(resolve => server.once('listening', resolve));
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'apiforge-auto-check-')), previous = process.cwd();
+        try {
+            for (const bounds of ['MIN 1', 'MAX 100', 'MIN 1 MAX 100', 'MAX 100 MIN 1']) {
+                const source = `ENTITY Item\nid INT PRIMARY KEY ${bounds}\nname STRING`, result = analyze(source);
+                assert.equal(oldTarget.targetIssues(result.ast.entities).length, 0);
+                const ir = require('../src/ir/generator').generate(result.ast);
+                const sql = generator.generateSQL(ir); assert(/AUTO_INCREMENT.*CHECK/.test(sql));
+                assert.equal(result.semantic.valid, false);
+                assert.deepEqual(result.semantic.diagnostics.map(d => d.code), ['SEM037']);
+                const d = result.semantic.diagnostics[0];
+                const first = bounds.split(' ')[0]; assert.equal(d.line, 2); assert.equal(d.column, source.split('\n')[1].indexOf(first) + 1);
+                assert(d.endColumn > d.column); assert(/AUTO_INCREMENT/.test(d.message)); assert(/DEFAULT/.test(d.hint));
+                const response = await fetch('http://127.0.0.1:' + server.address().port + '/api/compile', {
+                    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ source }) });
+                const body = await response.json(); assert.equal(response.status, 422); assert.equal(body.diagnostic.code, 'SEM037');
+                for (const phase of ['ir', 'optimizer', 'codegen']) assert.equal(body.phaseStates[phase], 'skipped');
+                assert.equal(body.generatedFiles, undefined);
+                fs.writeFileSync(path.join(dir, 'bad.apiforge'), source);
+                const cli = spawnSync(process.execPath, [path.resolve(__dirname, '../index.js'), 'bad.apiforge'], { cwd: dir, encoding: 'utf8', windowsHide: true });
+                assert.equal(cli.status, 1); assert(!fs.existsSync(path.join(dir, 'output')));
+                assert.throws(() => require('../src/ir/generator').generate(result.ast, result.semantic), /semantic/i);
+                process.chdir(dir);
+                assert.throws(() => Codegen.generate(ir, true), /preflight.*AUTO_INCREMENT/); assert(!fs.existsSync(path.join(dir, 'output')));
+                process.chdir(previous);
+            }
+            for (const source of ['ENTITY Item id INT PRIMARY KEY DEFAULT -5 MIN -10 MAX 100 name STRING',
+                'ENTITY Item amount INT MIN -10 MAX 100', 'ENTITY Item code STRING PRIMARY KEY MIN_LENGTH 1 MAX_LENGTH 100',
+                'ENTITY Item id INT PRIMARY KEY DEFAULT 0 MIN -5 MAX 100']) {
+                const c = compile(source); syntax(c.files);
+                assert.equal(content(c.files, 'database/schema.sql'), generator.generateSQL(c.optimized));
+            }
+        } finally { process.chdir(previous); await new Promise(resolve => server.close(resolve)); fs.rmSync(dir, { recursive: true, force: true }); }
+    });
     await test('one SQL literal authority preserves STRING and ENUM apostrophes/backslashes/Unicode/empty values', () => {
         for (const value of ['', "O'Reilly", 'C:\\new', "C:\\O'Reilly", '😀漢字', '\\', '\\n\\t']) {
             const current = Codegen.formatSQLLiteral({ type: 'STRING', value });

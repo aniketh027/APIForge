@@ -69,6 +69,13 @@ Codegen emits seven fixed files plus three files per entity. The generated `pack
 
 ## Compiler HTTP status conventions
 
+Explicit auto-generated INT PKs reject negative POST values with 400 before
+model/DB access; omitted/optional-null/zero/positive safe integers remain accepted.
+Ordinary INT and INT DEFAULT keys retain negative values. MIN/MAX on an INT PK
+without DEFAULT fails SEM037 at the first bound before IR/codegen: MySQL CHECK
+cannot reference AUTO_INCREMENT. Create/CreateResult/Read use minimum0 for the
+explicit auto key; Create input nullability and PUT immutability are unchanged.
+
 `POST /api/compile` returns:
 
 | Condition | Status |

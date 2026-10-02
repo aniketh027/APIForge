@@ -16,7 +16,7 @@ function projectHardeningChanges(files, source) {
                 .replace(/return normalizeRow\(response, \[[^\n]*?\]\);/g, 'return response;');
             assert.equal(strip(file.content), strip(previous.content), file.path);
         } else if (file.path.startsWith('controllers/')) {
-            assert.equal(file.content.replaceAll("error: 'Unable to complete request.'", 'error: error.message'), previous.content, file.path);
+            assert.equal(file.content.replace("                if (operation === 'create' && field.name === PRIMARY_KEY.name && value < 0) return label + ' must be zero or a positive integer.';\n", '').replaceAll("error: 'Unable to complete request.'", 'error: error.message'), previous.content, file.path);
         } else if (file.path === 'swagger.json') {
             const current = JSON.parse(file.content), original = JSON.parse(previous.content);
             assert.deepEqual(Object.keys(current.paths), Object.keys(original.paths));
@@ -36,7 +36,7 @@ function projectHardeningChanges(files, source) {
             assert.deepEqual(current.engines, { node: '>=18' }); delete current.engines;
             assert.deepEqual(current, original);
         } else if (file.path === 'README.md') {
-            assert.equal(file.content.replace('For explicit auto-generated INT keys, supplied NULL or numeric zero resolves from the actual insertId instead: generated values are returned, while insertId zero preserves stored zero under NO_AUTO_VALUE_ON_ZERO. ', '').replace(/## Supported target\n[^]*?(?=## Setup)/, '').replace('OpenAPI uses Entity.Create/Update/Read roles and response envelopes. Update omits immutable keys; optional inputs are nullable; synthetic FK columns are readOnly. Declared BOOLEAN rows return booleans on source and target reads.',
+            assert.equal(file.content.replace('Explicit INT PRIMARY KEY without DEFAULT is AUTO_INCREMENT: POST permits omission, optional null, zero and positive safe integers; negative supplied keys return HTTP 400 before model/DB access. Ordinary INT and non-auto INT keys retain negative values. MIN/MAX on an INT key without DEFAULT fails compiler target preflight with SEM037 because MySQL CHECK constraints cannot reference AUTO_INCREMENT columns. INT DEFAULT keys with valid bounds remain supported.\n\n', '').replace('For explicit auto-generated INT keys, supplied NULL or numeric zero resolves from the actual insertId instead: generated values are returned, while insertId zero preserves stored zero under NO_AUTO_VALUE_ON_ZERO. ', '').replace(/## Supported target\n[^]*?(?=## Setup)/, '').replace('OpenAPI uses Entity.Create/Update/Read roles and response envelopes. Update omits immutable keys; optional inputs are nullable; synthetic FK columns are readOnly. Declared BOOLEAN rows return booleans on source and target reads.',
                 'OpenAPI reuses entity schemas for POST/PUT, so an explicit key may still appear generically despite PUT immutability; partial-update and nullability modeling remain limited.'), previous.content, file.path);
         } else assert.equal(file.content, previous.content, file.path);
         return previous;

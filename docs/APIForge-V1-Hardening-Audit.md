@@ -302,3 +302,83 @@ response after commit; a document cannot embed its own containing commit hash.
 Only origin/apiforge-v1-hardening is pushed. Main stays
 `a0168682254550dc99fa8782f14f2827402852b9`; no merge, force push, topology repair
 or protected staging. Ready for external re-review after verification and push.
+
+## External re-review correction: supported AUTO_INCREMENT value and bound contract
+
+2026-10-02. Re-review at `ff3dbde10ad07ca52b60eccb8828fb6d33a9c54c` confirmed
+the preceding NULL/zero resolver fix and found two adjacent issues. General
+safe-integer validation allowed negative explicit auto INT POST keys; target
+preflight allowed MIN/MAX to generate CHECKs on the AUTO_INCREMENT key.
+[MySQL InnoDB documentation](https://dev.mysql.com/doc/refman/8.0/en/innodb-auto-increment-handling.html)
+defines negative AUTO_INCREMENT assignment as undefined; [CHECK rules](https://dev.mysql.com/doc/refman/8.0/en/create-table-check-constraints.html)
+exclude AUTO_INCREMENT columns. These references establish target restrictions,
+not a claim of live DB verification.
+
+The generated controller now rejects negative safe integers on source-declared
+explicit auto-generated INT keys during POST, after the existing type check:
+`Field '<key>' must be zero or a positive integer.` HTTP400 occurs before model
+or DB access. The accepted domain is omission, null under existing optional-null
+rules, numeric zero and positive safe integers. Nonzero positive supplied keys
+retain precedence; null/zero still use the actual insertId, including header0
+for stored zero under NO_AUTO_VALUE_ON_ZERO. Ordinary INT fields and explicit
+INT PKs WITH DEFAULT retain negative values. PUT immutability and implicit id
+behavior are unchanged. Direct model general write validation is not redesigned.
+The preceding addendum's negative auto-key acceptance expectation is superseded;
+its regression case now checks a non-auto INT DEFAULT key, with a pinned
+ff3dbde negative-auto failure proof retained separately.
+
+Shared MySQL target preflight emits existing SEM037 / MYSQL_TARGET_LIMIT when
+an explicit INT PRIMARY KEY has no DEFAULT and declares MIN and/or MAX.
+The diagnostic explains the unrepresentable CHECK and points to the first
+MIN/MAX modifier including its value; combined MIN/MAX produces one coherent
+target diagnostic. A specific hint suggests removing bounds or declaring an
+explicit DEFAULT for a non-auto key. Semantic rejection precedes IR/codegen;
+direct IR codegen repeats preflight before any disk writes. Bounds are never
+silently removed. Ordinary numeric bounds, valid bounded INT DEFAULT keys and
+STRING PK length bounds remain supported with unchanged SQL.
+
+Operation Create/CreateResult/Read schemas use minimum0 for explicit auto INT
+keys. Create retains existing nullable/REQUIRED behavior, CreateResult remains
+nonnullable, and Update omits the immutable PK. Legacy source-name component
+schemas are unchanged. No syntax, type, parser/IR shape, dependency, route,
+resolver, diagnostic mapping or warning mapping changes.
+
+Corrective proofs and verification:
+
+- Pinned ff3dbde generated controller accepts `{id:-5}`, reaches model/SQL and
+  returns -5; corrected real HTTP tests reject id/code/prototype-sensitive auto
+  key spellings with HTTP400 and zero model/DB calls. General type errors retain
+  precedence; ordinary negative INT and negative INT DEFAULT keys pass.
+- Pinned ff3dbde target checker permits MIN/MAX and its SQL emitter produces
+  AUTO_INCREMENT plus CHECK. MIN, MAX, both and reversed source order now give
+  one located SEM037. Actual compiler HTTP returns422 with IR/optimizer/codegen
+  skipped; CLI exits1 with no output; direct IR generation cannot write output.
+- All 66 diagnostics and WRN001–005 compare exactly with ff3dbde registries.
+- Focused primary-key suite PASS: 11 groups / 67 actual HTTP requests, retaining
+  NULL/zero, positive/omitted identity, reviewed G12/G13, immutability, input
+  preservation and defaulted key coverage.
+- MySQL-target suite PASS: 6 groups. OpenAPI-fidelity PASS: 3 groups / 74 actual
+  HTTP requests. Final-audit PASS: 6 groups, including six-phase compatibility.
+- Final npm test PASS across the complete existing and hardening suites. Frozen
+  fixture JSONs are unchanged; the compatibility projection additionally admits
+  only the exact new negative-key validation line and README paragraph.
+- Guide verifier PASS: 18 valid / 67 invalid, 120 generated JS parses, 85
+  isolated CLI invocations. New MIN/MAX examples assert SEM037.
+- Generated integration PASS on ephemeral port53634, dependency installation,
+  startup/health and process/project/output cleanup verified.
+- All changed JS node --check, generated JS checks and git diff --check PASS.
+  Protected manifest comparison PASS: 36 paths, sizes, SHA256 and creation/
+  modification timestamps unchanged; protected artifacts never staged.
+- Live MySQL remains UNAVAILABLE: APIFORGE_TEST_DB_* credentials absent.
+
+Evidence: `%TEMP%/apiforge-auto-contract-{before,full,guide,integration}.log`.
+Narrow self-review found no unresolved correctness finding in this correction.
+Historical milestone reports remain unchanged. Previous residuals remain as
+documented; this is not a general storage-limit or security certification.
+
+Corrective commit: the single successor to ff3dbde titled
+`fix: enforce supported AUTO_INCREMENT input and bound contract`, containing
+this addendum. Concrete committed local/remote hashes are verified and reported
+after ordinary push to origin/apiforge-v1-hardening. Main remains
+`a0168682254550dc99fa8782f14f2827402852b9`; no merge, main push, force push,
+history repair or protected staging. Ready for final external re-review.
