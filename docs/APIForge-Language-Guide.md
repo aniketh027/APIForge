@@ -286,7 +286,31 @@ never added to required request input. Model fields remain source-declared;
 query/read metadata includes the generated identity. PUT remains a partial update.
 Caller-supplied implicit id is rejected on POST/PUT with HTTP 400 before model
 access; it is generated read identity, not a source-declared writable field.
-The response assembly uses database insertId after spreading submitted data.
+Create identity is resolved once in the generated model, in this order:
+
+1. A supplied own source-declared primary-key value in sanitized POST data wins,
+   including an explicit INT AUTO_INCREMENT value supplied by the caller.
+2. Otherwise a database auto-generated effective key uses result.insertId.
+3. Otherwise an explicit primary key with DEFAULT uses that typed declared value.
+4. Otherwise the database remains authoritative; no response key is invented.
+
+Thus omitted implicit/explicit auto-generated INT keys return insertId, omitted
+INT DEFAULT 7 returns 7, and omitted STRING DEFAULT "seed" returns "seed".
+A supplied explicit STRING key preserves its spelling and value. Resolution
+does not assume the primary key is the first field. The response copies submitted
+fields, then safely defines the resolved own key; it does not mutate input or
+reload other database defaults. Native MySQL modes for caller-supplied
+AUTO_INCREMENT values remain a separate database verification concern.
+
+PUT is partial and takes resource identity from the URL :id. Source-declared
+primary-key fields are immutable: supplying the field, even with the same value,
+null or an invalid type, returns HTTP 400 before model access with
+`Field '<key>' is immutable.` Validation checks body shape, unknown own keys,
+key immutability, then declaration-order presence/null/type/bounds, returning only
+the first error. Implicit id retains its unknown-field rejection. A non-key PUT
+updates and rereads using the original URL key; an empty PUT only rereads it.
+Generated models also reject own effective-key properties before update SQL,
+using the same generated policy and error wording.
 
 Without an explicit PRIMARY KEY, a declared id, Id, ID or iD collides with the
 case-insensitive MySQL column allocation and fails semantic analysis with SEM033
@@ -304,7 +328,10 @@ source spelling as PRIMARY_KEY internally; PRIMARY_KEY is not DSL syntax.
 SQL enforces key uniqueness; OpenAPI does not automatically put the key in its
 required array unless REQUIRED is written and omission cannot be supplied by
 a declared DEFAULT or auto-generated key. Explicit source-declared keys remain
-accepted on POST and PUT; mutable-key behavior remains tracked separately (G13).
+accepted on POST; submitting one on PUT returns HTTP 400 because keys are immutable.
+PRIMARY KEY without REQUIRED, DEFAULT or generation does not itself require
+presence on POST. An omitted non-REQUIRED STRING key may still reach and fail at
+the database; validation does not invent a key or perform a uniqueness precheck.
 
 ### REQUIRED
 
@@ -341,8 +368,11 @@ a string, and ENUM a string member.
 
 Defaults emit SQL DEFAULT and OpenAPI default. Express does not insert
 default values into request bodies or reload the inserted record for create
-responses. Omitted insert fields are left to MySQL. Omitted PUT fields retain
-their existing values; PUT does not reset them to defaults.
+responses. Omitted insert fields are left to MySQL; the response resolves an
+omitted defaulted primary key from typed DEFAULT metadata as described in section
+6, while other omitted defaults may remain absent. Omitted PUT fields retain
+their existing values; PUT does not reset them to defaults. STRING SQL-backslash
+default escaping remains the separate G15 target limitation.
 
 ### MIN
 
@@ -657,8 +687,9 @@ For Student, the server mounts directly at /students:
 There is no /api prefix on generated resource routes. Path parameters remain
 named id even for a differently named STRING primary key. Models bind request
 values with mysql2 placeholders/object binding. PUT with an empty payload looks
-up the existing record. Create returns the model's insert result plus submitted
-data rather than re-reading database defaults.
+up the existing record. A supplied explicit primary-key field in PUT returns
+400 before model access. Create returns submitted data plus the resolved key
+described in section 6, without re-reading arbitrary database defaults.
 
 ### Collection GET queries
 
@@ -745,7 +776,9 @@ schemas include implicit integer IDs with readOnly: true, omit SQL-added
 relationship columns, and are reused for PUT despite the runtime's omitted-field
 tolerance. Write schemas reject additional properties and exempt defaulted/generated keys
 from POST presence requirements. PUT still reuses the schema despite partial
-updates; nullable response/write modeling remains incomplete (G11).
+updates and may still expose an explicit key generically despite PUT immutability;
+nullable response/write modeling remains incomplete (G11). No operation-specific
+schema hierarchy was introduced for the primary-key contract.
 
 ## 13. Complete Examples
 

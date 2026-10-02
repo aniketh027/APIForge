@@ -206,11 +206,17 @@ Existing bounds and Unicode code-point lengths still apply.
 
 POST requires REQUIRED fields unless DEFAULT or an auto-increment key supplies
 omission. PUT remains partial, including `{}`. REQUIRED null is rejected;
-optional null is accepted. Defaults remain database-applied. Declared explicit
-primary keys retain their current write acceptance. Generated POST/PUT DB errors
+optional null is accepted. Defaults remain database-applied. POST accepts explicit
+primary keys; create responses prefer a supplied explicit key, then a generated
+insertId, then the declared key DEFAULT, without reloading arbitrary defaults.
+PUT rejects any explicit key property with 400 before model access, even the same
+value or null; identity comes from URL `:id`. Shared OpenAPI schemas may still
+expose the key generically despite PUT immutability. Generated POST/PUT DB errors
 are sanitized 500 responses; UNIQUE remains database-enforced. Generated malformed
 JSON returns sanitized 400; the compiler API retains its 500/INP002 contract.
 See [verification and remaining limits](docs/generated-request-validation-verification.md).
+The [primary-key contract verification](docs/primary-key-contract-verification.md)
+records the G12/G13 correction and retained database/OpenAPI limits.
 
 
 ---

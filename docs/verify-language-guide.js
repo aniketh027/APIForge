@@ -126,6 +126,27 @@ async function main() {
     assert.match(pkSql, /CREATE TABLE FixedRecord \(\n    id INT PRIMARY KEY DEFAULT 1/);
     assert.match(pkSql, /code VARCHAR\(255\) PRIMARY KEY NOT NULL CHECK/);
     assert.equal(JSON.parse(content(pk, 'swagger.json')).paths['/namedrecords/{id}'].parameters[0].schema.type, 'string');
+    for (const [declaration, input, insertId, expected] of [
+        ['name STRING', { name: 'Alice' }, 42, { name: 'Alice', id: 42 }],
+        ['id INT PRIMARY KEY', {}, 42, { id: 42 }],
+        ['id INT PRIMARY KEY', { id: 100 }, 999, { id: 100 }],
+        ['key INT PRIMARY KEY DEFAULT 7', {}, 0, { key: 7 }],
+        ['key STRING PRIMARY KEY', { key: 'aniketh' }, 0, { key: 'aniketh' }],
+        ['key STRING PRIMARY KEY DEFAULT "seed"\nstatus STRING DEFAULT "new"', {}, 0, { key: 'seed' }],
+        ['key STRING PRIMARY KEY DEFAULT "seed"', { key: 'custom' }, 0, { key: 'custom' }]
+    ]) {
+        const result = compile('ENTITY Item\n' + declaration), writes = [];
+        const Model = loadModule(content(result, 'models/Item.js'), () => ({ query: async (sql, values) => {
+            writes.push({ sql, values }); return [{ insertId }];
+        } }));
+        assert.deepEqual(await Model.create(input), expected);
+        assert.equal(writes.length, 1); assert(writes[0].sql.startsWith('INSERT'));
+        const key = Object.keys(expected).find(name => name !== 'name');
+        if (key) {
+            await assert.rejects(Model.update(String(expected[key]), { [key]: expected[key] }), { message: "Field '" + key + "' is immutable." });
+            assert.equal(writes.length, 1, 'direct key update cannot run SQL');
+        }
+    }
 
     const required = loadModule(content(compiled.get('required-unique'), 'controllers/memberController.js'), () => ({}));
     assert.equal(required.validateMember({}), null);
@@ -140,7 +161,10 @@ async function main() {
     assert.equal(studentController.validateStudent({ age: 21.5 }), "Field 'age' must be an integer.");
     assert.equal(studentController.validateStudent({ age: 21, cgpa: 8.5 }), null);
     assert.equal(studentController.validateStudent({ cgpa: '8.5' }), "Field 'cgpa' must be a finite number.");
-    assert.equal(studentController.validateStudent({ id: 1.5 }), "Field 'id' must be an integer.");
+    assert.equal(studentController.validateStudent({ id: 1.5 }), "Field 'id' is immutable.");
+    assert.equal(studentController.validateStudent({ id: 1.5, name: 'Alice' }, 'create'), "Field 'id' must be an integer.");
+    assert.equal(studentController.validateStudent({ id: 1 }), "Field 'id' is immutable.");
+    assert.equal(studentController.validateStudent({ id: null }), "Field 'id' is immutable.");
     assert.equal(studentController.validateStudent({}, 'create'), "Field 'name' is required.");
     assert.equal(studentController.validateStudent({ age: null }), null);
     assert(studentController.validateStudent({ name: 123 }));
