@@ -482,21 +482,21 @@ function generateSQL(ir) {
             relationStatements.push(
                 `-- Relationship: ${sourceEntity.name} ${rel.relationName} ${targetEntity.name} (ONE_TO_MANY)\n` +
                 `ALTER TABLE ${targetTable} ADD COLUMN ${sourceFkColName} ${sourceFkType};\n` +
-                `ALTER TABLE ${targetTable} ADD CONSTRAINT ${fkConstraintName} FOREIGN KEY (${sourceFkColName}) REFERENCES ${sourceTable}(${sourcePkName}) ON DELETE SET NULL;`
+                `ALTER TABLE ${targetTable} ADD CONSTRAINT ${quoteIdentifier(fkConstraintName)} FOREIGN KEY (${sourceFkColName}) REFERENCES ${sourceTable}(${sourcePkName}) ON DELETE SET NULL;`
             );
         } else if (rel.relationType === 'MANY_TO_ONE') {
             const fkConstraintName = `fk_${sourceEntity.name.toLowerCase()}_${targetEntity.name.toLowerCase()}`;
             relationStatements.push(
                 `-- Relationship: ${sourceEntity.name} ${rel.relationName} ${targetEntity.name} (MANY_TO_ONE)\n` +
                 `ALTER TABLE ${sourceTable} ADD COLUMN ${targetFkColName} ${targetFkType};\n` +
-                `ALTER TABLE ${sourceTable} ADD CONSTRAINT ${fkConstraintName} FOREIGN KEY (${targetFkColName}) REFERENCES ${targetTable}(${targetPkName}) ON DELETE SET NULL;`
+                `ALTER TABLE ${sourceTable} ADD CONSTRAINT ${quoteIdentifier(fkConstraintName)} FOREIGN KEY (${targetFkColName}) REFERENCES ${targetTable}(${targetPkName}) ON DELETE SET NULL;`
             );
         } else if (rel.relationType === 'ONE_TO_ONE') {
             const fkConstraintName = `fk_${targetEntity.name.toLowerCase()}_${sourceEntity.name.toLowerCase()}`;
             relationStatements.push(
                 `-- Relationship: ${sourceEntity.name} ${rel.relationName} ${targetEntity.name} (ONE_TO_ONE)\n` +
                 `ALTER TABLE ${targetTable} ADD COLUMN ${sourceFkColName} ${sourceFkType} UNIQUE;\n` +
-                `ALTER TABLE ${targetTable} ADD CONSTRAINT ${fkConstraintName} FOREIGN KEY (${sourceFkColName}) REFERENCES ${sourceTable}(${sourcePkName}) ON DELETE CASCADE;`
+                `ALTER TABLE ${targetTable} ADD CONSTRAINT ${quoteIdentifier(fkConstraintName)} FOREIGN KEY (${sourceFkColName}) REFERENCES ${sourceTable}(${sourcePkName}) ON DELETE CASCADE;`
             );
         }
     });
@@ -902,21 +902,21 @@ function generateModel(entityName, fields, relations = [], entities = []) {
                     `    // Relationship: ${entityName} ${rel.relationName} ${rel.targetEntity} (MANY_TO_MANY)\n` +
                     `    static async get${upperFirst(targetPlural)}(${lowerFirst(entityName)}Id) {\n` +
                     `        const [rows] = await pool.query(\n` +
-                    `            'SELECT t.* FROM ${rel.targetEntity} t JOIN ${junctionTable} j ON t.${targetPk.name} = j.${targetFkCol} WHERE j.${sourceFkCol} = ?',\n` +
+                    `            'SELECT t.* FROM ${quoteIdentifier(rel.targetEntity)} t JOIN ${quoteIdentifier(junctionTable)} j ON t.${quoteIdentifier(targetPk.name)} = j.${quoteIdentifier(targetFkCol)} WHERE j.${quoteIdentifier(sourceFkCol)} = ?',\n` +
                     `            [${lowerFirst(entityName)}Id]\n` +
                     `        );\n` +
                     `        return rows;\n` +
                     `    }\n\n` +
                     `    static async add${upperFirst(rel.targetEntity)}(${lowerFirst(entityName)}Id, ${targetParam}) {\n` +
                     `        await pool.query(\n` +
-                    `            'INSERT INTO ${junctionTable} (${sourceFkCol}, ${targetFkCol}) VALUES (?, ?)',\n` +
+                    `            'INSERT INTO ${quoteIdentifier(junctionTable)} (${quoteIdentifier(sourceFkCol)}, ${quoteIdentifier(targetFkCol)}) VALUES (?, ?)',\n` +
                     `            [${lowerFirst(entityName)}Id, ${targetParam}]\n` +
                     `        );\n` +
                     `        return { ${sourceFkCol}: ${lowerFirst(entityName)}Id, ${targetFkCol}: ${targetParam} };\n` +
                     `    }\n\n` +
                     `    static async remove${upperFirst(rel.targetEntity)}(${lowerFirst(entityName)}Id, ${targetParam}) {\n` +
                     `        const [result] = await pool.query(\n` +
-                    `            'DELETE FROM ${junctionTable} WHERE ${sourceFkCol} = ? AND ${targetFkCol} = ?',\n` +
+                    `            'DELETE FROM ${quoteIdentifier(junctionTable)} WHERE ${quoteIdentifier(sourceFkCol)} = ? AND ${quoteIdentifier(targetFkCol)} = ?',\n` +
                     `            [${lowerFirst(entityName)}Id, ${targetParam}]\n` +
                     `        );\n` +
                     `        return result.affectedRows > 0;\n` +
@@ -928,7 +928,7 @@ function generateModel(entityName, fields, relations = [], entities = []) {
                     `    // Relationship: ${entityName} ${rel.relationName} ${rel.targetEntity} (ONE_TO_MANY)\n` +
                     `    static async get${upperFirst(targetPlural)}(${lowerFirst(entityName)}Id) {\n` +
                     `        const [rows] = await pool.query(\n` +
-                    `            'SELECT * FROM ${rel.targetEntity} WHERE ${sourceFkCol} = ?',\n` +
+                    `            'SELECT * FROM ${quoteIdentifier(rel.targetEntity)} WHERE ${quoteIdentifier(sourceFkCol)} = ?',\n` +
                     `            [${lowerFirst(entityName)}Id]\n` +
                     `        );\n` +
                     `        return rows;\n` +
@@ -940,7 +940,7 @@ function generateModel(entityName, fields, relations = [], entities = []) {
                     `    // Relationship: ${entityName} ${rel.relationName} ${rel.targetEntity} (MANY_TO_ONE)\n` +
                     `    static async get${upperFirst(rel.targetEntity)}(${lowerFirst(entityName)}Id) {\n` +
                     `        const [rows] = await pool.query(\n` +
-                    `            'SELECT t.* FROM ${rel.targetEntity} t JOIN ${entityName} s ON t.${targetPk.name} = s.${targetFkCol} WHERE s.${sourcePk.name} = ?',\n` +
+                    `            'SELECT t.* FROM ${quoteIdentifier(rel.targetEntity)} t JOIN ${quoteIdentifier(entityName)} s ON t.${quoteIdentifier(targetPk.name)} = s.${quoteIdentifier(targetFkCol)} WHERE s.${quoteIdentifier(sourcePk.name)} = ?',\n` +
                     `            [${lowerFirst(entityName)}Id]\n` +
                     `        );\n` +
                     `        return rows.length > 0 ? rows[0] : null;\n` +
@@ -952,7 +952,7 @@ function generateModel(entityName, fields, relations = [], entities = []) {
                     `    // Relationship: ${entityName} ${rel.relationName} ${rel.targetEntity} (ONE_TO_ONE)\n` +
                     `    static async get${upperFirst(rel.targetEntity)}(${lowerFirst(entityName)}Id) {\n` +
                     `        const [rows] = await pool.query(\n` +
-                    `            'SELECT * FROM ${rel.targetEntity} WHERE ${sourceFkCol} = ?',\n` +
+                    `            'SELECT * FROM ${quoteIdentifier(rel.targetEntity)} WHERE ${quoteIdentifier(sourceFkCol)} = ?',\n` +
                     `            [${lowerFirst(entityName)}Id]\n` +
                     `        );\n` +
                     `        return rows.length > 0 ? rows[0] : null;\n` +
@@ -1566,7 +1566,7 @@ function generate(optimizedIR, writeToDisk = true) {
 
     const entities = extractEntitiesFromIR(optimizedIR);
     const relations = extractRelationsFromIR(optimizedIR);
-    const conflicts = require('../utils/target-names').namingConflicts(entities);
+    const conflicts = require('../utils/target-names').namingConflicts(entities, relations);
     if (conflicts.length) throw new Error('Cannot generate target code: ' + conflicts.map(c => `${c.namespace} '${c.name}' collision`).join(', '));
     const entityMap = new Map(entities.map(e => [e.name, e]));
 

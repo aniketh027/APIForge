@@ -6,6 +6,11 @@ source name range. The original 62 error assignments and WRN001–WRN005 remain
 unchanged. A collision fails semantic analysis (HTTP 422, CLI exit 1); later
 phases and artifact generation are skipped.
 
+SEM034 also covers generated relationship FK columns, junction tables, constraint
+names, model/controller helpers and paths. It reports the offending relationship
+name range and the conflicting allocation owner. No additional code is needed
+for the same target-allocation rule.
+
 APIForge exposes errors and non-fatal warnings through one JSON contract, implemented in
 `src/utils/diagnostics.js`. The six compiler phases and DSL rules are unchanged.
 Lexer and parser failures still stop immediately; semantic analysis retains its

@@ -200,7 +200,7 @@ class SemanticAnalyzer {
 
             // Step 2: Check for duplicate entity names
             this.checkDuplicateEntities(ast.entities);
-            for (const conflict of require('../utils/target-names').namingConflicts(ast.entities)) {
+            for (const conflict of require('../utils/target-names').namingConflicts(ast.entities, ast.relations || [])) {
                 this.addError(`${conflict.owner} conflicts with ${conflict.previous} in generated ${conflict.namespace} '${conflict.name}'.`,
                     locate(conflict.node, 'name', conflict.node.nameColumn), 'GENERATED_NAME_COLLISION',
                     'Rename one of the conflicting source constructs; generated names are not silently changed.');

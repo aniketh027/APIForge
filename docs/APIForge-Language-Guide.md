@@ -54,6 +54,11 @@ device model filenames. No suffix or public route rename is applied.
 Prototype-sensitive names such as __proto__, constructor, toString, entities and
 relations remain legal when their generated allocations are distinct. Own-key
 registries preserve them through symbols, the playground and OpenAPI.
+SEM034 also rejects relationship allocations that duplicate FK columns, junction
+tables, constraints, helpers or API paths, including overlaps with declared
+columns/tables and CRUD handlers. Different relation names do not create different
+physical storage or routes for an otherwise identical endpoint pair. SQL identifiers
+use the same quoting authority in DDL and all relationship helpers; values stay bound.
 PascalCase entities and simple field names are conventions, not grammar rules.
 
 These exact uppercase words are reserved:
@@ -532,9 +537,9 @@ do not become source DSL fields or OpenAPI component properties. Apart from
 MANY_TO_MANY association routes, no dedicated linking/unlinking endpoint is
 generated. See section 12 for paths and section 13 for all four forms.
 
-Different relationship names between the same endpoints are semantically valid
-but can duplicate junction tables, FK columns, handler names, routes, or OpenAPI
-paths. The compiler does not diagnose these target collisions.
+Different relationship names must also have distinct generated allocations.
+SEM034 rejects duplicated junction tables, FK columns, handlers, routes or
+OpenAPI paths before IR generation, including overlaps with declared constructs.
 
 ## 10. Defaults and Validation
 
@@ -668,8 +673,8 @@ Controller/router filenames lowercase only the first letter. Resource routes
 lowercase the whole entity name and pluralize: consonant+y becomes ies; endings
 s/ch/sh/x add es; otherwise add s. Examples: Student → students, Category →
 categories, Box → boxes, Person → persons. There is no irregular-noun dictionary.
-Some relationship model SQL interpolates names without the general quoting
-helper, so SQL-reserved names are not uniformly safe for relationship queries.
+All relationship DDL and model queries use the shared identifier-quoting helper;
+request values remain bound separately from SQL identifiers.
 
 The CLI reconciles generator-owned models/controllers/routes/config/database
 directories; root user files such as output/.env are preserved. Generated
@@ -948,7 +953,7 @@ some of those representations. Self-relations are rejected. Duplicate DSL
 declarations are errors, not optimizer deduplication requests.
 
 The compiler does not guarantee that every semantically accepted name/combination
-produces an operational backend. Current target limits include lowercase naming collisions,
-repeated relationship output collisions, inconsistent relationship SQL quoting,
-physical database limits, and incomplete request/response schema enforcement.
+produces an operational backend. Naming/relationship collisions are rejected and
+relationship identifiers quoted consistently. Current target limits include
+physical database limits and incomplete request/response schema enforcement.
 These remaining limits are separate from the implicit-key consistency repair.

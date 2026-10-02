@@ -190,13 +190,14 @@ async function main() {
     assert.equal(relationshipSwagger.paths['/students/{id}/courses'].get.responses['200'].content['application/json'].schema.type, 'array');
     assert.match(content(relationships, 'routes/invoiceRoutes.js'), /router.get\('\/:id\/customer'/);
 
-    // Synthetic-id collision is rejected; unrelated target collisions remain.
+    // Synthetic-id and repeated relationship target allocations are rejected.
     const duplicateId = compile('ENTITY Item\nid STRING');
     assert.deepEqual(duplicateId.diagnostics.map(d => d.code), ['SEM033']);
     assert.equal(duplicateId.files, undefined);
     const duplicatePair = compile('ENTITY A\nid INT PRIMARY KEY\nENTITY B\nid INT PRIMARY KEY\nRELATION A FIRST B MANY_TO_MANY\nRELATION A SECOND B MANY_TO_MANY');
-    assert.equal(duplicatePair.diagnostics.length, 0);
-    assert.equal((content(duplicatePair, 'database/schema.sql').match(/CREATE TABLE A_B/g) || []).length, 2);
+    assert(duplicatePair.diagnostics.length > 0);
+    assert(duplicatePair.diagnostics.every(d => d.code === 'SEM034'));
+    assert.equal(duplicatePair.files, undefined);
     assert.equal(Codegen.pluralize('Person'), 'persons');
     assert.equal(Codegen.pluralize('Category'), 'categories');
     assert.equal(Codegen.pluralize('Box'), 'boxes');

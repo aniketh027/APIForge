@@ -8,12 +8,12 @@ function pluralize(word) {
     return lower + 's';
 }
 
-function namingConflicts(entities) {
+function namingConflicts(entities, relations = []) {
     const allocations = new Map(), conflicts = [];
     const allocate = (namespace, name, node, owner) => {
         const key = namespace + ':' + name.toLowerCase();
         const previous = allocations.get(key);
-        if (previous && previous.node !== node && previous.owner !== owner) conflicts.push({ namespace, name, node, owner, previous: previous.owner });
+        if (previous && previous.owner !== owner) conflicts.push({ namespace, name, node, owner, previous: previous.owner });
         else allocations.set(key, { node, owner });
     };
     for (const entity of entities) {
@@ -28,6 +28,44 @@ function namingConflicts(entities) {
             conflicts.push({ namespace: 'model file', name: entity.name + '.js', node: entity, owner, previous: 'Windows reserved device name' });
         }
         for (const field of entity.fields) allocate('column in ' + entity.name, field.name, field, `field '${entity.name}.${field.name}'`);
+    }
+    const upperFirst = str => str.charAt(0).toUpperCase() + str.slice(1);
+    const key = entity => entity.fields.find(f => f.constraints?.includes('PRIMARY_KEY'))?.name || 'id';
+    const byName = new Map(entities.map(e => [e.name, e]));
+    for (const entity of entities) {
+        for (const name of [`get${upperFirst(pluralize(entity.name))}`, `get${entity.name}ById`, `create${entity.name}`, `update${entity.name}`, `delete${entity.name}`, `validate${entity.name}`]) {
+            allocate('controller in ' + entity.name, name, entity, `CRUD for '${entity.name}'`);
+        }
+    }
+    for (const rel of relations) {
+        const source = byName.get(rel.sourceEntity), target = byName.get(rel.targetEntity);
+        if (!source || !target) continue; // Existing endpoint diagnostics own this error.
+        const owner = `relationship '${rel.relationName || rel.name}'`;
+        const sourceFk = lowerFirst(source.name) + '_' + key(source);
+        const targetFk = lowerFirst(target.name) + '_' + key(target);
+        const many = ['MANY_TO_MANY', 'ONE_TO_MANY'].includes(rel.relationType);
+        const segment = many ? pluralize(target.name) : lowerFirst(target.name);
+        allocate('relationship GET in ' + source.name, segment, rel, owner);
+        const getter = 'get' + upperFirst(many ? pluralize(target.name) : target.name);
+        allocate('controller in ' + source.name, getter, rel, owner);
+        allocate('model helper in ' + source.name, getter, rel, owner);
+        if (rel.relationType === 'MANY_TO_MANY') {
+            const junction = source.name + '_' + target.name;
+            allocate('table', junction, rel, owner);
+            // Distinct endpoint spellings can still compose to the same FK column.
+            allocate('column in ' + junction, sourceFk, rel, owner + ' source');
+            allocate('column in ' + junction, targetFk, rel, owner + ' target');
+            for (const verb of ['add', 'remove']) {
+                allocate('controller in ' + source.name, verb + upperFirst(target.name), rel, owner);
+                allocate('model helper in ' + source.name, verb + upperFirst(target.name), rel, owner);
+            }
+            allocate('association path in ' + source.name, segment, rel, owner);
+        } else {
+            const receiver = rel.relationType === 'MANY_TO_ONE' ? source : target;
+            const referenced = receiver === source ? target : source;
+            allocate('column in ' + receiver.name, receiver === source ? targetFk : sourceFk, rel, owner);
+            allocate('foreign key constraint', `fk_${receiver.name.toLowerCase()}_${referenced.name.toLowerCase()}`, rel, owner);
+        }
     }
     return conflicts;
 }

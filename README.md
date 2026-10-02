@@ -264,6 +264,12 @@ See [verification and compatibility evidence](docs/collection-query-verification
 
 ## 🔗 Relationships
 
+Relationships preserve their existing cardinality and route shapes. SEM034 rejects
+duplicate generated FK/junction/helper/path allocations and conflicts with declared
+columns/tables or CRUD handlers. All four cardinalities quote trusted SQL identifiers
+consistently while keeping request values bound. See
+[relationship verification](docs/relationship-generation-safety-verification.md).
+
 APIForge supports all four cardinalities. Each maps to a specific SQL shape:
 
 | Cardinality | SQL mapping |
