@@ -1,0 +1,237 @@
+{
+  "baselineCommit": "63cfc0c3e070e36a4638e1e2f70b1a93b0ce6bc2",
+  "codes": {
+    "lexer": {
+      "UNEXPECTED_CHARACTER": "LEX001",
+      "INVALID_IDENTIFIER": "LEX002",
+      "UNTERMINATED_STRING": "LEX003",
+      "MALFORMED_NUMBER": "LEX004"
+    },
+    "parser": {
+      "EXPECTED_TOKEN": "PAR001",
+      "MISSING_ENTITY_NAME": "PAR002",
+      "MISSING_SOURCE_ENTITY": "PAR003",
+      "MISSING_RELATION_NAME": "PAR004",
+      "MISSING_TARGET_ENTITY": "PAR005",
+      "MISSING_IDENTIFIER": "PAR006",
+      "EXPECTED_ENTITY_DECLARATION": "PAR007",
+      "MISSING_FIELD_NAME": "PAR008",
+      "INVALID_FIELD_TOKEN": "PAR009",
+      "MISSING_RELATION_TYPE": "PAR010",
+      "INVALID_RELATION_TYPE": "PAR011",
+      "MISSING_DATATYPE": "PAR012",
+      "INVALID_DATATYPE": "PAR013",
+      "MISSING_KEY_AFTER_PRIMARY": "PAR014",
+      "STANDALONE_KEY": "PAR015",
+      "MISSING_MIN_VALUE": "PAR016",
+      "MISSING_MAX_VALUE": "PAR017",
+      "MISSING_MIN_LENGTH_VALUE": "PAR018",
+      "MISSING_MAX_LENGTH_VALUE": "PAR019",
+      "MISSING_DEFAULT_VALUE": "PAR020",
+      "UNKNOWN_MODIFIER": "PAR021",
+      "EXPECTED_ENUM_DELIMITER": "PAR022"
+    },
+    "semantic": {
+      "MISSING_ENTITY_DECLARATION": "SEM001",
+      "DUPLICATE_ENTITY": "SEM002",
+      "RESERVED_ENTITY_NAME": "SEM003",
+      "EMPTY_ENTITY": "SEM004",
+      "DUPLICATE_FIELD": "SEM005",
+      "RESERVED_FIELD_NAME": "SEM006",
+      "INVALID_DATATYPE": "SEM007",
+      "INVALID_CONSTRAINT": "SEM008",
+      "DUPLICATE_CONSTRAINT": "SEM009",
+      "MULTIPLE_PRIMARY_KEYS": "SEM010",
+      "INVALID_PRIMARY_KEY_TYPE": "SEM011",
+      "DUPLICATE_VALIDATION": "SEM012",
+      "INVALID_NUMERIC_BOUND": "SEM013",
+      "INVALID_LENGTH_BOUND": "SEM014",
+      "NUMERIC_MODIFIER_TYPE_MISMATCH": "SEM015",
+      "LENGTH_MODIFIER_TYPE_MISMATCH": "SEM016",
+      "MIN_EXCEEDS_MAX": "SEM017",
+      "MIN_LENGTH_EXCEEDS_MAX_LENGTH": "SEM018",
+      "NON_INTEGER_BOUND": "SEM019",
+      "DUPLICATE_DEFAULT": "SEM020",
+      "INVALID_DEFAULT_TYPE": "SEM021",
+      "DEFAULT_OUT_OF_RANGE": "SEM022",
+      "DEFAULT_LENGTH_OUT_OF_RANGE": "SEM023",
+      "DUPLICATE_RELATION": "SEM024",
+      "RESERVED_RELATION_NAME": "SEM025",
+      "INVALID_RELATION_TYPE": "SEM026",
+      "SELF_RELATION": "SEM027",
+      "UNKNOWN_SOURCE_ENTITY": "SEM028",
+      "UNKNOWN_TARGET_ENTITY": "SEM029",
+      "INVALID_ENUM_VALUES": "SEM030",
+      "DUPLICATE_ENUM_VALUE": "SEM031",
+      "INVALID_ENUM_DEFAULT": "SEM032",
+      "IMPLICIT_PRIMARY_KEY_COLLISION": "SEM033"
+    },
+    "input": {
+      "INVALID_SOURCE": "INP001",
+      "MALFORMED_JSON": "INP002"
+    },
+    "internal": {
+      "FAILURE": "INT001"
+    }
+  },
+  "warnings": {
+    "semantic": {
+      "IMPLICIT_PRIMARY_KEY": "WRN001"
+    },
+    "optimizer": {
+      "CONFLICTING_FIELD": "WRN002",
+      "CONFLICTING_RELATION_TYPE": "WRN003",
+      "CONFLICTING_RELATION_ENDPOINTS": "WRN004",
+      "INVALID_IR": "WRN005"
+    }
+  },
+  "programs": {
+    "implicit": {
+      "source": "ENTITY Item\nname STRING",
+      "phases": "8bcfcababc576b6a0d365a1d6adf0f26609acd0b1fee2ba1774467bcd059c8c5",
+      "files": {
+        "database/schema.sql": "ba4ff80da0a0a9c99cb15cc61a251cc691d3220a27930cbc3605b327e5030b9f",
+        "config/db.js": "eb0676c33db434bd7361c6a6f6b89855f34432bbb999fe14324fbb0d66109569",
+        ".env.example": "bfcc5a50359e88d9127a837568cfe7a19657f52ef65614b16e95556aa54dba07",
+        "package.json": "a53032414a3b6f14d05096213a0e4308ee7ac5ec5db0c31f5b941b90945e8894",
+        "README.md": "3dccd7a3720a497d184e4fcf742794344d02cab77c12c0a9246d966e8befb704",
+        "models/Item.js": "ede37de4f6922518636672c15cac955dfa1a773836da4943ec9c3cd1f29e5fe1",
+        "controllers/itemController.js": "d80358ec654cd1e7add6c15c30506dfc8ca12f5cc94c262069ac88abd087102e",
+        "routes/itemRoutes.js": "663f1bdcfc36733e724a19d79a2a41e0c2da92f7850ea6803c94a0d6f85180b9",
+        "server.js": "be37cfca035c69fa4a036a37032e5f70d287fad7fa0e5a187a4343d9c9402a8c",
+        "swagger.json": "9b8014cfba7b1d05d222c02652d6b7b111bac288b2dbb1f0b6ee64bfdea2e12c"
+      }
+    },
+    "auto": {
+      "source": "ENTITY Item\nid INT PRIMARY KEY\nname STRING",
+      "phases": "652aff03d282b6947dc2adb8613d33cd04db6a4b0cdb0fc1ea0feca6febe470c",
+      "files": {
+        "database/schema.sql": "ba4ff80da0a0a9c99cb15cc61a251cc691d3220a27930cbc3605b327e5030b9f",
+        "config/db.js": "eb0676c33db434bd7361c6a6f6b89855f34432bbb999fe14324fbb0d66109569",
+        ".env.example": "bfcc5a50359e88d9127a837568cfe7a19657f52ef65614b16e95556aa54dba07",
+        "package.json": "a53032414a3b6f14d05096213a0e4308ee7ac5ec5db0c31f5b941b90945e8894",
+        "README.md": "3dccd7a3720a497d184e4fcf742794344d02cab77c12c0a9246d966e8befb704",
+        "models/Item.js": "88dc6d9be2ff5d1bcdc7a534fc786e5dcec8e2135f7677006aa6e1af3faa4c0f",
+        "controllers/itemController.js": "86eb80888d22827cd1e124724a2324a66f6c9d06ff081a4b083fdc259b16e324",
+        "routes/itemRoutes.js": "663f1bdcfc36733e724a19d79a2a41e0c2da92f7850ea6803c94a0d6f85180b9",
+        "server.js": "be37cfca035c69fa4a036a37032e5f70d287fad7fa0e5a187a4343d9c9402a8c",
+        "swagger.json": "d749c0f855aacc3d9650e917e255a9825aff3a2f454378026e6f171e211214a4"
+      }
+    },
+    "intDefault": {
+      "source": "ENTITY Item\nkey INT PRIMARY KEY DEFAULT 7\nname STRING",
+      "phases": "2fa45bc123dd0681295087725c8d95ae7fd34cfa1a8b63b9b0212bd50da531f7",
+      "files": {
+        "database/schema.sql": "0b69da00b20eb05e1ae0fbb6454b667a9b92574606c24ab20133e7cb1596c1f8",
+        "config/db.js": "eb0676c33db434bd7361c6a6f6b89855f34432bbb999fe14324fbb0d66109569",
+        ".env.example": "bfcc5a50359e88d9127a837568cfe7a19657f52ef65614b16e95556aa54dba07",
+        "package.json": "a53032414a3b6f14d05096213a0e4308ee7ac5ec5db0c31f5b941b90945e8894",
+        "README.md": "3dccd7a3720a497d184e4fcf742794344d02cab77c12c0a9246d966e8befb704",
+        "models/Item.js": "b04d7ef036301405f4ddf50b549c35e7447a81110b667ed93ac6ac1102ccc507",
+        "controllers/itemController.js": "74f4db411d3abbdb66feba1017bdbe168525eefd5a0deb35b5d8e58835ee9363",
+        "routes/itemRoutes.js": "663f1bdcfc36733e724a19d79a2a41e0c2da92f7850ea6803c94a0d6f85180b9",
+        "server.js": "be37cfca035c69fa4a036a37032e5f70d287fad7fa0e5a187a4343d9c9402a8c",
+        "swagger.json": "29ffb57a6c3b7ba9183401314ac912dd4b40b96c254f9e8b6bf9d90e97370ffb"
+      }
+    },
+    "string": {
+      "source": "ENTITY Item\nusername STRING PRIMARY KEY\nname STRING",
+      "phases": "8f3febcd8fa73f1fa71d5fb302a5f918feac820d23d6457ea1ad1ae010ff6862",
+      "files": {
+        "database/schema.sql": "c351eb0ca86a5369e6e8e7be7e52a8d5713f33dbfe66378ca19c9861eae5366a",
+        "config/db.js": "eb0676c33db434bd7361c6a6f6b89855f34432bbb999fe14324fbb0d66109569",
+        ".env.example": "bfcc5a50359e88d9127a837568cfe7a19657f52ef65614b16e95556aa54dba07",
+        "package.json": "a53032414a3b6f14d05096213a0e4308ee7ac5ec5db0c31f5b941b90945e8894",
+        "README.md": "3dccd7a3720a497d184e4fcf742794344d02cab77c12c0a9246d966e8befb704",
+        "models/Item.js": "af19e58e7adbecebb1f465c159effc7a319f9393728c0518de9a66911728c4dd",
+        "controllers/itemController.js": "428eddea072b353a4448a163c0c92bbf3b660e2bdbd8276fe80cb7fa7e282923",
+        "routes/itemRoutes.js": "663f1bdcfc36733e724a19d79a2a41e0c2da92f7850ea6803c94a0d6f85180b9",
+        "server.js": "be37cfca035c69fa4a036a37032e5f70d287fad7fa0e5a187a4343d9c9402a8c",
+        "swagger.json": "14ef807deeb757e115bef2a4c2f7c52a4f7b7d083a6444db4267e4c22c02c835"
+      }
+    },
+    "stringDefault": {
+      "source": "ENTITY Item\nkey STRING PRIMARY KEY DEFAULT \"seed\"\nstatus STRING DEFAULT \"new\"",
+      "phases": "457732ea1835f25c518c1d68469fd2d3758128e6c046ba09d2457be0ee0e8d3e",
+      "files": {
+        "database/schema.sql": "3d406326d9978e554f8511a86839d78e41474931433698768fd573af01ae076a",
+        "config/db.js": "eb0676c33db434bd7361c6a6f6b89855f34432bbb999fe14324fbb0d66109569",
+        ".env.example": "bfcc5a50359e88d9127a837568cfe7a19657f52ef65614b16e95556aa54dba07",
+        "package.json": "a53032414a3b6f14d05096213a0e4308ee7ac5ec5db0c31f5b941b90945e8894",
+        "README.md": "3dccd7a3720a497d184e4fcf742794344d02cab77c12c0a9246d966e8befb704",
+        "models/Item.js": "db39fe1dc048e237f32c9fd40c23ff022901f1d8d43699954d779bd14bf878ee",
+        "controllers/itemController.js": "23fa5a899a882e5fd3d30989f3bcc2002e90dd7f676dc9ac64b26854f87f0d6f",
+        "routes/itemRoutes.js": "663f1bdcfc36733e724a19d79a2a41e0c2da92f7850ea6803c94a0d6f85180b9",
+        "server.js": "be37cfca035c69fa4a036a37032e5f70d287fad7fa0e5a187a4343d9c9402a8c",
+        "swagger.json": "d086314220bdab35010e6909780591d73fcf1a1716e4df6bb082c47b7bcd8c96"
+      }
+    },
+    "nonFirst": {
+      "source": "ENTITY Item\nname STRING\ncode STRING PRIMARY KEY\nvalue INT",
+      "phases": "b1de15b9b49b01ff39d41126bfc44e20853d16c7afb83199b120289edc8cefe5",
+      "files": {
+        "database/schema.sql": "c8040187784c8aa1d6fa4734527c2214ba58df15e05fd1f71e30a7b5c9e112b1",
+        "config/db.js": "eb0676c33db434bd7361c6a6f6b89855f34432bbb999fe14324fbb0d66109569",
+        ".env.example": "bfcc5a50359e88d9127a837568cfe7a19657f52ef65614b16e95556aa54dba07",
+        "package.json": "a53032414a3b6f14d05096213a0e4308ee7ac5ec5db0c31f5b941b90945e8894",
+        "README.md": "3dccd7a3720a497d184e4fcf742794344d02cab77c12c0a9246d966e8befb704",
+        "models/Item.js": "a4a04a4c12030e9c5e95dd3630768c9ad3be629835005a1337627256590103d6",
+        "controllers/itemController.js": "ea1cc5b0c5f6a317b1fd23b004f4dfbbc8250cc22e871ed29b033a665b6d0f69",
+        "routes/itemRoutes.js": "663f1bdcfc36733e724a19d79a2a41e0c2da92f7850ea6803c94a0d6f85180b9",
+        "server.js": "be37cfca035c69fa4a036a37032e5f70d287fad7fa0e5a187a4343d9c9402a8c",
+        "swagger.json": "635744e3ff23cb8b247ebabab0b0fdc2db133166aa7bd04adf98177492f529d1"
+      }
+    },
+    "enum": {
+      "source": "ENTITY Item\nid INT PRIMARY KEY\nstatus ENUM(\"active\", \"closed\") DEFAULT \"active\"",
+      "phases": "be37a31aca2733f6ff80a537db53c84917f019e9e96ea727b65ca90db2603eff",
+      "files": {
+        "database/schema.sql": "539a40673da8a0bbf24294fdb51491c790785364aed6f60cbf0222f9eb5a40eb",
+        "config/db.js": "eb0676c33db434bd7361c6a6f6b89855f34432bbb999fe14324fbb0d66109569",
+        ".env.example": "bfcc5a50359e88d9127a837568cfe7a19657f52ef65614b16e95556aa54dba07",
+        "package.json": "a53032414a3b6f14d05096213a0e4308ee7ac5ec5db0c31f5b941b90945e8894",
+        "README.md": "3dccd7a3720a497d184e4fcf742794344d02cab77c12c0a9246d966e8befb704",
+        "models/Item.js": "e3be116366faccfb16ea4298316d2c76aac51c55bc62d1a0a8c4427da4a8d302",
+        "controllers/itemController.js": "233b2262460ee8993ec60da5b6d7e86b949e6ccce54af3984a155a59532434bb",
+        "routes/itemRoutes.js": "663f1bdcfc36733e724a19d79a2a41e0c2da92f7850ea6803c94a0d6f85180b9",
+        "server.js": "be37cfca035c69fa4a036a37032e5f70d287fad7fa0e5a187a4343d9c9402a8c",
+        "swagger.json": "654ab0e2d7e7288d0e59e818ba60389f79234c27c45062f1e9002f9ec3591058"
+      }
+    },
+    "collection": {
+      "source": "ENTITY Item\nid INT PRIMARY KEY\nname STRING\nscore FLOAT\nactive BOOLEAN",
+      "phases": "c8273e5f508303a0110bae7d5dc4a4c48824ef0842f90c069b002cadf304066d",
+      "files": {
+        "database/schema.sql": "72e7faad1604b4406852f1d9262cf79b54fbf37b017337eb323039ec52add9e3",
+        "config/db.js": "eb0676c33db434bd7361c6a6f6b89855f34432bbb999fe14324fbb0d66109569",
+        ".env.example": "bfcc5a50359e88d9127a837568cfe7a19657f52ef65614b16e95556aa54dba07",
+        "package.json": "a53032414a3b6f14d05096213a0e4308ee7ac5ec5db0c31f5b941b90945e8894",
+        "README.md": "3dccd7a3720a497d184e4fcf742794344d02cab77c12c0a9246d966e8befb704",
+        "models/Item.js": "c8e56ccb5f2a31d36d0488a187fa1dbc1fe7b1147479b6572c0f49b678504709",
+        "controllers/itemController.js": "c49f025af9cb22fffb8acb02b2b6a4c7436b66010ca49f95c22ec90cf613fb12",
+        "routes/itemRoutes.js": "663f1bdcfc36733e724a19d79a2a41e0c2da92f7850ea6803c94a0d6f85180b9",
+        "server.js": "be37cfca035c69fa4a036a37032e5f70d287fad7fa0e5a187a4343d9c9402a8c",
+        "swagger.json": "29388a9b29f7675c7114cdd67b1f065985cd455429fe10212d00053e09db6584"
+      }
+    },
+    "relationship": {
+      "source": "ENTITY Parent\ncode STRING PRIMARY KEY MAX_LENGTH 400\nENTITY Child\nname STRING\nRELATION Parent OWNS Child ONE_TO_MANY",
+      "phases": "1372b8e89a6c0c88eac343f432c79cbcbfe9bd7aba85809d54ab2425358a3e08",
+      "files": {
+        "database/schema.sql": "4d9491e4b8dd389aee7908df7d55dedb02e3f7210cf972d9006ee2f103faee0c",
+        "config/db.js": "eb0676c33db434bd7361c6a6f6b89855f34432bbb999fe14324fbb0d66109569",
+        ".env.example": "bfcc5a50359e88d9127a837568cfe7a19657f52ef65614b16e95556aa54dba07",
+        "package.json": "a53032414a3b6f14d05096213a0e4308ee7ac5ec5db0c31f5b941b90945e8894",
+        "README.md": "13b7ecf1414559ebdef918787bbe04d556835c71606bd9974819ceec6ee32467",
+        "models/Parent.js": "d15fab7616aaf9f1f823b63f22d11e00e3e98cb12e741263d4c42bad206bb2e0",
+        "controllers/parentController.js": "d684d4a06176505145e95d1a96fdd2095e79c8c5e4beda3461ab16b60a95b755",
+        "routes/parentRoutes.js": "92836465d64ecfa437c7edc18ceaae6c7c9f08c6377b828c4489fe09c2e6430c",
+        "models/Child.js": "f9e1e699642705357694df43edc0df1ee778e6df52331b15b0ed80bd9a3d8ba1",
+        "controllers/childController.js": "ff010a10f0dad7237d17a196291f339be518ac09b503151bcc7bba22e17aaa37",
+        "routes/childRoutes.js": "d5a4a3c1ffe9980cd7e5d49dbf0fcaae5df11ef2ff07a89ed645abd7465944fe",
+        "server.js": "48b69d602a14ac0f32d920f7af36091803e3ff497b79f9ef5f6ab07cdf44033a",
+        "swagger.json": "13a3124e8047d3c3b8b94a6816a28e4e447b1797489c4e15456f6cb1b6290665"
+      }
+    }
+  }
+}

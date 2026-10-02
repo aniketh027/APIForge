@@ -73,14 +73,17 @@ async function listen(app, fn) {
             }
         }
     });
-    await test('required/default/generated key rules, partial PUT and explicit PK compatibility', async () => {
+    await test('required/default/generated key rules, partial PUT and explicit PK POST compatibility/PUT immutability', async () => {
         for (const [key, omittedStatus] of [['id INT PRIMARY KEY REQUIRED', 201], ['id INT PRIMARY KEY REQUIRED DEFAULT 4', 201],
             ['code STRING PRIMARY KEY REQUIRED', 400], ['code STRING PRIMARY KEY REQUIRED DEFAULT "fixed"', 201], ['code STRING PRIMARY KEY', 201]]) {
             const runtime = emitted('ENTITY Item\nname STRING REQUIRED DEFAULT "Anonymous"\n' + key);
             assert.equal((await invoke(runtime, 'POST', {})).code, omittedStatus);
             assert.equal((await invoke(runtime, 'PUT', {})).code, 200);
             const field = key.split(' ')[0], value = key.includes('STRING') ? 'u-1' : 7;
-            for (const method of ['POST', 'PUT']) assert.equal((await invoke(runtime, method, { [field]: value })).code, method === 'POST' ? 201 : 200);
+            assert.equal((await invoke(runtime, 'POST', { [field]: value })).code, 201);
+            const immutable = await invoke(runtime, 'PUT', { [field]: value });
+            assert.equal(immutable.code, 400);
+            assert.equal(immutable.body.error, "Field '" + field + "' is immutable.");
             if (field === 'id') for (const method of ['POST', 'PUT']) assert.equal((await invoke(runtime, method, { id: 1.5 })).code, 400);
         }
         const runtime = emitted('ENTITY Item\nid INT PRIMARY KEY\nname STRING REQUIRED\nemail STRING REQUIRED');

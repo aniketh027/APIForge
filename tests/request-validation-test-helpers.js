@@ -38,6 +38,7 @@ function controllerStable(content) {
 // Check every unaffected section, then project only approved write changes back
 // for older historical fixtures. No fixture hashes are refreshed.
 function projectWriteChanges(files, source) {
+    files = require('./primary-key-contract-test-helpers').projectPrimaryKeyChanges(files, source);
     const old = new Map(originalFiles(source).map(file => [file.path, file]));
     assert.deepEqual(files.map(file => file.path), [...old.keys()]);
     return files.map(file => {
