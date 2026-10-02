@@ -299,7 +299,10 @@ access; it is generated read identity, not a source-declared writable field.
 Create identity is resolved once in the generated model, in this order:
 
 1. A supplied own source-declared primary-key value in sanitized POST data wins,
-   including an explicit INT AUTO_INCREMENT value supplied by the caller.
+   including an ordinary nonzero explicit INT AUTO_INCREMENT value supplied by
+   the caller. For an explicit auto-generated INT key, supplied null or numeric
+   zero instead resolves from the actual result.insertId: 42 returns 42; a
+   header of zero preserves zero stored under NO_AUTO_VALUE_ON_ZERO.
 2. Otherwise a database auto-generated effective key uses result.insertId.
 3. Otherwise an explicit primary key with DEFAULT uses that typed declared value.
 4. Otherwise the database remains authoritative; no response key is invented.
@@ -309,8 +312,10 @@ INT DEFAULT 7 returns 7, and omitted STRING DEFAULT "seed" returns "seed".
 A supplied explicit STRING key preserves its spelling and value. Resolution
 does not assume the primary key is the first field. The response copies submitted
 fields, then safely defines the resolved own key; it does not mutate input or
-reload other database defaults. Native MySQL modes for caller-supplied
-AUTO_INCREMENT values remain a separate database verification concern.
+reload other database defaults. Optional null validation remains unchanged;
+Create accepts nullable non-REQUIRED keys, while CreateResult's explicit
+auto-generated key is nonnullable after successful identity resolution. Native
+MySQL persistence and SQL modes require separate live database verification.
 
 PUT is partial and takes resource identity from the URL :id. Source-declared
 primary-key fields are immutable: supplying the field, even with the same value,

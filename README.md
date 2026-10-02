@@ -215,6 +215,10 @@ omission. PUT remains partial, including `{}`. REQUIRED null is rejected;
 optional null is accepted. Defaults remain database-applied. POST accepts explicit
 primary keys; create responses prefer a supplied explicit key, then a generated
 insertId, then the declared key DEFAULT, without reloading arbitrary defaults.
+For explicit auto-generated INT keys only, supplied null or numeric zero uses
+the actual insertId: generated values replace the input, and insertId zero
+preserves stored zero under NO_AUTO_VALUE_ON_ZERO. Supplied nonzero keys and
+defaulted INT/STRING key precedence remain unchanged.
 PUT rejects any explicit key property with 400 before model access, even the same
 value or null; identity comes from URL `:id`. OpenAPI uses distinct Create/Update/Read operation roles; Update omits the immutable
 key and optional inputs are nullable. Generated POST/PUT DB errors

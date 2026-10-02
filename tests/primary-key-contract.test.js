@@ -55,6 +55,70 @@ async function baselineProof() {
 (async () => {
     await test('pinned Git baseline fails corrective G12/G13 assertions', baselineProof);
     if (process.argv.includes('--baseline-proof')) return;
+    await test('external-review baseline ab2cd49 reproduces AUTO_INCREMENT NULL/zero response identity failures', async () => {
+        const old = require('./v1-hardening-helpers').baselineModule('src/codegen/codegen.js', 'ab2cd493abf30a711c59b1c574886c949acf7221');
+        for (const value of [null, 0]) {
+            const { files } = compile('ENTITY Item id INT PRIMARY KEY name STRING', old);
+            const Model = load(content(files, 'models/Item.js'), () => ({ query: async () => [{ insertId: 42 }] }));
+            const result = await Model.create({ id: value, name: 'Alice' });
+            assert.equal(result.id, value);
+            assert.throws(() => assert.equal(result.id, 42), { code: 'ERR_ASSERTION' });
+        }
+    });
+    await test('real POST resolves auto-key NULL/zero from ResultSetHeader and preserves key classes, validation and schemas', async () => {
+        const cases = [
+            ['id INT PRIMARY KEY', { id: null, name: 'Alice' }, 42, 'id', 42],
+            ['id INT PRIMARY KEY', { id: 0, name: 'Alice' }, 42, 'id', 42],
+            ['id INT PRIMARY KEY', { id: 0, name: 'Alice' }, 0, 'id', 0], // NO_AUTO_VALUE_ON_ZERO stores zero.
+            ['id INT PRIMARY KEY', { id: 100, name: 'Alice' }, 999, 'id', 100],
+            ['id INT PRIMARY KEY', { id: -5, name: 'Alice' }, 999, 'id', -5],
+            ['id INT PRIMARY KEY', { name: 'Alice' }, 42, 'id', 42],
+            ['', { name: 'Alice' }, 42, 'id', 42],
+            ['key INT PRIMARY KEY DEFAULT 7', { name: 'Alice' }, 0, 'key', 7],
+            ['key INT PRIMARY KEY DEFAULT 7', { key: 0, name: 'Alice' }, 42, 'key', 0],
+            ['key INT PRIMARY KEY DEFAULT 7', { key: null, name: 'Alice' }, 42, 'key', null],
+            ['key STRING PRIMARY KEY', { key: 'custom', name: 'Alice' }, 42, 'key', 'custom'],
+            ['key STRING PRIMARY KEY DEFAULT "seed"', { name: 'Alice' }, 0, 'key', 'seed'],
+            ['key STRING PRIMARY KEY DEFAULT "seed"', { key: null, name: 'Alice' }, 42, 'key', null],
+            ['__proto__ INT PRIMARY KEY', JSON.parse('{"__proto__":null,"name":"Alice"}'), 42, '__proto__', 42]
+        ];
+        for (const [declaration, body, insertId, key, expected] of cases) {
+            const { files } = compile(`ENTITY Item ${declaration} name STRING`), calls = [];
+            const Model = load(content(files, 'models/Item.js'), () => ({ query: async (sql, values) => { calls.push({ sql, values }); return [{ insertId }]; } }));
+            const controller = load(content(files, 'controllers/itemController.js'), () => Model);
+            const router = load(content(files, 'routes/itemRoutes.js'), name => name === 'express' ? express : controller);
+            const doc = JSON.parse(content(files, 'swagger.json')), schemas = doc.components.schemas;
+            const auto = declaration.endsWith('INT PRIMARY KEY');
+            if (declaration) {
+                assert.equal(schemas['Item.Create'].properties[key].nullable, true);
+                assert(!schemas['Item.Create'].required?.includes(key));
+                assert(!Object.hasOwn(schemas['Item.Update'].properties, key));
+                assert.equal(schemas['Item.CreateResult'].properties[key].nullable, auto ? false : true);
+            } else assert(!Object.hasOwn(schemas['Item.Create'].properties, key));
+            assert.equal(doc.paths['/items'].post.responses['201'].content['application/json'].schema.$ref, '#/components/schemas/Item.CreateResponse');
+            const app = express(); app.use(express.json()); app.use('/items', router);
+            const server = app.listen(0, '127.0.0.1'); await new Promise(resolve => server.once('listening', resolve));
+            try {
+                const url = 'http://127.0.0.1:' + server.address().port + '/items';
+                const response = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }); requests++;
+                assert.equal(response.status, 201); const result = await response.json();
+                assert.deepEqual(result, { success: true, data: { ...body, [key]: expected } });
+                assert(Object.hasOwn(result.data, key)); assert.equal(calls.length, 1);
+                assert.deepEqual(calls[0].values, [body]); // Keep NULL/zero bound; do not rewrite the INSERT.
+                const resultKey = schemas['Item.CreateResult'].properties[key];
+                if (expected === null) assert(resultKey.nullable); else assert.equal(typeof expected, resultKey.type === 'integer' ? 'number' : resultKey.type);
+                const before = calls.length;
+                const rejected = await fetch(url + '/42', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ [key]: null }) }); requests++;
+                assert.equal(rejected.status, 400); assert.equal(calls.length, before);
+            } finally { await new Promise(resolve => server.close(resolve)); }
+            const immutableBody = Object.freeze({ ...body });
+            assert.deepEqual(await Model.create(immutableBody), { ...body, [key]: expected });
+            assert.deepEqual(immutableBody, body);
+        }
+        const required = runtime('ENTITY Item id INT PRIMARY KEY REQUIRED name STRING', 'id', 42);
+        assert.equal((await invoke(required, 'create', { id: null })).code, 400);
+        assert.equal(required.queries.length, 0);
+    });
     await test('all eight create identity classes resolve actual logical keys without input mutation or reread', async () => {
         const cases = [
             ['implicit', { name: 'Alice' }, 42, 'id', 42],
