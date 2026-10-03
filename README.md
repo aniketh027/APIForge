@@ -20,6 +20,9 @@ entities and their relationships in a clean, readable `.apiforge` file and let t
 compiler do the rest. A browser-based playground is included so you can edit DSL and
 watch each compiler phase run live.
 
+For the complete syntax, validation rules, and worked examples, read the
+[APIForge Language Guide](docs/APIForge-Language-Guide.md).
+
 ---
 
 ## 📝 DSL Syntax Example
