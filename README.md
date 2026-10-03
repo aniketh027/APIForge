@@ -483,6 +483,15 @@ npm test
 ```
 Executes the comprehensive test suite (1000+ tests across all 6 compiler phases, error utilities, and end-to-end pipelines).
 
+For a focused check of generated-output replacement, rollback, and stale-file
+cleanup, run:
+
+```bash
+npm run test:disk-generation
+```
+
+These tests use temporary directories and do not need a MySQL server.
+
 To verify a generated backend as a standalone consumer project, run the opt-in integration harness:
 
 ```bash
