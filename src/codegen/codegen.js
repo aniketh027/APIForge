@@ -31,83 +31,12 @@
  * ============================================================
  */
 
-const fs = require('fs');
 const path = require('path');
 const IRGenerator = require('../ir/generator');
 const apiForgePackage = require('../../package.json');
+const { publishGeneratedFiles } = require('./publish-output');
 
 const GENERATED_RUNTIME_DEPENDENCIES = ['dotenv', 'express', 'mysql2'];
-const MANAGED_OUTPUT_DIRECTORIES = ['models', 'controllers', 'routes', 'config', 'database'];
-
-function isPathWithin(basePath, targetPath) {
-    const relative = path.relative(basePath, targetPath);
-    return relative !== '' && !relative.startsWith('..' + path.sep) && relative !== '..' && !path.isAbsolute(relative);
-}
-
-function assertDirectoryIsSafe(directoryPath, outputBase) {
-    if (!fs.existsSync(directoryPath)) return;
-
-    const stats = fs.lstatSync(directoryPath);
-    if (!stats.isDirectory() || stats.isSymbolicLink()) {
-        const relative = path.relative(outputBase, directoryPath) || 'output';
-        throw new Error(`Cannot write generated output: '${relative}' must be a real directory.`);
-    }
-}
-
-function resolveOutputPath(outputBase, relativePath) {
-    const fullPath = path.resolve(outputBase, relativePath);
-    if (!isPathWithin(outputBase, fullPath)) {
-        throw new Error(`Cannot write generated output outside '${outputBase}': ${relativePath}`);
-    }
-    return fullPath;
-}
-
-function ensureOutputDirectory(outputBase, directoryPath) {
-    assertDirectoryIsSafe(outputBase, outputBase);
-
-    const relative = path.relative(outputBase, directoryPath);
-    let current = outputBase;
-    for (const segment of relative.split(path.sep).filter(Boolean)) {
-        current = path.join(current, segment);
-        assertDirectoryIsSafe(current, outputBase);
-    }
-
-    fs.mkdirSync(directoryPath, { recursive: true });
-}
-
-function pruneManagedDirectory(directoryPath, expectedPaths, outputBase) {
-    if (!fs.existsSync(directoryPath)) return;
-    assertDirectoryIsSafe(directoryPath, outputBase);
-
-    for (const entry of fs.readdirSync(directoryPath, { withFileTypes: true })) {
-        const entryPath = path.join(directoryPath, entry.name);
-        if (entry.isDirectory() && !entry.isSymbolicLink()) {
-            pruneManagedDirectory(entryPath, expectedPaths, outputBase);
-            if (fs.readdirSync(entryPath).length === 0) fs.rmdirSync(entryPath);
-        } else if (!expectedPaths.has(entryPath)) {
-            fs.unlinkSync(entryPath);
-        }
-    }
-}
-
-function writeGeneratedFiles(files) {
-    const outputBase = path.resolve(process.cwd(), 'output');
-    ensureOutputDirectory(outputBase, outputBase);
-
-    const expectedPaths = new Set();
-    for (const file of files) {
-        const fullPath = resolveOutputPath(outputBase, file.path);
-        expectedPaths.add(fullPath);
-        const directoryPath = path.dirname(fullPath);
-        ensureOutputDirectory(outputBase, directoryPath);
-        fs.writeFileSync(fullPath, file.content, 'utf-8');
-    }
-
-    for (const directoryName of MANAGED_OUTPUT_DIRECTORIES) {
-        const directoryPath = resolveOutputPath(outputBase, directoryName);
-        pruneManagedDirectory(directoryPath, expectedPaths, outputBase);
-    }
-}
 
 // ── Helper Utilities ────────────────────────────────────────
 
@@ -1649,7 +1578,7 @@ function generate(optimizedIR, writeToDisk = true) {
     files.push({ path: 'swagger.json', content: generateSwagger(entities, relations) });
 
     if (writeToDisk) {
-        writeGeneratedFiles(files);
+        publishGeneratedFiles(files, path.resolve(process.cwd(), 'output'));
     }
 
     return { success: true, files };

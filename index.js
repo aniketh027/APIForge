@@ -93,6 +93,7 @@ console.log('');
 function reportFatalError(err, phase) {
     console.log('');
     console.log(formatDiagnostic(sourceCode, err.diagnostic || internalDiagnostic(phase)));
+    if (err.outputPublication) console.error(`[OUTPUT] ${err.message}`);
     console.log('');
     console.log(`[ABORT] Compilation stopped during ${phase}.`);
     process.exit(1);

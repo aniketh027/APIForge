@@ -195,6 +195,11 @@ Each successful CLI compilation reconciles the generator-owned `models/`,
 `controllers/`, `routes/`, `config/`, and `database/` directories with the latest
 project, so entity artifacts from older compilations do not remain. Root-level
 user files that APIForge does not generate, such as `output/.env`, are preserved.
+Generation writes and verifies a complete project in a unique sibling staging
+directory before replacing `output/`. Handled publication failures restore the
+previous project. If backup cleanup fails after publication, the new project
+remains published and the CLI reports the retained backup with exit status 1.
+See [publication and failure behavior](docs/atomic-output-publication-verification.md).
 
 Entities without an explicit primary key consistently use generated integer `id`
 for item CRUD, create responses, relationships, collections and OpenAPI. WRN001

@@ -39,7 +39,9 @@ swagger.json
 - `server.js`: dotenv loading, JSON middleware, route mounts, `/health`, global error handler, and startup.
 - `swagger.json`: OpenAPI 3.0.0 paths and component schemas.
 
-After writing the complete new file collection, disk generation removes files not in that collection from the generator-owned `models/`, `controllers/`, `routes/`, `config/`, and `database/` directories. Those subdirectories are reserved for generated artifacts. Root-level files that APIForge does not generate, including a user-created `.env`, are preserved, as are files outside `output/`. Invalid IR and content-generation failures occur before disk output is written or reconciled.
+Disk generation uses `src/codegen/publish-output.js` to write and verify the complete new file collection in a unique sibling staging directory. It copies user-owned root entries, including `.env`, into staging while excluding the generator-owned `models/`, `controllers/`, `routes/`, `config/`, and `database/` directories and generated root files. Replacement therefore removes obsolete managed files while preserving user-owned root files/directories and files outside `output/`. Invalid IR and content-generation failures still occur before disk publication.
+
+Publication renames existing output into a unique sibling backup container, then renames staging to `output/`. A failed publication rename attempts rollback; if rollback also fails, the old backup is retained and its path reported with the original error. Cleanup errors never replace an earlier failure. After successful publication, backup cleanup failure leaves the valid new output published and throws the cleanup I/O error with `outputPublication.published = true`; CLI exit status remains 1 and includes runtime context alongside its existing codegen failure diagnostic. No new compiler diagnostic code or API response field is introduced. This covers handled failures in one operation, not concurrent publication or process/OS crash recovery. See `docs/atomic-output-publication-verification.md` for platform evidence and regression coverage.
 
 ## Dependencies and environment
 
