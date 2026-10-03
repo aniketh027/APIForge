@@ -469,6 +469,9 @@ This compiles `samples/student.apiforge` and writes the generated backend to `ou
 node index.js samples/student_course_rel.apiforge
 ```
 
+Run these commands from the APIForge repository directory. The CLI writes to
+`output/` in the current working directory, regardless of the input file's location.
+
 ### Launch the Web Playground
 ```bash
 npm run dev
