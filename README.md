@@ -446,6 +446,9 @@ The server exposes a small JSON API:
 | `POST /api/compile`  | Runs the full pipeline on posted DSL source |
 | `GET  /api/health`   | Health check                                |
 
+The compile API returns generated files in memory. Downloading a project builds
+the ZIP in your browser; neither action writes to the repository's `output/`.
+
 ---
 
 ## 🚀 How to Run
