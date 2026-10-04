@@ -40,8 +40,7 @@ function projectDatabaseErrorChanges(files, source) {
             }
             assert.deepEqual(current, original, file.path);
         } else if (file.path === 'server.js') {
-            assert.equal(file.content.replace(generateDatabaseErrorHandler(), '')
-                .replace('    sendDatabaseError(res, err);', "    res.status(500).json({ success: false, error: 'Internal Server Error' });"), previous.content, file.path);
+            assert.equal(file.content, previous.content, file.path);
         } else if (file.path === 'README.md') {
             assert.equal(file.content.replace(newReadme, oldReadme), previous.content, file.path);
         } else assert.equal(file.content, previous.content, file.path);

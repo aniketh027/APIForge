@@ -1284,7 +1284,6 @@ function generateServer(entities) {
            `const express = require('express');\n` +
            `const app = express();\n` +
            `const PORT = process.env.PORT || 3000;\n\n` +
-           generateDatabaseErrorHandler() +
            `// Middleware\n` +
            `app.use(express.json());\n\n` +
            `// Registered Entity Routes\n` +
@@ -1300,7 +1299,7 @@ function generateServer(entities) {
            `        return res.status(400).json({ success: false, error: 'Request body must contain valid JSON.' });\n` +
            `    }\n` +
            `    console.error(err.stack);\n` +
-           `    sendDatabaseError(res, err);\n` +
+           `    res.status(500).json({ success: false, error: 'Internal Server Error' });\n` +
            `});\n\n` +
            `if (require.main === module) {\n` +
            `    app.listen(PORT, () => {\n` +

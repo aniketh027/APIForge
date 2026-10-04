@@ -51,7 +51,8 @@ In particular 1265 is WARN_DATA_TRUNCATED, not an invented ER_* alias.
 | Recognized write/delete conflict | 409 | `Request conflicts with existing data.` |
 | Recognized rejected value on CRUD or association write | 400 | `Request contains a value rejected by the database.` |
 | Recognized temporary connection/capacity/lock failure | 503 | `Database temporarily unavailable.` |
-| Unknown/internal or inapplicable DB classification | 500 | `Unable to complete request.` |
+| Unknown/internal or inapplicable DB classification in controllers | 500 | `Unable to complete request.` |
+| Any non-parser error in the generic global Express fallback | 500 | `Internal Server Error` |
 
 | Category | error.code | Numeric MySQL errno alias |
 |---|---|---:|
@@ -84,7 +85,8 @@ driver actually throws them as errors; ordinary warning packets are unchanged.
 ## Architecture and endpoint coverage
 
 `src/codegen/db-error-taxonomy.js` is the single compiler-side mapping and handler
-emitter. Controllers and server embed its identical implementation. No fixed
+emitter. Controllers embed its implementation; the generic global Express handler
+does not emit or invoke it. No fixed
 runtime file or dependency was added: seven fixed files plus three per entity
 remains the contract. SQL, routes, writable fields, effective keys, all six
 compiler phases, diagnostics/warnings and successful handler bodies remain intact.
@@ -93,9 +95,15 @@ Classification uses operation context: reads cannot create conflicts and a read
 failure does not establish invalid client input. A recognized conflict/value code
 on a read remains internal 500. DELETE accepts conflicts, while general CRUD
 DELETE retains its existing absence/error status set. Association POST/DELETE
-can reject bound URL values and use the association context. The global fallback
-uses read context because it has no database write provenance; it returns safe
-500/503 after the unchanged safe malformed-JSON special case.
+can reject bound URL values and use the association context. The DB taxonomy is
+applied only at trusted generated controller/model operation boundaries. The
+generic global fallback has no database provenance: matching code/errno values
+do not establish that an error originated in a generated database operation.
+Malformed JSON remains safe global 400 with `Request body must contain valid JSON.`;
+every other global error retains existing server-side stack logging and returns
+sanitized 500 with `Internal Server Error`, regardless of code/errno.
+This restores the exact pre-G06 global response envelope; the controller 500
+message remains `Unable to complete request.`. Endpoint OpenAPI is unchanged.
 
 Each model keeps a private WeakMap from errors created by parseQuery to the
 original generated message. The controller consults the registry only inside
@@ -129,8 +137,8 @@ remain 404.
 `npm run test:db-error-taxonomy` executes real emitted servers, routers, controllers
 and models with a deterministic pool across all four cardinalities. Independent
 expected mappings assert the installed mysql2 numeric constants, every code and
-every included errno alias. The final suite has 1,360 error-envelope assertions
-and 1,483 actual HTTP requests, including:
+every included errno alias. The corrected suite has 1,436 error-envelope assertions
+and 1,515 actual HTTP requests, including:
 
 - duplicate create/update/association and both FK conflict directions;
 - all eight invalid-value identifiers and all ten temporary identifiers;
@@ -141,10 +149,22 @@ and 1,483 actual HTTP requests, including:
 - model calls/SQL prevented for invalid bodies, queries and malformed JSON;
 - registry provenance, mutated validation messages, parser spoofing, and genuine
   query errors rethrown from findAll/countFiltered;
-- transient failures at collection COUNT and global Express fallback;
+- transient failures at collection COUNT; the same objects in the global Express
+  fallback instead return sanitized 500;
+- arbitrary global errors, ECONNREFUSED, ER_CON_COUNT_ERROR/1040,
+  ER_DUP_ENTRY/1062, errno-only 1205 and ER_DATA_TOO_LONG/1406 return global 500;
+  the same errors retain their applicable controller 409/400/503 mappings;
+- global response privacy, zero DB calls and exact existing server-side stack
+  logging; malformed JSON retains global 400;
 - CRUD and singular relationship 404, and unchanged absent-association success;
 - exact operation error-response sets and the unchanged `.Error` schema;
 - byte-identical successful JSON and pagination headers against approved main.
+
+For each of the four cardinalities, every non-server generated file is also
+compared byte-for-byte with the approved G06 commit
+`20d3d656cbb642a500c2d10fd2a3f945f8cfc7ff`. This includes all controllers, models,
+routes, classifier output and OpenAPI. Generated server.js is byte-identical to
+the pre-G06 server; no taxonomy helper remains in it.
 
 Compatibility projections compare every byte outside exact G06 helper,
 catch/parse boundary, provenance, OpenAPI additions and generated README changes
@@ -154,6 +174,11 @@ were not refreshed. The publication suite compares seven valid sample projects /
 exactly match current in-memory output. Existing phase/registry checks still run.
 
 ## Regression results
+
+The required checks below were rerun for the global provenance correction. Its
+focused suite includes 60 sanitized global-500 requests across all cardinalities,
+and pairs recognized identifiers with trusted controller/COUNT operations using
+the same Error objects.
 
 | Check | Result |
 |---|---|
@@ -180,6 +205,9 @@ the Docker Desktop Linux engine pipe; no daemon was available. All four
 APIFORGE_TEST_DB_* configuration names are present, but the actual mysql2
 connection probe returned ECONNREFUSED/-4078. Server version could not be read.
 No MySQL 8.4.x version or live constraint result is claimed.
+The corrective task rechecked Docker and made a fresh mysql2 connection probe:
+the daemon pipe remained unavailable and the configured server again returned
+ECONNREFUSED/-4078. Live constraint verification remains pending.
 
 Both `npm run test:db-error-taxonomy-mysql` and `npm run test:generated-mysql`
 were attempted and failed at server connection with ECONNREFUSED, before any
@@ -218,7 +246,14 @@ Tests/commands: `package.json`, `tests/db-error-taxonomy.test.js`,
 Documentation: this report, `README.md`, `docs/APIForge-Language-Guide.md`, and
 `.codex/skills/apiforge-generated-backend/references/generated-project-contract.md`.
 
-Change review found no blocking or correctness issues in the reviewed scope.
+External review of original G06 commit
+`20d3d656cbb642a500c2d10fd2a3f945f8cfc7ff` found a blocker: the global fallback
+called sendDatabaseError for unprovenanced application/middleware errors, so an
+arbitrary ECONNREFUSED error became a misleading database-unavailable 503.
+The corrective commit restores the pre-G06 global 500 envelope, removes the
+unused generated server classifier and changes global provenance tests. The
+approved controller classifier and endpoint OpenAPI remain unchanged.
+The original commit is preserved; correction is a new local commit.
 The pending live verification is explicitly retained as a limitation. All 36
 protected paths, sizes, SHA-256 digests, creation and modification timestamps
 passed the task-specific before/after workflow. Main/origin/main and both local
