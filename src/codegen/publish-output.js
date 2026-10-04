@@ -53,6 +53,7 @@ function publishGeneratedFiles(files, outputDirectory, fileSystem = fs) {
     let oldMoved = false;
     let published = false;
     let failure = null;
+    const transferred = [];
 
     try {
         const entries = generatedPaths(files, destination);
@@ -65,21 +66,6 @@ function publishGeneratedFiles(files, outputDirectory, fileSystem = fs) {
 
         // mkdtemp reserves a unique sibling on the destination's filesystem.
         staging = fileSystem.mkdtempSync(prefix + 'stage-');
-        if (hadOutput) {
-            const ownedRoots = new Set([...MANAGED_DIRECTORIES,
-                ...entries.map(entry => entry.relative.split(path.sep)[0])]
-                .map(name => process.platform === 'win32' ? name.toLowerCase() : name));
-            for (const name of fileSystem.readdirSync(destination)) {
-                const key = process.platform === 'win32' ? name.toLowerCase() : name;
-                if (!ownedRoots.has(key)) {
-                    fileSystem.cpSync(path.join(destination, name), path.join(staging, name), {
-                        recursive: true, dereference: false, verbatimSymlinks: true,
-                        preserveTimestamps: true
-                    });
-                }
-            }
-        }
-
         for (const entry of entries) {
             const target = path.join(staging, entry.relative);
             fileSystem.mkdirSync(path.dirname(target), { recursive: true });
@@ -102,6 +88,19 @@ function publishGeneratedFiles(files, outputDirectory, fileSystem = fs) {
             previous = path.join(backup, 'previous');
             fileSystem.renameSync(destination, previous);
             oldMoved = true;
+            const ownedRoots = new Set([...MANAGED_DIRECTORIES,
+                ...entries.map(entry => entry.relative.split(path.sep)[0])]
+                .map(name => process.platform === 'win32' ? name.toLowerCase() : name));
+            // Treat user roots as opaque objects. One same-filesystem rename
+            // preserves a whole tree or link without cloning or traversing it.
+            for (const name of fileSystem.readdirSync(previous).sort()) {
+                const key = process.platform === 'win32' ? name.toLowerCase() : name;
+                if (ownedRoots.has(key)) continue;
+                const from = path.join(previous, name);
+                const to = path.join(staging, name);
+                fileSystem.renameSync(from, to);
+                transferred.push({ entry: name, from, to, restored: false });
+            }
         }
         fileSystem.renameSync(staging, destination);
         published = true;
@@ -109,19 +108,37 @@ function publishGeneratedFiles(files, outputDirectory, fileSystem = fs) {
     } catch (error) {
         failure = error;
         if (oldMoved) {
-            try {
-                fileSystem.renameSync(previous, destination);
-                oldMoved = false;
-            } catch (rollbackError) {
-                failure.rollbackError = rollbackError;
-                failure.message += ` Rollback failed: ${rollbackError.message}. Previous output retained at '${previous}'.`;
+            for (const move of [...transferred].reverse()) {
+                try {
+                    fileSystem.renameSync(move.to, move.from);
+                    move.restored = true;
+                } catch (rollbackError) {
+                    failure.rollbackError ||= rollbackError;
+                    (failure.rollbackErrors ||= []).push({ entry: move.entry, from: move.to, to: move.from, error: rollbackError });
+                    failure.message += ` Rollback failed for user root '${move.entry}': ${rollbackError.message}. User data retained at '${move.to}'; restore target '${move.from}'.`;
+                }
+            }
+            // Never expose an incomplete old tree or delete the staging tree
+            // while it contains the only surviving copy of a user root.
+            if (transferred.every(move => move.restored)) {
+                try {
+                    fileSystem.renameSync(previous, destination);
+                    oldMoved = false;
+                } catch (rollbackError) {
+                    failure.rollbackError ||= rollbackError;
+                    (failure.rollbackErrors ||= []).push({ entry: null, from: previous, to: destination, error: rollbackError });
+                    failure.message += ` Rollback failed: ${rollbackError.message}. Previous output retained at '${previous}'.`;
+                }
+            } else {
+                failure.message += ` Recovery directories retained: staging '${staging}', previous output '${previous}'.`;
             }
         }
     }
 
     // Never remove the only valid old tree after a failed rollback. Once the
     // new tree is published, backup cleanup failure must not trigger rollback.
-    for (const [kind, directory] of [['staging', staging], ['backup', oldMoved && !published ? null : backup]]) {
+    const userDataInStaging = !published && transferred.some(move => !move.restored);
+    for (const [kind, directory] of [['staging', userDataInStaging ? null : staging], ['backup', oldMoved && !published ? null : backup]]) {
         if (!directory) continue;
         try {
             fileSystem.rmSync(directory, { recursive: true, force: true });
@@ -142,7 +159,13 @@ function publishGeneratedFiles(files, outputDirectory, fileSystem = fs) {
     if (failure) {
         // Preserve the original Error object and OS code. This is runtime I/O
         // context, not a new compiler diagnostic or a changed success result.
-        failure.outputPublication = { destination, published, staging, backup };
+        failure.outputPublication = {
+            destination, published, staging, backup,
+            previous: backup ? previous : null,
+            unrecoveredUserRoots: userDataInStaging
+                ? transferred.filter(move => !move.restored).map(move => ({ entry: move.entry, path: move.to, restoreTo: move.from }))
+                : []
+        };
         throw failure;
     }
 }

@@ -200,8 +200,11 @@ project, so entity artifacts from older compilations do not remain. Root-level
 user files that APIForge does not generate, such as `output/.env`, are preserved.
 Generation writes and verifies a complete project in a unique sibling staging
 directory before replacing `output/`. Handled publication failures restore the
-previous project. If backup cleanup fails after publication, the new project
-remains published and the CLI reports the retained backup with exit status 1.
+previous project through reverse user-root moves; user entries are preserved
+as whole filesystem objects with same-filesystem renames. If rollback itself
+fails, recovery paths are reported and surviving user data is retained. The
+new project remains published if backup cleanup fails after publication,
+and the CLI reports the retained backup with exit status 1.
 See [publication and failure behavior](docs/atomic-output-publication-verification.md).
 
 Entities without an explicit primary key consistently use generated integer `id`

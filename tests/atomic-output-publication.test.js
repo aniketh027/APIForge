@@ -99,16 +99,21 @@ try {
         });
     }
 
-    test('C: second rename failure restores every previous byte', root => {
+    test('C: final publication failure restores all transferred user roots and previous bytes', root => {
         const output = seed(root), before = snapshot(output);
         const failure = ioError('injected publication rename', 'EPERM');
         const adapter = Object.create(fs);
         let renames = 0;
         adapter.renameSync = (from, to) => {
-            if (++renames === 2) {
+            renames++;
+            if (to === output && path.basename(from).startsWith('.output.apiforge-g19-stage-')) {
                 assert.equal(snapshot(output), null);
                 const backup = temporaryEntries(root).find(name => name.includes('backup-'));
-                assert.deepEqual(snapshot(path.join(root, backup, 'previous')), before);
+                const previous = path.join(root, backup, 'previous');
+                for (const name of ['.env', 'user-assets', 'user-notes.txt']) {
+                    assert(!fs.existsSync(path.join(previous, name)));
+                    assert(fs.existsSync(path.join(from, name)), `Transferred ${name} is present in staging`);
+                }
                 assert.equal(path.dirname(from), path.dirname(output));
                 assert.deepEqual(filesOnDisk(from)['models/Student.js'], expectedFiles(newProject.files)['models/Student.js']);
                 throw failure;
@@ -116,7 +121,7 @@ try {
             fs.renameSync(from, to);
         };
         expectError(() => publishGeneratedFiles(newProject.files, output, adapter), failure);
-        assert.equal(renames, 3);
+        assert.equal(renames, 9, 'Move old output, three user roots, failed commit, reverse three roots, restore output');
         assert.deepEqual(snapshot(output), before);
         assert.deepEqual(temporaryEntries(root), []);
     });
@@ -187,10 +192,9 @@ try {
         const failure = ioError('original publication error', 'EPERM');
         const rollback = ioError('injected rollback error', 'EBUSY');
         const adapter = Object.create(fs);
-        let renames = 0;
         adapter.renameSync = (from, to) => {
-            if (++renames === 2) throw failure;
-            if (renames === 3) throw rollback;
+            if (to === output && path.basename(from).startsWith('.output.apiforge-g19-stage-')) throw failure;
+            if (to === output && path.basename(from) === 'previous') throw rollback;
             fs.renameSync(from, to);
         };
         expectError(() => publishGeneratedFiles(newProject.files, output, adapter), failure);
@@ -226,7 +230,7 @@ try {
         adapter.renameSync = (from, to) => { renames++; fs.renameSync(from, to); };
         adapter.rmSync = () => { throw failure; };
         expectError(() => publishGeneratedFiles(newProject.files, output, adapter), failure);
-        assert.equal(renames, 2);
+        assert.equal(renames, 5, 'Backup move, three user-root transfers, and commit; no rollback');
         assert.equal(failure.outputPublication.published, true);
         assert.equal(failure.rollbackError, undefined);
         assert.match(failure.message, /already published.*Could not remove backup directory/);
@@ -235,11 +239,185 @@ try {
         assert.equal(temporaryEntries(root).length, 1);
     });
 
-    test('user-entry copying failure leaves published output unchanged', root => {
-        const output = seed(root), before = snapshot(output);
-        const failure = ioError('injected preservation copy', 'EIO');
+    test('Nth user-root transfer failure restores every earlier root and complete old output', root => {
+        for (let failAt = 1; failAt <= 4; failAt++) {
+            const run = fs.mkdtempSync(path.join(root, 'transfer-'));
+            const output = seed(run);
+            fs.mkdirSync(path.join(output, 'node_modules', 'package'), { recursive: true });
+            fs.writeFileSync(path.join(output, 'node_modules', 'package', 'index.js'), 'USER DEPENDENCY');
+            const before = snapshot(output);
+            const failure = ioError(`injected root transfer ${failAt}`, 'EIO');
+            const adapter = Object.create(fs);
+            let transfers = 0, reversals = 0;
+            adapter.cpSync = () => assert.fail('Preservation must not copy');
+            adapter.renameSync = (from, to) => {
+                if (path.basename(path.dirname(from)) === 'previous') {
+                    if (++transfers === failAt) throw failure;
+                } else if (path.basename(path.dirname(to)) === 'previous') reversals++;
+                fs.renameSync(from, to);
+            };
+            expectError(() => publishGeneratedFiles(newProject.files, output, adapter), failure);
+            assert.equal(transfers, failAt);
+            assert.equal(reversals, failAt - 1);
+            assert.deepEqual(snapshot(output), before);
+            assert.deepEqual(temporaryEntries(run), []);
+        }
+    });
+
+    test('rollback of transferred user roots fails safely with exact recovery locations', root => {
+        for (const failCommit of [false, true]) {
+            for (const failEveryReversal of [false, true]) {
+                const run = fs.mkdtempSync(path.join(root, 'recovery-'));
+                const output = seed(run), before = snapshot(output);
+                const failure = ioError('original transfer/publication failure', 'EIO');
+                const rollback = ioError('injected user-root rollback', 'EBUSY');
+                const adapter = Object.create(fs);
+                const removed = [], reversed = [];
+                let transfers = 0;
+                adapter.renameSync = (from, to) => {
+                    if (path.basename(path.dirname(from)) === 'previous') {
+                        if (!failCommit && ++transfers === 3) throw failure;
+                    }
+                    if (to === output && path.basename(from).startsWith('.output.apiforge-g19-stage-')) throw failure;
+                    if (path.basename(path.dirname(to)) === 'previous') {
+                        reversed.push(path.basename(from));
+                        if (failEveryReversal || path.basename(from) === 'user-assets') throw rollback;
+                    }
+                    if (to === output) assert.fail('Incomplete old output must not be restored after user rollback fails');
+                    fs.renameSync(from, to);
+                };
+                adapter.rmSync = target => { removed.push(target); assert.fail('Recovery material must not be deleted'); };
+                expectError(() => publishGeneratedFiles(newProject.files, output, adapter), failure);
+                assert.equal(failure.rollbackError, rollback);
+                const context = failure.outputPublication;
+                assert.equal(snapshot(output), null);
+                assert.equal(context.published, false);
+                assert(context.staging && context.backup && context.previous);
+                assert.equal(temporaryEntries(run).length, 2);
+                assert.deepEqual(removed, []);
+                assert.equal(reversed.length, failCommit ? 3 : 2, 'Continue reversing other roots after a rollback failure');
+                assert.equal(context.unrecoveredUserRoots.length, failEveryReversal ? reversed.length : 1);
+                const surviving = { ...snapshot(context.previous) };
+                const staged = snapshot(context.staging);
+                for (const recovery of context.unrecoveredUserRoots) {
+                    assert.equal(recovery.path, path.join(context.staging, recovery.entry));
+                    assert.equal(recovery.restoreTo, path.join(context.previous, recovery.entry));
+                    assert(failure.message.includes(recovery.path));
+                    assert(failure.message.includes(recovery.restoreTo));
+                    assert(failure.rollbackErrors.some(item => item.from === recovery.path && item.to === recovery.restoreTo && item.error === rollback));
+                    for (const [name, bytes] of Object.entries(staged)) {
+                        if (name === recovery.entry || name.startsWith(recovery.entry + '/')) surviving[name] = bytes;
+                    }
+                }
+                assert.deepEqual(surviving, before, 'All old output and user data survive across retained recovery trees');
+            }
+        }
+    });
+
+    test('node_modules and a large nested user tree each move once without traversal or copying', root => {
+        const output = seed(root);
+        const dependencyRoot = path.join(output, 'node_modules');
+        for (let packageIndex = 0; packageIndex < 50; packageIndex++) {
+            const directory = path.join(dependencyRoot, `package-${packageIndex}`, 'nested', 'lib');
+            fs.mkdirSync(directory, { recursive: true });
+            for (let fileIndex = 0; fileIndex < 20; fileIndex++) {
+                fs.writeFileSync(path.join(directory, `file-${fileIndex}.js`), `module.exports = ${packageIndex + fileIndex};\n`);
+            }
+        }
+        const before = snapshot(dependencyRoot);
+        const identities = Object.fromEntries(['node_modules', '.env', 'user-assets', 'user-notes.txt'].map(name =>
+            [name, fs.lstatSync(path.join(output, name), { bigint: true }).ino]));
+        const adapter = Object.create(fs), moved = [], sequence = [];
+        adapter.cpSync = adapter.copyFileSync = () => assert.fail('No recursive or file copy is allowed for preservation');
+        for (const method of ['readdirSync', 'lstatSync', 'readFileSync']) {
+            adapter[method] = (target, ...args) => {
+                assert(!String(target).split(path.sep).some(name => Object.hasOwn(identities, name)), `${method} must not inspect user-root contents`);
+                if (method === 'readFileSync') sequence.push('validate');
+                return fs[method](target, ...args);
+            };
+        }
+        adapter.renameSync = (from, to) => {
+            if (from === output) {
+                assert.equal(sequence.filter(value => value === 'validate').length, newProject.files.length);
+                assert.deepEqual(filesOnDisk(path.join(root, temporaryEntries(root).find(name => name.includes('stage-')))), expectedFiles(newProject.files));
+            }
+            sequence.push('rename');
+            if (path.basename(path.dirname(from)) === 'previous') moved.push({ entry: path.basename(from), from, to });
+            fs.renameSync(from, to);
+        };
+        assert(!/\bcpSync\b/.test(fs.readFileSync(path.join(repository, 'src/codegen/publish-output.js'), 'utf8')));
+        publishGeneratedFiles(newProject.files, output, adapter);
+        assert.equal(moved.filter(move => move.entry === 'node_modules').length, 1);
+        assert.equal(moved.filter(move => move.entry === 'user-assets').length, 1);
+        assert.equal(moved.length, 4);
+        assert.deepEqual(snapshot(dependencyRoot), before);
+        for (const [name, identity] of Object.entries(identities)) {
+            assert(identity > 0n, 'The filesystem must expose a useful object identity');
+            assert.equal(fs.lstatSync(path.join(output, name), { bigint: true }).ino, identity);
+        }
+        assert.deepEqual(temporaryEntries(root), []);
+        console.log('node_modules structural check: 1,000 files; one root rename; zero user-tree traversal/copy; object identities preserved.');
+    });
+
+    test('creatable user-owned junctions/symlinks survive root renames without cloning', root => {
+        const output = seed(root), outside = path.join(root, 'outside');
+        fs.mkdirSync(outside);
+        fs.writeFileSync(path.join(outside, 'keep.txt'), 'OUTSIDE');
+        const target = path.join(output, 'user-link');
+        const type = process.platform === 'win32' ? 'junction' : 'dir';
+        try { fs.symlinkSync(outside, target, type); }
+        catch (error) {
+            if (!['EPERM', 'EACCES', 'ENOTSUP'].includes(error.code)) throw error;
+            console.log(`User ${type} creation unavailable: ${error.code}; conditional link test skipped.`);
+            return;
+        }
+        const link = fs.readlinkSync(target), identity = fs.lstatSync(target, { bigint: true }).ino;
+        const optionalLinks = [];
+        for (const [name, linkTarget, linkType] of [
+            ['user-directory-symlink', outside, 'dir'],
+            ['user-file-symlink', path.join(outside, 'keep.txt'), 'file'],
+            ['user-relative-symlink', '../outside/keep.txt', 'file']
+        ]) {
+            const linkPath = path.join(output, name);
+            try {
+                fs.symlinkSync(linkTarget, linkPath, linkType);
+                optionalLinks.push({ name, target: fs.readlinkSync(linkPath), identity: fs.lstatSync(linkPath, { bigint: true }).ino });
+            } catch (error) {
+                if (!['EPERM', 'EACCES', 'ENOTSUP'].includes(error.code)) throw error;
+                console.log(`${name} creation unavailable: ${error.code}; conditional variant skipped.`);
+            }
+        }
+        const outsideBefore = snapshot(outside);
         const adapter = Object.create(fs);
-        adapter.cpSync = () => { throw failure; };
+        adapter.cpSync = adapter.symlinkSync = adapter.readlinkSync = () => assert.fail('A user link must move without cloning or resolving it');
+        let transfers = 0;
+        adapter.renameSync = (from, to) => {
+            if (path.basename(from) === 'user-link' || optionalLinks.some(item => item.name === path.basename(from))) transfers++;
+            fs.renameSync(from, to);
+        };
+        publishGeneratedFiles(newProject.files, output, adapter);
+        assert.equal(transfers, 1 + optionalLinks.length);
+        assert(fs.lstatSync(target).isSymbolicLink());
+        assert.equal(fs.readlinkSync(target), link);
+        assert.equal(fs.lstatSync(target, { bigint: true }).ino, identity);
+        for (const item of optionalLinks) {
+            const linkPath = path.join(output, item.name);
+            assert.equal(fs.readlinkSync(linkPath), item.target);
+            assert.equal(fs.lstatSync(linkPath, { bigint: true }).ino, item.identity);
+        }
+        assert.deepEqual(snapshot(outside), outsideBefore);
+        assert.deepEqual(temporaryEntries(root), []);
+        console.log(`User ${type} rename preservation: PASS; link identity and target unchanged; no clone privileges needed.`);
+    });
+
+    test('user-root enumeration failure after backup move restores old output', root => {
+        const output = seed(root), before = snapshot(output);
+        const failure = ioError('injected root enumeration');
+        const adapter = Object.create(fs);
+        adapter.readdirSync = (target, ...args) => {
+            if (path.basename(target) === 'previous') throw failure;
+            return fs.readdirSync(target, ...args);
+        };
         expectError(() => publishGeneratedFiles(newProject.files, output, adapter), failure);
         assert.deepEqual(snapshot(output), before);
         assert.deepEqual(temporaryEntries(root), []);
@@ -340,7 +518,7 @@ try {
     });
 
     test('CLI preserves its diagnostic/exit contract and surfaces publication context', root => {
-        for (const mode of ['write', 'publish', 'cleanup']) {
+        for (const mode of ['write', 'transfer', 'publish', 'cleanup']) {
             const run = fs.mkdtempSync(path.join(root, mode + '-'));
             const output = seed(run), before = snapshot(output);
             const source = path.join(run, 'source.apiforge');
@@ -354,10 +532,15 @@ try {
                     const original = fs.writeFileSync;
                     let writes = 0;
                     fs.writeFileSync = (...args) => { if (++writes === 2) throw error; return original(...args); };
-                } else if (mode === 'publish') {
+                } else if (mode === 'publish' || mode === 'transfer') {
                     const original = fs.renameSync;
+                    const path = require('path');
                     let renames = 0;
-                    fs.renameSync = (...args) => { if (++renames === 2) throw error; return original(...args); };
+                    fs.renameSync = (...args) => {
+                        if (mode === 'publish' && args[1] === path.join(process.cwd(), 'output') && path.basename(args[0]).startsWith('.output.apiforge-g19-stage-')) throw error;
+                        if (mode === 'transfer' && path.basename(path.dirname(args[0])) === 'previous' && ++renames === 2) throw error;
+                        return original(...args);
+                    };
                 } else fs.rmSync = () => { throw error; };
             `);
             const result = spawnSync(process.execPath, ['--require', preload, path.join(repository, 'index.js'), source], {
