@@ -1,6 +1,8 @@
 // Operation roles use a dot separator, which cannot occur in a DSL identifier.
 // This avoids allocating ItemRead over a user's legitimate entity of that name.
-function enrich(doc, entities, relations, { key, lowerFirst, pluralize }) {
+function enrich(doc, entities, relations, { key, lowerFirst, pluralize, databaseErrors = false }) {
+    // Current codegen enables G06; older pinned generators omit the option so
+    // historical compatibility tests can still reconstruct their reviewed docs.
     const schemas = doc.components.schemas;
     const ref = name => ({ $ref: '#/components/schemas/' + name });
     const envelope = data => ({ type: 'object', additionalProperties: false,
@@ -63,6 +65,10 @@ function enrich(doc, entities, relations, { key, lowerFirst, pluralize }) {
         for (const op of [root.get, root.post, item.put]) op.responses['400'] = response('.Error', 'Invalid request');
         for (const op of [item.get, item.put, item.delete]) op.responses['404'] = response('.Error', 'Record not found');
         for (const op of [root.get, root.post, item.get, item.put, item.delete]) op.responses['500'] = response('.Error', 'Database or runtime failure');
+        if (databaseErrors) {
+            for (const op of [root.post, item.put, item.delete]) op.responses['409'] = response('.Error', 'Request conflicts with existing data');
+            for (const op of [root.get, root.post, item.get, item.put, item.delete]) op.responses['503'] = response('.Error', 'Database temporarily unavailable');
+        }
     }
     for (const rel of relations) {
         const many = ['ONE_TO_MANY', 'MANY_TO_MANY'].includes(rel.relationType);
@@ -70,6 +76,7 @@ function enrich(doc, entities, relations, { key, lowerFirst, pluralize }) {
         const get = doc.paths[prefix].get;
         get.responses['200'] = response(rel.targetEntity + (many ? '.ListResponse' : '.Response'));
         get.responses['500'] = response('.Error', 'Database or runtime failure');
+        if (databaseErrors) get.responses['503'] = response('.Error', 'Database temporarily unavailable');
         if (!many) get.responses['404'] = response('.Error', 'Related record not found');
         if (rel.relationType === 'MANY_TO_MANY') {
             const source = byName.get(rel.sourceEntity), target = byName.get(rel.targetEntity);
@@ -82,7 +89,14 @@ function enrich(doc, entities, relations, { key, lowerFirst, pluralize }) {
             const association = doc.paths[prefix + '/{' + lowerFirst(rel.targetEntity) + 'Id}'];
             association.post.responses['201'] = response(associationName, 'Associated');
             association.delete.responses['200'] = response('.Message');
-            for (const op of [association.post, association.delete]) op.responses['500'] = response('.Error', 'Database or runtime failure');
+            for (const op of [association.post, association.delete]) {
+                if (databaseErrors) {
+                    op.responses['400'] = response('.Error', 'Request contains a value rejected by the database');
+                    op.responses['409'] = response('.Error', 'Request conflicts with existing data');
+                    op.responses['503'] = response('.Error', 'Database temporarily unavailable');
+                }
+                op.responses['500'] = response('.Error', 'Database or runtime failure');
+            }
         }
     }
     return doc;

@@ -147,7 +147,7 @@ try {
         } finally { process.chdir(originalCwd); }
     });
 
-    test('G: every valid sample matches frozen V1 in memory and on disk', root => {
+    test('G: every valid sample preserves frozen V1 outside approved G06 changes; disk matches memory', root => {
         const frozen = baselineModule('src/codegen/codegen.js', V1);
         let projects = 0, files = 0;
         for (const name of fs.readdirSync(path.join(repository, 'samples')).filter(name => name.endsWith('.apiforge'))) {
@@ -155,16 +155,16 @@ try {
             let current;
             try { current = compile(source); } catch { continue; }
             const original = frozen.generate(current.optimized, false);
-            assert.deepEqual(current.files, original.files, name);
+            assert.deepEqual(require('./db-error-taxonomy-test-helpers').projectDatabaseErrorChanges(current.files, source), original.files, name);
             const output = path.join(root, 'output');
             publishGeneratedFiles(current.files, output);
-            assert.deepEqual(filesOnDisk(output), expectedFiles(original.files), name);
+            assert.deepEqual(filesOnDisk(output), expectedFiles(current.files), name);
             assert.deepEqual(temporaryEntries(root), []);
             projects++; files += original.files.length;
         }
         assert.equal(projects, 7);
         assert.equal(files, 79);
-        console.log(`Compatibility: ${projects} sample projects, ${files} generated files byte-identical to ${V1}`);
+        console.log(`Compatibility: ${projects} sample projects, ${files} generated files preserve ${V1} outside approved G06 error/validation-provenance/docs changes; disk bytes match current memory`);
     });
 
     test('first rename failure leaves the original output and cleans both reservations', root => {

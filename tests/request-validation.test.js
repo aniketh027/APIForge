@@ -141,7 +141,7 @@ async function listen(app, fn) {
         for (const method of ['POST', 'PUT']) {
             const response = await invoke(runtime, method, { email: 'private@example.com' });
             assert.equal(response.code, 500);
-            assert.deepEqual(response.body, { success: false, error: method === 'POST' ? 'Unable to create item.' : 'Unable to update item.' });
+            assert.deepEqual(response.body, { success: false, error: 'Unable to complete request.' });
             assert(!/private@|User.email|Duplicate|SELECT/.test(JSON.stringify(response.body)));
         }
     });
@@ -186,7 +186,7 @@ async function listen(app, fn) {
             for (const method of ['POST', 'PUT']) {
                 const response = await fetch(base + (method === 'POST' ? '/items' : '/items/7'), { method, headers: { 'content-type': 'application/json' }, body: '{"age":20}' });
                 httpRequests++; assert.equal(response.status, 500);
-                assert.deepEqual(await response.json(), { success: false, error: method === 'POST' ? 'Unable to create item.' : 'Unable to update item.' });
+                assert.deepEqual(await response.json(), { success: false, error: 'Unable to complete request.' });
             }
         });
         const compiler = require('../server'), saved = console.error;

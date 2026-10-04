@@ -604,11 +604,17 @@ parsing rejects scalar JSON before the controller and emits a sanitized 400;
 arrays reach the controller shape check. Malformed JSON also returns sanitized
 400 in the generated backend. The separate compiler API retains 500/INP002.
 
-POST/PUT database failures return HTTP 500 with `Unable to create item.` or
-`Unable to update item.` instead of private SQL/driver messages. UNIQUE remains
-database-enforced without a race-prone precheck; duplicate-key failures are not
-mapped to 409. Item GET, DELETE and relationship caught DB errors are also
-sanitized 500 responses.
+Generated database failures use the existing `{ success: false, error }` envelope.
+Known write/delete conflicts return 409 (`Request conflicts with existing data.`).
+Known DB-rejected values on POST/PUT and association writes return 400
+(`Request contains a value rejected by the database.`). Known temporary
+connection/capacity/lock failures return 503 (`Database temporarily unavailable.`).
+Unknown/internal failures return 500 (`Unable to complete request.`).
+Reads use 500/503; collection validation remains 400 before DB access. Missing CRUD
+and singular related records retain 404. UNIQUE remains database-enforced without
+prechecks. Only verified machine-readable driver identifiers are classified;
+SQL, private values, driver codes and raw error messages never enter responses.
+See [G06 verification](generated-db-error-taxonomy-verification.md) for exact mappings.
 Explicit PK creation/default semantics (G12) and mutation (G13) remain separate.
 
 ## 11. Diagnostics
@@ -780,8 +786,10 @@ Without page/limit, results are unbounded and there is no COUNT query.
 page, limit, sort, order are reserved control names. Fields with those
 names may be sorted but cannot be filtered. Unknown keys, repeated/non-string
 values, invalid datatype values, and invalid sorting/pagination return 400
-before any DB query. Collection DB failures return sanitized 500 error
-`Unable to retrieve collection.`. Filter values, limit, and offset are bound
+before any DB query. Only model-registered collection validation errors expose
+their safe generated messages; arbitrary statusCode properties have no authority.
+Collection DB failures return sanitized 503 for recognized temporary failures,
+otherwise 500 (`Unable to complete request.`). Filter values, limit, and offset are bound
 parameters; column names and direction tokens come from trusted whitelists.
 
 ### Relationship routes

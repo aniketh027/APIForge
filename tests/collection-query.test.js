@@ -131,7 +131,7 @@ const fail = query => assert.throws(() => parse(query), error => error.statusCod
             assert.equal(empty.headers.get('X-Total-Pages'), '0');
             const original = pool.query;
             pool.query = async () => { throw new Error('secret SQL database internals'); };
-            try { const response = await fetch(base); assert.equal(response.status, 500); assert.equal((await response.json()).error, 'Unable to retrieve collection.'); }
+            try { const response = await fetch(base); assert.equal(response.status, 500); assert.equal((await response.json()).error, 'Unable to complete request.'); }
             finally { pool.query = original; }
         } finally { await new Promise(resolve => server.close(resolve)); }
     });

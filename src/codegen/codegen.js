@@ -35,6 +35,7 @@ const path = require('path');
 const IRGenerator = require('../ir/generator');
 const apiForgePackage = require('../../package.json');
 const { publishGeneratedFiles } = require('./publish-output');
+const { generateDatabaseErrorHandler } = require('./db-error-taxonomy');
 
 const GENERATED_RUNTIME_DEPENDENCIES = ['dotenv', 'express', 'mysql2'];
 
@@ -586,7 +587,7 @@ function generateReadme(entities) {
            `Explicit INT PRIMARY KEY without DEFAULT is AUTO_INCREMENT: POST permits omission, optional null, zero and positive safe integers; negative supplied keys return HTTP 400 before model/DB access. Ordinary INT and non-auto INT keys retain negative values. MIN/MAX on an INT key without DEFAULT fails compiler target preflight with SEM037 because MySQL CHECK constraints cannot reference AUTO_INCREMENT columns. INT DEFAULT keys with valid bounds remain supported.\n\n` +
            `PUT is partial, including an empty object that rereads the existing row. The URL \`:id\` identifies the resource even when its primary key has another name or STRING type. Primary keys are immutable: any supplied explicit primary-key field returns HTTP 400 before model access, even the same value or null. Direct model updates also reject key properties before SQL.\n\n` +
            `OpenAPI uses Entity.Create/Update/Read roles and response envelopes. Update omits immutable keys; optional inputs are nullable; synthetic FK columns are readOnly. Declared BOOLEAN rows return booleans on source and target reads.\n\n` +
-           `Malformed JSON returns sanitized HTTP 400. POST/PUT database failures return sanitized HTTP 500; UNIQUE remains database-enforced without prechecks or duplicate-key status mapping.\n\n` +
+           `Malformed JSON and generated request validation return HTTP 400 with safe messages. Known database conflicts return 409; rejected write values return 400; temporary connection/capacity/lock failures return 503; unknown failures return 500. Database errors use generic messages without SQL, driver codes or private values. Missing CRUD and singular related records retain 404. UNIQUE remains database-enforced without prechecks.\n\n` +
            `## Collection query options\n\n` +
            `Collection GET preserves \`{ success: true, data: [...] }\`. Without \`page\` or \`limit\`, results remain unbounded and no count query runs.\n\n` +
            `- Exact-match filters use field names, including implicit \`id\`. INT requires a safe integer; FLOAT a finite decimal/exponent number; BOOLEAN accepts only \`true\` or \`false\`; STRING uses raw text; ENUM requires an exact declared member.\n` +
@@ -749,7 +750,11 @@ function generateCollectionMethods(entity) {
     const table = JSON.stringify(quoteIdentifier(entity.name));
     return `    // Parse HTTP strings once, before any database access.
     static parseQuery(query = {}) {
-        const fail = message => { throw Object.assign(new Error(message), { statusCode: 400 }); };
+        const fail = message => {
+            const error = Object.assign(new Error(message), { statusCode: 400 });
+            queryValidationErrors.set(error, message);
+            throw error;
+        };
         const reserved = ${JSON.stringify(COLLECTION_RESERVED_PARAMS)};
         for (const key of Object.keys(query)) {
             if (!reserved.includes(key) && !QUERY_FIELDS.some(field => field.name === key)) {
@@ -944,9 +949,14 @@ function generateModel(entityName, fields, relations = [], entities = []) {
            ` */\n\n` +
            `const pool = require('../config/db');\n\n` +
            `const QUERY_FIELDS = ${queryFieldsJson};\n\n` +
+           `// Collection validation provenance: only locally registered errors expose text.\n` +
+           `const queryValidationErrors = new WeakMap();\n\n` +
            generatePrimaryKeyPolicy({ name: entityName, fields }, true) +
            generateReadNormalization() +
            `class ${entityName}Model {\n` +
+           `    static queryValidationMessage(error) {\n` +
+           `        return queryValidationErrors.get(error);\n` +
+           `    }\n\n` +
            `    static get tableName() {\n` +
            `        return '${entityName}';\n` +
            `    }\n\n` +
@@ -988,7 +998,7 @@ function generateModel(entityName, fields, relations = [], entities = []) {
 
 /**
  * PART 5: Functional Controller Generation
- * Generates controller functions calling model methods with 400 validation, 404 & 500 error handling.
+ * Generates controller functions with safe validation, absence and DB error taxonomy.
  * Includes relationship controller handlers if the entity participates in relationships.
  * 
  * @param {string} entityName - Entity name (e.g. "Student")
@@ -1042,7 +1052,7 @@ function generateController(entityName, fieldsOrRelations = [], maybeRelations =
                     `        const items = await ${modelVar}.${getRelFn}(req.params.id);\n` +
                     `        res.status(200).json({ success: true, data: items });\n` +
                     `    } catch (error) {\n` +
-                    `        res.status(500).json({ success: false, error: 'Unable to complete request.' });\n` +
+                    `        sendDatabaseError(res, error);\n` +
                     `    }\n` +
                     `}\n\n` +
                     `async function ${addRelFn}(req, res) {\n` +
@@ -1050,7 +1060,7 @@ function generateController(entityName, fieldsOrRelations = [], maybeRelations =
                     `        const result = await ${modelVar}.${addRelFn}(req.params.id, req.params.${targetParam});\n` +
                     `        res.status(201).json({ success: true, data: result });\n` +
                     `    } catch (error) {\n` +
-                    `        res.status(500).json({ success: false, error: 'Unable to complete request.' });\n` +
+                    `        sendDatabaseError(res, error, 'association');\n` +
                     `    }\n` +
                     `}\n\n` +
                     `async function ${removeRelFn}(req, res) {\n` +
@@ -1058,7 +1068,7 @@ function generateController(entityName, fieldsOrRelations = [], maybeRelations =
                     `        const success = await ${modelVar}.${removeRelFn}(req.params.id, req.params.${targetParam});\n` +
                     `        res.status(200).json({ success: true, message: 'Association removed successfully' });\n` +
                     `    } catch (error) {\n` +
-                    `        res.status(500).json({ success: false, error: 'Unable to complete request.' });\n` +
+                    `        sendDatabaseError(res, error, 'association');\n` +
                     `    }\n` +
                     `}`
                 );
@@ -1072,7 +1082,7 @@ function generateController(entityName, fieldsOrRelations = [], maybeRelations =
                     `        const items = await ${modelVar}.${getRelFn}(req.params.id);\n` +
                     `        res.status(200).json({ success: true, data: items });\n` +
                     `    } catch (error) {\n` +
-                    `        res.status(500).json({ success: false, error: 'Unable to complete request.' });\n` +
+                    `        sendDatabaseError(res, error);\n` +
                     `    }\n` +
                     `}`
                 );
@@ -1088,7 +1098,7 @@ function generateController(entityName, fieldsOrRelations = [], maybeRelations =
                     `        }\n` +
                     `        res.status(200).json({ success: true, data: item });\n` +
                     `    } catch (error) {\n` +
-                    `        res.status(500).json({ success: false, error: 'Unable to complete request.' });\n` +
+                    `        sendDatabaseError(res, error);\n` +
                     `    }\n` +
                     `}`
                 );
@@ -1105,6 +1115,7 @@ function generateController(entityName, fieldsOrRelations = [], maybeRelations =
            ` * Generated automatically by APIForge Compiler\n` +
            ` */\n\n` +
            `const ${modelVar} = require('../models/${entityName}');\n\n` +
+           generateDatabaseErrorHandler() +
            generateWriteValidation({ name: entityName, fields }) +
            `async function create${entityName}(req, res) {\n` +
            `    try {\n` +
@@ -1116,12 +1127,19 @@ function generateController(entityName, fieldsOrRelations = [], maybeRelations =
            `        const result = await ${modelVar}.create(data);\n` +
            `        res.status(201).json({ success: true, data: result });\n` +
            `    } catch (error) {\n` +
-           `        res.status(500).json({ success: false, error: 'Unable to create item.' });\n` +
+           `        sendDatabaseError(res, error, 'write');\n` +
            `    }\n` +
            `}\n\n` +
            `async function ${getPluralFn}(req, res) {\n` +
            `    try {\n` +
-           `        const options = ${modelVar}.parseQuery(req.query || {});\n` +
+           `        let options;\n` +
+           `        try {\n` +
+           `            options = ${modelVar}.parseQuery(req.query || {});\n` +
+           `        } catch (error) {\n` +
+           `            const message = ${modelVar}.queryValidationMessage(error);\n` +
+           `            if (typeof message === 'string') return res.status(400).json({ success: false, error: message });\n` +
+           `            throw error;\n` +
+           `        }\n` +
            `        const items = await ${modelVar}.findAll(options);\n` +
            `        if (options.paginated) {\n` +
            `            const total = await ${modelVar}.countFiltered(options);\n` +
@@ -1130,8 +1148,7 @@ function generateController(entityName, fieldsOrRelations = [], maybeRelations =
            `        }\n` +
            `        res.status(200).json({ success: true, data: items });\n` +
            `    } catch (error) {\n` +
-           `        const status = error.statusCode === 400 ? 400 : 500;\n` +
-           `        res.status(status).json({ success: false, error: status === 400 ? error.message : 'Unable to retrieve collection.' });\n` +
+           `        sendDatabaseError(res, error);\n` +
            `    }\n` +
            `}\n\n` +
            `async function get${entityName}ById(req, res) {\n` +
@@ -1142,7 +1159,7 @@ function generateController(entityName, fieldsOrRelations = [], maybeRelations =
            `        }\n` +
            `        res.status(200).json({ success: true, data: item });\n` +
            `    } catch (error) {\n` +
-           `        res.status(500).json({ success: false, error: 'Unable to complete request.' });\n` +
+           `        sendDatabaseError(res, error);\n` +
            `    }\n` +
            `}\n\n` +
            `async function update${entityName}(req, res) {\n` +
@@ -1158,7 +1175,7 @@ function generateController(entityName, fieldsOrRelations = [], maybeRelations =
            `        }\n` +
            `        res.status(200).json({ success: true, data: updated });\n` +
            `    } catch (error) {\n` +
-           `        res.status(500).json({ success: false, error: 'Unable to update item.' });\n` +
+           `        sendDatabaseError(res, error, 'write');\n` +
            `    }\n` +
            `}\n\n` +
            `async function delete${entityName}(req, res) {\n` +
@@ -1169,7 +1186,7 @@ function generateController(entityName, fieldsOrRelations = [], maybeRelations =
            `        }\n` +
            `        res.status(200).json({ success: true, message: '${entityName} deleted successfully' });\n` +
            `    } catch (error) {\n` +
-           `        res.status(500).json({ success: false, error: 'Unable to complete request.' });\n` +
+           `        sendDatabaseError(res, error, 'delete');\n` +
            `    }\n` +
            `}${extraFunctionsStr}\n\n` +
            `module.exports = {\n` +
@@ -1267,6 +1284,7 @@ function generateServer(entities) {
            `const express = require('express');\n` +
            `const app = express();\n` +
            `const PORT = process.env.PORT || 3000;\n\n` +
+           generateDatabaseErrorHandler() +
            `// Middleware\n` +
            `app.use(express.json());\n\n` +
            `// Registered Entity Routes\n` +
@@ -1282,7 +1300,7 @@ function generateServer(entities) {
            `        return res.status(400).json({ success: false, error: 'Request body must contain valid JSON.' });\n` +
            `    }\n` +
            `    console.error(err.stack);\n` +
-           `    res.status(500).json({ success: false, error: 'Internal Server Error' });\n` +
+           `    sendDatabaseError(res, err);\n` +
            `});\n\n` +
            `if (require.main === module) {\n` +
            `    app.listen(PORT, () => {\n` +
@@ -1516,7 +1534,7 @@ function generateSwagger(entities, relations = []) {
         info: { title: "APIForge Generated REST API", version: "1.0.0" },
         paths,
         components: { schemas }
-    }, entities, relations, { key: getEffectiveKey, lowerFirst, pluralize }), null, 2);
+    }, entities, relations, { key: getEffectiveKey, lowerFirst, pluralize, databaseErrors: true }), null, 2);
 }
 
 // ════════════════════════════════════════════════════════════

@@ -3,6 +3,7 @@ const { compile, baselineModule } = require('./v1-hardening-helpers');
 // Historical fixtures stay frozen. Only approved V1 sections are projected;
 // every byte outside these sections still compares with the reviewed base.
 function projectHardeningChanges(files, source) {
+    files = require('./db-error-taxonomy-test-helpers').projectDatabaseErrorChanges(files, source);
     const old = new Map(compile(source, baselineModule('src/codegen/codegen.js')).files.map(f => [f.path, f]));
     assert.deepEqual(files.map(f => f.path), [...old.keys()]);
     return files.map(file => {

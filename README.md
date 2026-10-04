@@ -238,12 +238,16 @@ without DEFAULT fails SEM037 because MySQL CHECK constraints cannot reference
 AUTO_INCREMENT columns; bounded keys WITH DEFAULT remain supported.
 PUT rejects any explicit key property with 400 before model access, even the same
 value or null; identity comes from URL `:id`. OpenAPI uses distinct Create/Update/Read operation roles; Update omits the immutable
-key and optional inputs are nullable. Generated POST/PUT DB errors
-are sanitized 500 responses; item/delete/relationship DB errors are sanitized too.
+key and optional inputs are nullable. Generated DB errors use safe generic messages:
+409 for known write/delete conflicts, 400 for DB-rejected write values, 503 for
+known temporary connection/capacity/lock failures, and 500 for unknown failures.
+Reads retain 500/503; collection validation remains 400 before database access.
 Declared BOOLEAN database rows normalize to booleans, including related targets.
 Read schemas expose SQL-added FK columns as readOnly; UNIQUE remains database-enforced. Generated malformed
 JSON returns sanitized 400; the compiler API retains its 500/INP002 contract.
 See [verification and remaining limits](docs/generated-request-validation-verification.md).
+The [G06 database error taxonomy verification](docs/generated-db-error-taxonomy-verification.md)
+lists exact driver identifiers, endpoint statuses, safety tests and live DB limitations.
 The [primary-key contract verification](docs/primary-key-contract-verification.md)
 records the G12/G13 correction and retained database/OpenAPI limits.
 

@@ -188,7 +188,7 @@ async function baselineProof() {
         const controller = load(content(files, 'controllers/itemController.js'), () => Model);
         const response = await invoke({ controller }, 'create', {});
         assert.equal(calls, 1); assert.equal(response.code, 500);
-        assert.deepEqual(response.body, { success: false, error: 'Unable to create item.' });
+        assert.deepEqual(response.body, { success: false, error: 'Unable to complete request.' });
     });
     await test('every explicit key class rejects same/different/null/invalid/undefined own PK before model or SQL; direct model guard agrees', async () => {
         for (const [name, key, old, next] of [['auto', 'id', 1, 2], ['intDefault', 'key', 7, 8], ['string', 'username', 'old', 'new'],
@@ -276,7 +276,8 @@ async function baselineProof() {
                 assert.deepEqual(Object.fromEntries(old.files.map(f => [f.path, hash(f.content)])), program.files, name + ' pinned Git baseline');
                 assert.deepEqual(projectPrimaryKeyChanges(files, program.source), old.files);
                 for (const file of files) {
-                    if (!/^(models|controllers)\//.test(file.path) && !['README.md', 'swagger.json', 'package.json'].includes(file.path)) assert.equal(hash(file.content), program.files[file.path], name + '/' + file.path);
+                    // Full server bytes outside G06 are checked by the projection above.
+                    if (!/^(models|controllers)\//.test(file.path) && !['README.md', 'swagger.json', 'package.json', 'server.js'].includes(file.path)) assert.equal(hash(file.content), program.files[file.path], name + '/' + file.path);
                     if (file.path.endsWith('.js')) {
                         const filename = path.join(temp, file.path.replaceAll('/', '-')); fs.writeFileSync(filename, file.content);
                         const checked = spawnSync(process.execPath, ['--check', filename], { encoding: 'utf8', windowsHide: true });
