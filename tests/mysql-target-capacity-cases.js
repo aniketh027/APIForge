@@ -6,6 +6,27 @@ function foreignKeys(count, uniques = 0, cardinality = 'MANY_TO_ONE') {
 }
 const junction = (a, b) => `ENTITY Alpha\nk ${a}\nENTITY Beta\nk ${b}\nRELATION Alpha connects Beta MANY_TO_MANY`;
 const enumSource = values => `ENTITY Choice\nvalue ENUM(${values.map(v => JSON.stringify(v)).join(',')})`;
+// Genuinely forged IR: no lexer, parser, AST or source lowering involved.
+function forgedCheckIR(nameLength, families) {
+    const entity = 'T'.repeat(nameLength);
+    return { type: 'PROGRAM', instructions: [{ op: 'CREATE_ENTITY', entity },
+        ...families.map((types, i) => ({ op: 'ADD_FIELD', entity, field: 'f' + i,
+            dataType: 'STRING', constraints: [], defaultValue: null,
+            validations: types.map(type => ({ type, value: type.startsWith('MAX') ? 10 : 0 })) }))] };
+}
+function forgedCheckCases() {
+    const both = ['MIN','MIN_LENGTH'], all = ['MIN','MAX','MIN_LENGTH','MAX_LENGTH'];
+    return [
+        ['forged-check-10-overflow', forgedCheckIR(58, Array.from({length:5},()=>both)), false, 10, 10],
+        ['forged-check-numeric-pair', forgedCheckIR(58, Array.from({length:9},()=>['MIN','MAX'])), true, 9],
+        ['forged-check-length-pair', forgedCheckIR(58, Array.from({length:9},()=>['MIN_LENGTH','MAX_LENGTH'])), true, 9],
+        ['forged-check-all-four-boundary', forgedCheckIR(57, Array.from({length:5},()=>all)), true, 10],
+        ['forged-check-all-four-overflow', forgedCheckIR(58, Array.from({length:5},()=>all)), false, 10, 10],
+        ['forged-check-99-boundary', forgedCheckIR(57, [...Array.from({length:49},()=>both),['MIN']]), true, 99],
+        ['forged-check-100-overflow', forgedCheckIR(57, Array.from({length:50},()=>both)), false, 100, 100],
+        ['forged-check-100-boundary', forgedCheckIR(56, Array.from({length:50},()=>all)), true, 100]
+    ];
+}
 const cases = [
     ['implicit-columns-1017', `ENTITY Wide\n${fields(1016)}`, true],
     ['implicit-columns-1018', `ENTITY Wide\n${fields(1017)}`, false, /1018 physical columns/],
@@ -75,4 +96,4 @@ function seededCases(count = 96, seed = 0x16a84) {
         return { name: 'seed-' + i, source };
     });
 }
-module.exports = { fields, foreignKeys, junction, enumSource, cases, seededCases };
+module.exports = { fields, foreignKeys, junction, enumSource, cases, seededCases, forgedCheckIR, forgedCheckCases };

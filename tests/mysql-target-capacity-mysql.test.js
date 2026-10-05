@@ -7,11 +7,11 @@ const { analyze, compile, content } = require('./v1-hardening-helpers');
 const Codegen = require('../src/codegen/codegen');
 const IR = require('../src/ir/generator');
 const target = require('../src/utils/mysql-target');
-const { cases, enumSource, seededCases } = require('./mysql-target-capacity-cases');
+const { cases, enumSource, seededCases, forgedCheckCases } = require('./mysql-target-capacity-cases');
 const { readServerConfig, createTemporaryDatabaseName, quoteTemporaryDatabaseName } = require('./generated-backend-mysql-helpers');
 const { snapshotDirectory } = require('./generated-backend-test-helpers');
 const structuralErrors = new Set(['ER_TOO_MANY_FIELDS','ER_TOO_MANY_KEYS','ER_TOO_LONG_KEY','ER_TOO_BIG_ROWSIZE',
-    'ER_WRONG_COLUMN_NAME','ER_TOO_LONG_ENUM_SET_VALUE','ER_TOO_LONG_SET_ENUM_VALUE','ER_TOO_BIG_SET','ER_TOO_BIG_ENUM','ER_INVALID_DEFAULT']);
+    'ER_WRONG_COLUMN_NAME','ER_TOO_LONG_ENUM_SET_VALUE','ER_TOO_LONG_SET_ENUM_VALUE','ER_TOO_BIG_SET','ER_TOO_BIG_ENUM','ER_INVALID_DEFAULT','ER_TOO_LONG_IDENT']);
 const report = { seed: '0x16a84', target: null, cases: [], imported: 0, rejected: 0, checks: 0, cleanup: false };
 function check(condition, message) { report.checks++; assert(condition, message); }
 async function main() {
@@ -29,10 +29,14 @@ async function main() {
             throw new Error('G16 live verification requires conforming MySQL 8.4 / >=16KiB / InnoDB DYNAMIC / strict target: '+JSON.stringify(t));
         }
         console.log('G16 native target: '+JSON.stringify(t));
-        async function run(name, source, expected) {
-            const result = analyze(source), accepted = result.semantic.valid;
+        async function run(name, source, expected, forgedIR) {
+            const result = forgedIR ? null : analyze(source);
+            if (forgedIR) check(IR.validate(forgedIR).valid,name+' manual forged IR validity');
+            const entities = forgedIR ? Codegen.extractEntitiesFromIR(forgedIR) : result.ast.entities;
+            const relations = forgedIR ? Codegen.extractRelationsFromIR(forgedIR) : result.ast.relations;
+            const accepted = forgedIR ? target.targetIssues(entities,relations).length === 0 : result.semantic.valid;
             if (expected !== undefined) check(accepted === expected, name + ' compiler expectation');
-            if (!accepted) check(result.semantic.diagnostics.every(d=>d.code==='SEM037'),name+' failure classification');
+            if (!accepted && result) check(result.semantic.diagnostics.every(d=>d.code==='SEM037'),name+' failure classification');
             const database = createTemporaryDatabaseName(), q = quoteTemporaryDatabaseName(database);
             const record = { name, accepted, imported: false, error: null };
             try {
@@ -43,13 +47,14 @@ async function main() {
                 report.database = settings[0];
                 // Raw SQL emitter intentionally bypasses the gate for rejected source:
                 // the native oracle must independently demonstrate invalidity.
-                const sql = accepted ? content(compile(source).files,'database/schema.sql') : Codegen.generateSQL(IR.generate(result.ast));
+                const ir = forgedIR || IR.generate(result.ast);
+                const sql = accepted ? content(forgedIR ? Codegen.generate(ir,false).files : compile(source).files,'database/schema.sql') : Codegen.generateSQL(ir);
                 try { await admin.query(sql); record.imported = true; report.imported++; }
                 catch (error) { record.error = { code:error.code, errno:error.errno, message:error.sqlMessage }; report.rejected++; }
                 report.cases.push(record);
                 if (accepted) {
                     check(record.imported, name+' PASSED PREFLIGHT BUT MYSQL FAILED: '+JSON.stringify(record.error));
-                    const plans = target.physicalPlan(result.ast.entities,result.ast.relations);
+                    const plans = target.physicalPlan(entities,relations);
                     const [columns] = await admin.query('SELECT TABLE_NAME name, COUNT(*) n FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=? GROUP BY TABLE_NAME',[database]);
                     const [indexes] = await admin.query('SELECT TABLE_NAME name, INDEX_NAME idx, COUNT(*) parts FROM information_schema.STATISTICS WHERE TABLE_SCHEMA=? GROUP BY TABLE_NAME, INDEX_NAME',[database]);
                     const [tables] = await admin.query('SELECT TABLE_NAME name, ENGINE engine, ROW_FORMAT row_format FROM information_schema.TABLES WHERE TABLE_SCHEMA=?',[database]);
@@ -63,8 +68,12 @@ async function main() {
                 } else {
                     check(!record.imported,name+' compiler rejection must have native DDL evidence');
                     check(structuralErrors.has(record.error?.code),name+' unclassified native failure: '+JSON.stringify(record.error));
-                    check(target.targetIssues(result.ast.entities,result.ast.relations).length>0,name+' target preflight failure');
-                    report.checks++; assert.throws(()=>Codegen.generate(IR.generate(result.ast),false),/preflight/);
+                    check(target.targetIssues(entities,relations).length>0,name+' target preflight failure');
+                    report.checks++; assert.throws(()=>Codegen.generate(ir,false),/preflight/);
+                    if (forgedIR) {
+                        check(record.error.code === 'ER_TOO_LONG_IDENT' && record.error.errno === 1059,name+' native identifier failure');
+                        check(record.error.message.includes(entities[0].name+'_chk_'+(sql.match(/CHECK \(/g)||[]).length),name+' actual CHECK ordinal');
+                    }
                 }
                 console.log('  '+name+': '+(record.imported?'IMPORT':record.error?.code)+' / preflight '+(accepted?'accept':'reject'));
             } finally {
@@ -74,6 +83,7 @@ async function main() {
         for (const [name,source,expected] of cases) await run(name,source,expected);
         for (const n of [65535,65536]) await run('enum-members-'+n,enumSource(Array.from({length:n},(_,i)=>'v'+i)),n===65535);
         for (const {name,source} of seededCases()) await run(name,source);
+        for (const [name,ir,expected] of forgedCheckCases()) await run(name,null,expected,ir);
         check(JSON.stringify(snapshotDirectory(output)) === JSON.stringify(before),'repository output unchanged');
     } finally {
         if (admin) {

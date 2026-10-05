@@ -134,7 +134,14 @@ function targetIssues(entities, relations = []) {
                 issue(field, `Supported MySQL cannot represent MIN/MAX CHECK constraints on AUTO_INCREMENT column '${entity.name}.${field.name}'.`,
                     autoBound.type, 'Remove MIN/MAX, or declare an explicit INT DEFAULT to use a non-AUTO_INCREMENT key with bounds.');
             }
-            if ((field.validations || []).length) identifier(entity.name + '_chk_' + (++checkCount), field, 'automatic CHECK constraint');
+            // Match the two independent CHECK branches in generateSQL, including
+            // forged IR that combines numeric and length validation families.
+            // MIN+MAX is one CHECK; MIN_LENGTH+MAX_LENGTH is another.
+            for (const family of [['MIN', 'MAX'], ['MIN_LENGTH', 'MAX_LENGTH']]) {
+                if ((field.validations || []).some(v => family.includes(v.type))) {
+                    identifier(entity.name + '_chk_' + (++checkCount), field, 'automatic CHECK constraint');
+                }
+            }
             if (field.dataType === 'STRING') {
                 const width = capacity(field);
                 if (width > VARCHAR_CAPACITY) issue(field, `STRING '${entity.name}.${field.name}' requires VARCHAR(${width}), above the utf8mb4 single-column capacity ${VARCHAR_CAPACITY}.`);

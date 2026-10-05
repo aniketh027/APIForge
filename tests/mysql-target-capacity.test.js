@@ -2,8 +2,11 @@ const assert = require('assert/strict');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const vm = require('vm');
+const { execFileSync } = require('child_process');
+const { createRequire } = require('module');
 const { analyze, compile, baselineModule, content } = require('./v1-hardening-helpers');
-const { cases, fields, junction, enumSource, seededCases } = require('./mysql-target-capacity-cases');
+const { cases, fields, junction, enumSource, seededCases, forgedCheckIR, forgedCheckCases } = require('./mysql-target-capacity-cases');
 const target = require('../src/utils/mysql-target');
 const Codegen = require('../src/codegen/codegen');
 const IR = require('../src/ir/generator');
@@ -90,5 +93,61 @@ test('approved-main gaps reproduced and accepted artifacts remain byte-identical
     }
     // Storage bounds apply only to schema DEFAULT, preserving G17 and HTTP scope.
     verify(analyze('ENTITY Item\nv INT MIN -9007199254740991 MAX 9007199254740991').semantic.valid,'large CHECK literals are valid DDL');
+});
+test('manual forged IR CHECK families match emission and automatic-name digit boundaries', () => {
+    for (const [types,count] of [[['MIN','MAX'],1],[['MIN_LENGTH','MAX_LENGTH'],1],[['MIN','MAX','MIN_LENGTH','MAX_LENGTH'],2]]) {
+        const ir = forgedCheckIR(1,[types]);
+        verify(IR.validate(ir).valid,'single-field forged IR validity');
+        verify((Codegen.generateSQL(ir).match(/CHECK \(/g)||[]).length === count,'single-field emission groups '+types);
+        verify(target.targetIssues(Codegen.extractEntitiesFromIR(ir)).length === 0,'single-field target accepts short names');
+    }
+    const oldTarget = baselineModule('src/utils/mysql-target.js','5fc2c6652f27b38ead38265998aa7aceba8a131f');
+    // Pin its target dependency too: baselineModule normally resolves current
+    // dependencies, which would make the old generator call the repaired gate.
+    const filename = path.resolve(__dirname,'../src/codegen/codegen.js');
+    const originalRequire = createRequire(filename), oldModule = { exports: {} };
+    const oldSource = execFileSync('git',['show','5fc2c6652f27b38ead38265998aa7aceba8a131f:src/codegen/codegen.js'],{encoding:'utf8',windowsHide:true});
+    vm.compileFunction(oldSource,['require','module','exports','__dirname'])(
+        ref => ref === '../utils/mysql-target' ? oldTarget : originalRequire(ref),oldModule,oldModule.exports,path.dirname(filename));
+    const oldCodegen = oldModule.exports;
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(),'apiforge-g16-check-')), previous = process.cwd();
+    try {
+        fs.mkdirSync(path.join(dir,'output','database'),{recursive:true});
+        fs.writeFileSync(path.join(dir,'output','database','schema.sql'),'OLD');
+        fs.writeFileSync(path.join(dir,'output','.env'),'USER');
+        for (const [name,ir,valid,count,ordinal] of forgedCheckCases()) {
+            verify(IR.validate(ir).valid, name+' generic IR validator intentionally unchanged');
+            const entities = Codegen.extractEntitiesFromIR(ir), sql = Codegen.generateSQL(ir);
+            verify((sql.match(/CHECK \(/g)||[]).length === count, name+' actual emitted CHECK count');
+            const issues = target.targetIssues(entities);
+            verify(issues.length === (valid ? 0 : 1), name+' automatic-name preflight');
+            if (valid) {
+                verify(content(Codegen.generate(ir,false).files,'database/schema.sql') === sql,name+' accepts 64-character boundary');
+                verify((entities[0].name+'_chk_'+count).length === 64,name+' exact name length');
+            } else {
+                const automatic = entities[0].name+'_chk_'+ordinal;
+                verify(automatic.length === 65 && issues[0].message.includes(automatic),name+' actual failing ordinal');
+                verify(issues[0].node === entities[0].fields.at(-1),name+' contributing field');
+                verify(oldTarget.targetIssues(entities).length === 0,name+' reviewed preflight missed it');
+                verify(oldCodegen.generate(ir,false).files.length > 0,name+' reviewed production accepted it');
+                checks++; assert.throws(()=>Codegen.generate(ir,false),/preflight.*automatic CHECK constraint/);
+                process.chdir(dir);
+                checks++; assert.throws(()=>Codegen.generate(ir,true),/preflight.*automatic CHECK constraint/);
+                verify(fs.readFileSync(path.join(dir,'output','database','schema.sql'),'utf8') === 'OLD',name+' old output preserved');
+                verify(fs.readFileSync(path.join(dir,'output','.env'),'utf8') === 'USER',name+' user root preserved');
+                verify(fs.readdirSync(dir).join(',') === 'output',name+' no publication staging');
+                process.chdir(previous);
+            }
+        }
+    } finally { process.chdir(previous); fs.rmSync(dir,{recursive:true,force:true}); }
+    const approvedCodegen = baselineModule('src/codegen/codegen.js','beda5c53b2a87402a857abd14a19d5f83ad66cc8');
+    for (const source of [
+        `ENTITY ${'T'.repeat(58)}\n${fields(9,'STRING','MIN_LENGTH 0 MAX_LENGTH 10')}`,
+        `ENTITY ${'T'.repeat(58)}\n${fields(9,'INT','MIN 0 MAX 10')}`,
+        'ENTITY Mixed\na STRING MIN_LENGTH 0 MAX_LENGTH 10\nb INT MIN -10 MAX 10\nc FLOAT MIN -1 MAX 1'
+    ]) {
+        const compiled = compile(source);
+        verify(JSON.stringify(compiled.files) === JSON.stringify(approvedCodegen.generate(compiled.optimized,false).files),'normal source bytes unchanged');
+    }
 });
 console.log(`MySQL target capacity: ${groups} groups / ${checks} assertions PASS.`);
