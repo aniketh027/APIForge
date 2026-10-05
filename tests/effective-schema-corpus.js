@@ -162,7 +162,11 @@ function directIRCases(pinned) {
         { name: 'representable-float-identity', ir: program([{ op: 'CREATE_ENTITY', entity: 'Direct' },
             field('Direct', 'key', 'FLOAT', ['PRIMARY_KEY']), field('Direct', 'label', 'STRING')]) },
         { name: 'representable-string-numeric-checks', ir: program([{ op: 'CREATE_ENTITY', entity: 'Direct' },
-            field('Direct', 'label', 'STRING', [], null, [{ type: 'MIN', value: 0 }, { type: 'MAX', value: 10 }])]) }
+            field('Direct', 'label', 'STRING', [], null, [{ type: 'MIN', value: 0 }, { type: 'MAX', value: 10 }])]) },
+        { name: 'representable-validation-metadata', ir: program([
+            field('Direct', 'amount', 'INT', [], null, [{ type: 'MIN', value: 0, note: 'retained' }])]) },
+        { name: 'representable-default-metadata', ir: program([
+            field('Direct', 'key', 'INT', ['PRIMARY_KEY'], { type: 'NUMBER', value: 7, note: 'retained' })]) }
     ];
 }
 

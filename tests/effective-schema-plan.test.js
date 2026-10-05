@@ -318,10 +318,30 @@ async function main() {
             const candidate = schema.buildCandidate(witness.ir); assert(candidate.issues.length > 0, witness.name);
             assert.throws(() => schema.assertStructural(candidate), /Cannot build Effective Schema Plan/);
             assert.throws(() => schema.buildFromIR(witness.ir), /Cannot build Effective Schema Plan/);
+            if (witness.acceptedBefore) assert.throws(() => Codegen.generate(witness.ir, false), /Cannot build Effective Schema Plan/);
+            else {
+                const failure = generator => { try { generator.generate(witness.ir, false); } catch (error) { return error.message; } };
+                assert.equal(failure(Codegen), failure(pinned.compiler.Codegen), 'Unresolved endpoints retain the existing full-generation failure.');
+            }
         }
         const orphan = schema.buildFromIR({ type: 'PROGRAM', instructions: [{ op: 'ADD_FIELD', entity: 'Orphan', field: 'label', dataType: 'STRING', constraints: [] }] });
         assert.equal(orphan.plan.entities[0].sourceName, 'Orphan');
         assert.throws(() => schema.buildFromIR({ type: 'INVALID', instructions: [] }), /Invalid IR/);
+    });
+
+    await test('full-generation mixed-invalid failures retain preflight precedence before structural rejection', () => {
+        const pinned = createPinnedCompiler().compiler.Codegen;
+        const failure = (generator, ir) => { try { generator.generate(ir, false); } catch (error) { return error.message; } throw new Error('Expected rejection.'); };
+        const duplicate = name => ({ type: 'PROGRAM', instructions: [{ op: 'CREATE_ENTITY', entity: name },
+            { op: 'ADD_FIELD', entity: name, field: 'label', dataType: 'STRING', constraints: [], validations: [], defaultValue: null },
+            { op: 'ADD_FIELD', entity: name, field: 'label', dataType: 'INT', constraints: [], validations: [], defaultValue: null }] });
+        for (const ir of [duplicate('X'.repeat(65)), duplicate('CON')]) assert.equal(failure(Codegen, ir), failure(pinned, ir));
+        const unresolved = duplicate('Direct');
+        unresolved.instructions.push({ op: 'CREATE_RELATION', sourceEntity: 'Direct', targetEntity: 'Missing', relationName: 'owns', relationType: 'ONE_TO_MANY' });
+        assert.equal(failure(Codegen, unresolved), failure(pinned, unresolved));
+        const numeric = duplicate('Direct');
+        numeric.instructions[1].defaultValue = { type: 'NUMBER', value: Infinity };
+        assert.equal(failure(Codegen, numeric), failure(pinned, numeric));
     });
 
     await test('tolerant numeric candidates stay JSON-safe while preserving raw preflight operands', () => {
