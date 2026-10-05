@@ -203,7 +203,7 @@ class SemanticAnalyzer {
             // Step 2: Check for duplicate entity names
             this.checkDuplicateEntities(ast.entities);
             for (const issue of require('../utils/mysql-target').targetIssues(ast.entities, ast.relations || [])) {
-                this.addError(issue.message, locate(issue.node, issue.locationKey, issue.node.nameColumn),
+                this.addError(issue.message, locate(issue.node, issue.locationKey, issue.node.nameColumn, issue.occurrence || 0),
                     'MYSQL_TARGET_LIMIT', issue.hint || 'Shorten the identifier or lower the declared STRING capacity for the supported MySQL target.');
             }
             for (const conflict of require('../utils/target-names').namingConflicts(ast.entities, ast.relations || [])) {
