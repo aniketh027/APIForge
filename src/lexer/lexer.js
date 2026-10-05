@@ -34,7 +34,7 @@
  * ── Token Types ──
  * 
  * KEYWORD         → ENTITY, RELATION
- * DATATYPE        → INT, STRING, FLOAT, BOOLEAN, ENUM
+ * DATATYPE        → INT, STRING, FLOAT, BOOLEAN, ENUM, DATE, TIMESTAMP
  * LPAREN / RPAREN / COMMA → (, ), , (ENUM value delimiters)
  * MODIFIER        → PRIMARY, KEY, REQUIRED, UNIQUE, MIN, MAX,
  *                   MIN_LENGTH, MAX_LENGTH, DEFAULT
@@ -98,14 +98,11 @@ const RELATION_TYPES = new Set([
  *   STRING  → VARCHAR(255)
  *   FLOAT   → FLOAT
  *   BOOLEAN → TINYINT(1)
+ *   DATE    → DATE
+ *   TIMESTAMP → TIMESTAMP
  */
-const DATA_TYPES = new Set([
-    'INT',
-    'STRING',
-    'FLOAT',
-    'BOOLEAN',
-    'ENUM'
-]);
+const { SUPPORTED_DATA_TYPES } = require('../utils/temporal');
+const DATA_TYPES = new Set(SUPPORTED_DATA_TYPES);
 
 /**
  * Field modifiers / constraints.

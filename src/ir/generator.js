@@ -44,6 +44,9 @@
  * ============================================================
  */
 
+const { SUPPORTED_DATA_TYPES, isDate, isTimestamp } = require('../utils/temporal');
+const VALID_DATA_TYPES = new Set(SUPPORTED_DATA_TYPES);
+
 const VALID_RELATION_TYPES = new Set([
     'ONE_TO_ONE',
     'ONE_TO_MANY',
@@ -113,6 +116,8 @@ function validate(ir) {
                 }
                 if (!inst.dataType || typeof inst.dataType !== 'string') {
                     errors.push(`ADD_FIELD instruction at index ${index} must have a 'dataType'.`);
+                } else if (!VALID_DATA_TYPES.has(inst.dataType)) {
+                    errors.push(`ADD_FIELD instruction at index ${index} has unsupported dataType '${inst.dataType}'. Expected ${SUPPORTED_DATA_TYPES.join(', ')}.`);
                 }
                 if (!Array.isArray(inst.constraints)) {
                     errors.push(`ADD_FIELD instruction at index ${index} must have a 'constraints' array.`);
@@ -130,6 +135,17 @@ function validate(ir) {
                     }
                     if ((Array.isArray(inst.constraints) && inst.constraints.includes('PRIMARY_KEY')) || inst.validations?.length) {
                         errors.push(`ENUM field at index ${index} cannot have PRIMARY_KEY or bound validations.`);
+                    }
+                }
+
+                if (inst.dataType === 'DATE' || inst.dataType === 'TIMESTAMP') {
+                    if ((Array.isArray(inst.constraints) && inst.constraints.includes('PRIMARY_KEY')) || inst.validations?.length) {
+                        errors.push(`${inst.dataType} field at index ${index} cannot have PRIMARY_KEY or bound validations.`);
+                    }
+                    if (inst.defaultValue !== undefined && inst.defaultValue !== null &&
+                        (inst.defaultValue.type !== 'STRING' ||
+                         !(inst.dataType === 'DATE' ? isDate(inst.defaultValue.value) : isTimestamp(inst.defaultValue.value)))) {
+                        errors.push(`${inst.dataType} default at index ${index} must be a canonical, in-range STRING literal.`);
                     }
                 }
 
@@ -259,7 +275,7 @@ function generate(ast, semanticResult = null) {
                 defaultValue,
                 line: field.line
             });
-            if (field.dataType === 'ENUM' && field.sourceLocations) {
+            if (['ENUM', 'DATE', 'TIMESTAMP'].includes(field.dataType) && field.sourceLocations) {
                 Object.defineProperty(instructions[instructions.length - 1], 'sourceLocations',
                     { value: field.sourceLocations });
             }

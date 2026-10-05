@@ -25,7 +25,7 @@
  * Program       → (EntityDecl | RelationDecl)*
  * EntityDecl    → 'ENTITY' IDENTIFIER FieldDecl+
  * FieldDecl     → IDENTIFIER DataType FieldModifier*
- * DataType      → 'INT' | 'STRING' | 'FLOAT' | 'BOOLEAN'
+ * DataType      → 'INT' | 'STRING' | 'FLOAT' | 'BOOLEAN' | 'ENUM' | 'DATE' | 'TIMESTAMP'
  * FieldModifier → 'PRIMARY' 'KEY'
  *               | 'REQUIRED'
  *               | 'UNIQUE'
@@ -48,9 +48,10 @@
 const { ProgramNode, EntityNode, FieldNode, RelationNode } = require('../ast/ast');
 const { attachDiagnostic } = require('../utils/diagnostics');
 const { didYouMeanSuffix } = require('../utils/errors');
+const { SUPPORTED_DATA_TYPES } = require('../utils/temporal');
 
 // ── Candidate lists for "did you mean?" suggestions ─────────
-const DATA_TYPES = ['INT', 'STRING', 'FLOAT', 'BOOLEAN', 'ENUM'];
+const DATA_TYPES = SUPPORTED_DATA_TYPES;
 const RELATION_TYPES = ['ONE_TO_ONE', 'ONE_TO_MANY', 'MANY_TO_ONE', 'MANY_TO_MANY'];
 
 // ── Value token types that can follow MIN, MAX, DEFAULT ─────
@@ -373,10 +374,10 @@ class Parser {
             const isEof = typeToken.type === 'EOF';
             const suffix = isEof ? '' : didYouMeanSuffix(typeToken.value, DATA_TYPES);
             const userMessage = isEof
-                ? `Missing data type for field '${nameToken.value}'.\nExpected one of: INT, STRING, FLOAT, BOOLEAN, ENUM.`
+                ? `Missing data type for field '${nameToken.value}'.\nExpected one of: ${DATA_TYPES.join(', ')}.`
                 : `Expected DATATYPE but found ${typeToken.type} "${typeToken.value}".${suffix}`;
             const messageDesc = isEof
-                ? `Missing data type for field '${nameToken.value}'. Expected DATATYPE (one of: INT, STRING, FLOAT, BOOLEAN, ENUM) but found EOF "EOF".`
+                ? `Missing data type for field '${nameToken.value}'. Expected DATATYPE (one of: ${DATA_TYPES.join(', ')}) but found EOF "EOF".`
                 : `Expected DATATYPE but found ${typeToken.type} "${typeToken.value}".${suffix}`;
 
             const err = new Error(
@@ -429,6 +430,9 @@ class Parser {
             if (['PRIMARY', 'MIN', 'MAX', 'MIN_LENGTH', 'MAX_LENGTH', 'DEFAULT'].includes(token.value)) end = this.tokens[i + 1];
             (sourceLocations[key] ||= []).push({ line: token.line, column: token.column,
                 ...(end.endLine ? { endLine: end.endLine, endColumn: end.endColumn } : {}) });
+            if (token.value === 'DEFAULT' && ['DATE', 'TIMESTAMP'].includes(dataTypeToken.value)) {
+                (sourceLocations.DEFAULT_LITERAL ||= []).push(end);
+            }
         }
 
         const fieldNode = new FieldNode(

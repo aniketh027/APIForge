@@ -24,7 +24,7 @@
  * 1. A program must contain at least one entity.
  * 2. Entity names must be unique.
  * 3. Field names must be unique within an entity.
- * 4. Data types must be valid (INT, STRING, FLOAT, BOOLEAN, ENUM).
+ * 4. Data types must be valid (INT, STRING, FLOAT, BOOLEAN, ENUM, DATE, TIMESTAMP).
  * 5. Every entity must have at least one field.
  * 6. At most one PRIMARY_KEY per entity.
  * 7. PRIMARY_KEY is only allowed on INT or STRING fields.
@@ -80,12 +80,14 @@
 
 const { createDiagnostic, createWarningDiagnostic, sortDiagnostics, locate } = require('../utils/diagnostics');
 const { didYouMeanSuffix } = require('../utils/errors');
+const { SUPPORTED_DATA_TYPES, DATE_MIN, DATE_MAX, TIMESTAMP_MIN, TIMESTAMP_MAX,
+    isDate, isTimestamp } = require('../utils/temporal');
 
 const RESERVED_WORDS = new Set([
     // Keywords
     'ENTITY', 'RELATION',
     // Data types
-    'INT', 'STRING', 'FLOAT', 'BOOLEAN', 'ENUM',
+    ...SUPPORTED_DATA_TYPES,
     // Modifiers
     'PRIMARY', 'KEY', 'REQUIRED', 'UNIQUE', 'MIN', 'MAX', 'MIN_LENGTH', 'MAX_LENGTH', 'DEFAULT',
     // Boolean literals
@@ -96,9 +98,7 @@ const RESERVED_WORDS = new Set([
 
 // ── Valid Data Types ────────────────────────────────────────
 
-const VALID_DATA_TYPES = new Set([
-    'INT', 'STRING', 'FLOAT', 'BOOLEAN', 'ENUM'
-]);
+const VALID_DATA_TYPES = new Set(SUPPORTED_DATA_TYPES);
 
 // ── Types Allowed for PRIMARY KEY ───────────────────────────
 
@@ -369,7 +369,7 @@ class SemanticAnalyzer {
             // ── Rule: Valid data type ───────────────────────
             if (!VALID_DATA_TYPES.has(field.dataType)) {
                 this.addError(
-                    `Invalid data type '${field.dataType}' for field '${field.name}' in entity '${entity.name}'. Allowed types: INT, STRING, FLOAT, BOOLEAN, ENUM.` +
+                    `Invalid data type '${field.dataType}' for field '${field.name}' in entity '${entity.name}'. Allowed types: ${SUPPORTED_DATA_TYPES.join(', ')}.` +
                         didYouMeanSuffix(field.dataType, Array.from(VALID_DATA_TYPES)),
                     locate(field, 'type', field.typeColumn),
                     'INVALID_DATATYPE'
@@ -654,6 +654,21 @@ class SemanticAnalyzer {
                         this.addError(`DEFAULT ${JSON.stringify(def.value)} is not one of the declared ENUM values.`,
                             location, 'INVALID_ENUM_DEFAULT',
                             `Use one of: ${preview.slice(0, 200)}${field.enumValues.length > 5 || preview.length > 200 ? ', ...' : ''}.`);
+                    }
+                } else if (field.dataType === 'DATE' || field.dataType === 'TIMESTAMP') {
+                    const occurrence = Math.max(0, (field.sourceLocations?.DEFAULT?.length || 1) - 1);
+                    const location = field.sourceLocations?.DEFAULT_LITERAL?.[occurrence] ||
+                        locate(field, 'DEFAULT', field.typeColumn || field.nameColumn, occurrence);
+                    if (def.type !== 'STRING' || typeof def.value !== 'string') {
+                        this.addError(`Default value for ${field.dataType} field '${field.name}' must be a quoted canonical string.`,
+                            location, 'INVALID_DEFAULT_TYPE');
+                    } else if (!(field.dataType === 'DATE' ? isDate(def.value) : isTimestamp(def.value))) {
+                        const format = field.dataType === 'DATE' ? 'YYYY-MM-DD' : 'YYYY-MM-DDTHH:mm:ssZ';
+                        const minimum = field.dataType === 'DATE' ? DATE_MIN : TIMESTAMP_MIN;
+                        const maximum = field.dataType === 'DATE' ? DATE_MAX : TIMESTAMP_MAX;
+                        this.addError(`Default value for ${field.dataType} field '${field.name}' must be a real calendar value in canonical ${format} form between ${minimum} and ${maximum}.`,
+                            location, 'INVALID_TEMPORAL_DEFAULT',
+                            field.dataType === 'TIMESTAMP' ? 'Use UTC Z and whole seconds only; offsets and fractions are unsupported.' : undefined);
                     }
                 } else if (field.dataType === 'BOOLEAN') {
                     if (def.type !== 'BOOLEAN') {
