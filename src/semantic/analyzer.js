@@ -182,7 +182,8 @@ class SemanticAnalyzer {
      * @param {Object} ast - The ProgramNode from the parser
      * @returns {Object}   - Analysis result
      */
-    analyze(ast) {
+    analyze(ast, options = {}) {
+        this.targetAdapter = require('../targets').adapter(options);
         // A declaration-free token stream is syntactically well-formed, but it
         // cannot describe a backend. Keep this language-level rule here so all
         // compiler entry points reject the same empty ProgramNode.
@@ -202,11 +203,11 @@ class SemanticAnalyzer {
 
             // Step 2: Check for duplicate entity names
             this.checkDuplicateEntities(ast.entities);
-            for (const issue of require('../utils/mysql-target').targetIssues(ast.entities, ast.relations || [])) {
+            for (const issue of this.targetAdapter.semanticIssues(ast.entities, ast.relations || [])) {
                 this.addError(issue.message, locate(issue.node, issue.locationKey, issue.node.nameColumn, issue.occurrence || 0),
-                    'MYSQL_TARGET_LIMIT', issue.hint || 'Shorten the identifier or lower the declared STRING capacity for the supported MySQL target.');
+                    this.targetAdapter.semanticSymbol, issue.hint || this.targetAdapter.semanticHint);
             }
-            for (const conflict of require('../utils/target-names').namingConflicts(ast.entities, ast.relations || [])) {
+            for (const conflict of require('../utils/target-names').namingConflicts(ast.entities, ast.relations || [], this.targetAdapter.namingOptions)) {
                 this.addError(`${conflict.owner} conflicts with ${conflict.previous} in generated ${conflict.namespace} '${conflict.name}'.`,
                     locate(conflict.node, 'name', conflict.node.nameColumn), 'GENERATED_NAME_COLLISION',
                     'Rename one of the conflicting source constructs; generated names are not silently changed.');
@@ -318,7 +319,7 @@ class SemanticAnalyzer {
         // MySQL column identifiers are case-insensitive. An explicit key avoids
         // synthetic allocation; never promote or rename an ordinary id field.
         if (!entity.fields.some(field => field.constraints?.includes('PRIMARY_KEY'))) {
-            for (const field of entity.fields.filter(field => field.name.toLowerCase() === 'id')) {
+            for (const field of entity.fields.filter(field => this.targetAdapter.comparison(field.name) === 'id')) {
                 this.addError(
                     `Entity '${entity.name}' has no explicit primary key, so APIForge would generate implicit field 'id', which conflicts with declared field '${field.name}'.`,
                     locate(field, 'name', field.nameColumn),
@@ -334,7 +335,7 @@ class SemanticAnalyzer {
         let primaryKeyCount = 0;
 
         for (const field of entity.fields) {
-            for (const issue of require('../utils/mysql-target').numericIssues(field)) {
+            for (const issue of require('../targets/numeric-policy').numericIssues(field)) {
                 this.addError(issue.message, issue.value.numberLocation || locate(field, issue.value.type === 'NUMBER' ? 'DEFAULT' : issue.value.type, field.nameColumn),
                     'UNSAFE_NUMERIC_LITERAL', 'Use a finite literal; INT and length operands must remain exact safe integers.');
             }
@@ -386,7 +387,7 @@ class SemanticAnalyzer {
                 } else {
                     const seenValues = new Set();
                     field.enumValues.forEach((value, index) => {
-                        if (value.endsWith(' ')) {
+                        if (this.targetAdapter.enumTrailingSpace && value.endsWith(' ')) {
                             this.addError(`ENUM member ${JSON.stringify(value)} in field '${field.name}' has trailing spaces that MySQL would remove.`,
                                 locate(field, 'enumValues', field.typeColumn, index), 'ENUM_TRAILING_SPACE',
                                 'Remove trailing spaces from the source member and any matching DEFAULT; values are never trimmed automatically.');
@@ -871,9 +872,9 @@ class SemanticAnalyzer {
  * @param {Object} ast - The ProgramNode from the parser
  * @returns {Object}   - { valid, errors, symbolTable, entities, relations }
  */
-function analyze(ast) {
+function analyze(ast, options = {}) {
     const analyzer = new SemanticAnalyzer();
-    return analyzer.analyze(ast);
+    return analyzer.analyze(ast, options);
 }
 
 module.exports = {

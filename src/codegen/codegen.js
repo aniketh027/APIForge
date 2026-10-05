@@ -1448,7 +1448,9 @@ function generateSwagger(entities, relations = [], suppliedContext) {
  * @param {boolean} [writeToDisk=true] - Whether to write output files to disk
  * @returns {Object} - { success: true, files: [{ path, content }] }
  */
-function prepareAdmittedGeneration(optimizedIR) {
+function prepareAdmittedGeneration(optimizedIR, options = {}) {
+    const adapter = require('../targets').adapter(options);
+    if (adapter.prepare) return adapter.prepare(optimizedIR, contextFromCandidate);
     const validation = IRGenerator.validate(optimizedIR);
     if (!validation.valid) {
         throw new Error(`Cannot generate target code: Invalid IR - ${validation.errors.join(', ')}`);
@@ -1482,20 +1484,22 @@ function prepareAdmittedGeneration(optimizedIR) {
     return { candidate, context, entities, relations };
 }
 
-function generate(optimizedIR, writeToDisk = true) {
-    const { context, entities, relations } = prepareAdmittedGeneration(optimizedIR);
+function generate(optimizedIR, writeToDisk = true, options = {}) {
+    const adapter = require('../targets').adapter(options);
+    const { context, entities, relations } = prepareAdmittedGeneration(optimizedIR, options);
+    const render = adapter.renderers({generateSQL, generateDBConfig, generateEnvExample, generatePackageJson, generateReadme, generateModel}, context);
 
     const files = [
-        { path: 'database/schema.sql', content: generateSQL(optimizedIR, context) },
-        { path: 'config/db.js', content: generateDBConfig(entities, relations, context) },
-        { path: '.env.example', content: generateEnvExample() },
-        { path: 'package.json', content: generatePackageJson() },
-        { path: 'README.md', content: generateReadme(entities, context) }
+        { path: 'database/schema.sql', content: render.generateSQL(optimizedIR, context) },
+        { path: 'config/db.js', content: render.generateDBConfig(entities, relations, context) },
+        { path: '.env.example', content: render.generateEnvExample() },
+        { path: 'package.json', content: render.generatePackageJson() },
+        { path: 'README.md', content: render.generateReadme(entities, context) }
     ];
 
     entities.forEach(entity => {
         const names = context.byName.get(entity.name).names;
-        files.push({ path: names.modelPath, content: generateModel(entity.name, entity.fields, relations, entities, context) });
+        files.push({ path: names.modelPath, content: render.generateModel(entity.name, entity.fields, relations, entities, context) });
         files.push({ path: names.controllerPath, content: generateController(entity.name, entity.fields, relations, entities, context) });
         files.push({ path: names.routePath, content: generateRoutes(entity.name, relations, context) });
     });

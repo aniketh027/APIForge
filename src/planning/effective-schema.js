@@ -69,6 +69,7 @@ function makeField(entityName, source, order, key, origin, relationId, typeSourc
 }
 
 function projectDefinitions(entities = [], relations = [], options = {}) {
+    const comparison = options.comparison || (value => value.toLowerCase());
     const issues = [], provenance = Object.create(null);
     const plan = { formatVersion: FORMAT_VERSION, policyVersion: policy.POLICY_VERSION,
         namingVersion: targetNames.NAMING_VERSION || 1, entities: [], relations: [] };
@@ -90,16 +91,16 @@ function projectDefinitions(entities = [], relations = [], options = {}) {
         const seen = new Set();
         for (const [fieldOrder, inputField] of declared.entries()) {
             const field = makeField(name, inputField, fieldOrder, key, 'declared', null, null, issues);
-            if (seen.has(field.name.toLowerCase())) issues.push({ code: 'DUPLICATE_FIELD', nodeId: field.id,
+            if (seen.has(comparison(field.name))) issues.push({ code: 'DUPLICATE_FIELD', nodeId: field.id,
                 occurrence: fieldOrder, message: `Entity '${name}' has duplicate effective field '${field.name}'.` });
-            seen.add(field.name.toLowerCase());
+            seen.add(comparison(field.name));
             entity.fields.push(field);
             if (!provenance[field.id]) provenance[field.id] = location(inputField, [field.id]);
         }
         if (key.origin === 'implicit') {
             const field = makeField(name, { name: key.name, dataType: key.dataType, constraints: ['PRIMARY_KEY'] },
                 entity.fields.length, key, 'implicit_key', null, null, issues);
-            if (seen.has(field.name.toLowerCase())) issues.push({ code: 'IMPLICIT_KEY_COLLISION', nodeId: field.id,
+            if (seen.has(comparison(field.name))) issues.push({ code: 'IMPLICIT_KEY_COLLISION', nodeId: field.id,
                 message: `Declared field '${name}.${field.name}' collides with the implicit identity.` });
             entity.fields.push(field);
             if (!provenance[field.id]) provenance[field.id] = location(source, [id]);
@@ -138,7 +139,7 @@ function projectDefinitions(entities = [], relations = [], options = {}) {
                 return { id: fieldId, name, dataType: key.dataType, typeSourceFieldId: entity.key.fieldId,
                     origin: { kind: 'junction_fk', relationId: id, endpoint }, nullable: false, defaultValue: null };
             });
-            if (columns[0].name.toLowerCase() === columns[1].name.toLowerCase()) issues.push({ code: 'DUPLICATE_STORAGE_FIELD', nodeId: id,
+            if (comparison(columns[0].name) === comparison(columns[1].name)) issues.push({ code: 'DUPLICATE_STORAGE_FIELD', nodeId: id,
                 message: `Junction '${names.junction}' has duplicate storage field '${columns[0].name}'.` });
             provenance[tableId] = location(source, [id]);
             relation.storage = { kind: 'junction', table: { id: tableId, name: names.junction, columns,
@@ -152,7 +153,7 @@ function projectDefinitions(entities = [], relations = [], options = {}) {
                 ...(key.dataType === 'ENUM' ? { enumValues: key.field.enumValues } : {}) }, receiver.fields.length,
                 policy.identity(receiver), 'relationship_fk', id, referenced.key.fieldId, issues);
             field.storage = { nullable: true, unique: topology.unique };
-            if (receiver.fields.some(item => item.name.toLowerCase() === name.toLowerCase())) issues.push({ code: 'DUPLICATE_STORAGE_FIELD', nodeId: id,
+            if (receiver.fields.some(item => comparison(item.name) === comparison(name))) issues.push({ code: 'DUPLICATE_STORAGE_FIELD', nodeId: id,
                 message: `Entity '${receiver.sourceName}' has duplicate storage field '${name}'.` });
             receiver.fields.push(field);
             provenance[field.id] = location(source, [id, referenced.key.fieldId]);
@@ -169,7 +170,7 @@ function projectDefinitions(entities = [], relations = [], options = {}) {
     return candidate;
 }
 
-function buildCandidate(ir) {
+function buildCandidate(ir, options = {}) {
     const entities = new Map(), relations = [];
     for (const instruction of ir?.instructions || []) {
         if (instruction.op === 'CREATE_ENTITY' || instruction.op === 'ADD_FIELD') {
@@ -184,7 +185,7 @@ function buildCandidate(ir) {
             relationName: instruction.relationName, targetEntity: instruction.targetEntity, relationType: instruction.relationType,
             line: instruction.line, ...(instruction.sourceLocations ? { sourceLocations: instruction.sourceLocations } : {}) });
     }
-    return projectDefinitions([...entities.values()], relations);
+    return projectDefinitions([...entities.values()], relations, options);
 }
 
 function assertStructural(candidate) {

@@ -75,6 +75,12 @@ router.post('/compile', (req, res) => {
         });
     }
 
+    let targetOptions;
+    try { targetOptions = {target:require('../targets').resolveTarget({target:req.body?.target})}; }
+    catch (error) { return failure(res, 400, {success:false,phase:'input',
+        phases:Object.fromEntries(COMPILER_PHASES.map(phase => [phase,false])),
+        errors:[compilerError(error)]}); }
+
     // Track phase results
     const phases = {
         lexer: false,
@@ -124,7 +130,7 @@ router.post('/compile', (req, res) => {
 
     // ── Phase 3: Semantic Analysis ──────────────────────────
     try {
-        const semanticResult = SemanticAnalyzer.analyze(ast);
+        const semanticResult = SemanticAnalyzer.analyze(ast, targetOptions);
 
         if (!semanticResult.valid) {
             return failure(res, 422, {
@@ -183,7 +189,7 @@ router.post('/compile', (req, res) => {
         // ── Phase 6: Code Generation ────────────────────────
         try {
             // Pass false to avoid writing files to disk from the API
-            const codegenResult = CodeGenerator.generate(optimizedIR, false);
+            const codegenResult = CodeGenerator.generate(optimizedIR, false, targetOptions);
             generatedFiles = codegenResult.files;
             phases.codegen = true;
         } catch (err) {

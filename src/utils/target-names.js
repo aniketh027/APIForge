@@ -57,9 +57,10 @@ function mysqlCheckName(tableName, ordinal) { return tableName + '_chk_' + ordin
 
 // Reservation is separate from projection. Prepared views can come from source
 // declarations during tolerant semantic checks or from the canonical plan.
-function conflictsForViews(entities, relations) {
+function conflictsForViews(entities, relations, options = {}) {
     const allocations = new Map(), conflicts = [];
     const allocate = (namespace, name, node, owner) => {
+        if (options.physical === false && (namespace === 'table' || namespace.startsWith('column in ') || namespace === 'foreign key constraint')) return;
         const key = namespace + ':' + name.toLowerCase();
         const previous = allocations.get(key);
         if (previous && previous.owner !== owner) conflicts.push({ namespace, name, node, owner, previous: previous.owner });
@@ -113,7 +114,7 @@ function conflictsForViews(entities, relations) {
     return conflicts;
 }
 
-function namingConflicts(entities, relations = []) {
+function namingConflicts(entities, relations = [], options = {}) {
     const views = entities.map(entity => ({ name: entity.name, names: entityNames(entity.name), node: entity,
         fields: entity.fields.map(field => ({ name: field.name, node: field })) }));
     const sources = new Map(entities.map(entity => [entity.name, entity]));
@@ -130,10 +131,10 @@ function namingConflicts(entities, relations = []) {
                 referencedName: topology.referenced?.name,
                 fieldName: topology.receiver === source ? names.targetFk : names.sourceFk } });
     }
-    return conflictsForViews(views, relationViews);
+    return conflictsForViews(views, relationViews, options);
 }
 
-function namingConflictsFromPlan(candidate, sourceContext = candidate.definitions) {
+function namingConflictsFromPlan(candidate, sourceContext = candidate.definitions, options = {}) {
     const plan = candidate.plan || candidate, provenance = candidate.provenance || {};
     const node = (item, original, name) => original || { name, ...provenance[item.id] };
     const views = plan.entities.map(entity => ({ name: entity.sourceName, names: entity.names,
@@ -151,7 +152,7 @@ function namingConflictsFromPlan(candidate, sourceContext = candidate.definition
                 fieldName: receiver?.entity.fields.find(field => field.id === storage.fieldId &&
                     field.origin.relationId === relation.id)?.name } };
     });
-    return conflictsForViews(views, relationViews);
+    return conflictsForViews(views, relationViews, options);
 }
 module.exports = { NAMING_VERSION, lowerFirst, upperFirst, pluralize, entityNames, relationNames,
     mysqlRelationNames, mysqlCheckName, namingConflicts, namingConflictsFromPlan };

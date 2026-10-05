@@ -59,7 +59,11 @@ const { internalDiagnostic, sortDiagnostics } = require('./src/utils/diagnostics
 
 // ── Read the source .apiforge file ──────────────────────────
 
-const filePath = process.argv[2]; // e.g., node index.js samples/student.apiforge
+let selection;
+try { selection = require('./src/targets').cliSelection(process.argv.slice(2)); }
+catch (error) { console.error(formatDiagnostic('', error.diagnostic)); process.exit(1); }
+const filePath = selection.file;
+const targetOptions = {target:selection.target};
 
 if (!filePath) {
     console.error('╔══════════════════════════════════════════════╗');
@@ -86,6 +90,7 @@ console.log('║  Domain-Specific Language for REST APIs       ║');
 console.log('╚══════════════════════════════════════════════╝');
 console.log('');
 console.log(`[INFO] Compiling: ${filePath}`);
+if (selection.target === 'postgres') console.log('[INFO] Target: postgres (postgresql-18-v1)');
 console.log('');
 
 // Fatal phase failures use the same diagnostic formatter as semantic errors.
@@ -194,7 +199,7 @@ console.log('');
 console.log('─── Phase 3: Semantic Analysis ───');
 let semanticResult;
 try {
-    semanticResult = SemanticAnalyzer.analyze(ast);
+    semanticResult = SemanticAnalyzer.analyze(ast, targetOptions);
 } catch (err) {
     reportFatalError(err, 'semantic');
 }
@@ -371,7 +376,7 @@ console.log('');
 console.log('─── Phase 6: Code Generation ───');
 let codegenResult;
 try {
-    codegenResult = CodeGenerator.generate(optimizedIR, true);
+    codegenResult = CodeGenerator.generate(optimizedIR, true, targetOptions);
 } catch (err) {
     reportFatalError(err, 'codegen');
 }
