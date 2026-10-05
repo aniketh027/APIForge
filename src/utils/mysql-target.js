@@ -32,16 +32,6 @@ function formatSQLLiteral(defaultValue, enumLiteral = false) {
     return '';
 }
 
-const MYSQL_TYPE_MAP = {
-    'INT': 'INT',
-    'STRING': 'VARCHAR(255)',
-    'FLOAT': 'FLOAT',
-    'BOOLEAN': 'BOOLEAN',
-    'DATE': 'DATE',
-    'TIMESTAMP': 'TIMESTAMP',
-    'UUID': 'CHAR(36) CHARACTER SET ascii COLLATE ascii_bin'
-};
-
 /**
  * Resolves a field's MySQL column type. STRING keeps the legacy VARCHAR(255)
  * capacity unless a declared length bound requires a wider column.
@@ -77,6 +67,24 @@ function renderPhysicalType(type, character, resolveInherited = false) {
         : type.kind === 'TINYINT' && type.displayWidth === 1 ? 'BOOLEAN'
         : ['VARCHAR','CHAR'].includes(type.kind) ? `${type.kind}(${type.length})` : type.kind;
     if (character && (character.source === 'explicit' || resolveInherited)) sql += ` CHARACTER SET ${character.characterSet} COLLATE ${character.collation}`;
+    return sql;
+}
+
+function renderCheckCondition(name, condition) {
+    const value = condition.measure === 'char_length' ? `CHAR_LENGTH(${quoteIdentifier(name)})` : quoteIdentifier(name);
+    return [condition.min === null ? null : `${value} >= ${condition.min}`,
+        condition.max === null ? null : `${value} <= ${condition.max}`].filter(Boolean).join(' AND ');
+}
+
+// ALTER must supply every resulting attribute; it cannot rely on omitted
+// attributes surviving MODIFY. Types, literals and identifiers use CREATE's
+// presentation primitives. Constraint objects are rendered separately.
+function renderCompleteColumn(column) {
+    let sql = `${quoteIdentifier(column.name)} ${renderPhysicalType(column.physicalType, column.character, true)} ${column.nullable ? 'NULL' : 'NOT NULL'}`;
+    const value = column.default.physical;
+    if (value.kind === 'null') sql += ' DEFAULT NULL';
+    if (value.kind === 'literal') sql += ` DEFAULT ${formatSQLLiteral(value, column.logicalType === 'ENUM')}`;
+    if (column.generation === 'auto_increment') sql += ' AUTO_INCREMENT';
     return sql;
 }
 
@@ -506,7 +514,7 @@ function numericIssues(field) {
     return issues;
 }
 module.exports = { targetIssuesFromPlan, physicalPlanFromPlan, sourceContext, relationPhysicalNames,
-    describeColumnType, describeCharacter, renderPhysicalType, FLOAT_MAX,
+    describeColumnType, describeCharacter, renderPhysicalType, renderCompleteColumn, renderCheckCondition, FLOAT_MAX,
     renderSchema, columnType, quoteIdentifier, formatSQLLiteral, targetIssues, numericIssues, capacity, IDENTIFIER_LIMIT, KEY_BYTES, VARCHAR_CAPACITY,
     physicalPlan, planIssues, rowBudget, storageBytes, COLUMN_LIMIT, SECONDARY_INDEX_LIMIT, KEY_PART_LIMIT,
     LOGICAL_ROW_BYTES, LOCAL_RECORD_BYTES, INDEX_LIMIT };

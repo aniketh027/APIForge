@@ -42,14 +42,15 @@ function fieldForCapacity(c) {return {name:c.name,dataType:c.logicalType,enumVal
 function validatePhysical(snapshot, altered=new Set()) {
     const fknames=new Set(), checknames=new Set(), tablenames=new Set();
     for(const t of snapshot.tables) {
-        invariant(typeof t.name==='string' && t.name.length>0 && t.name.length<=64 && !tablenames.has(t.name.toLowerCase()),'Invalid/duplicate physical table name.');tablenames.add(t.name.toLowerCase());
+        invariant(typeof t.name==='string' && /^[A-Za-z_][A-Za-z0-9_]*$/.test(t.name) && t.name.length<=64 && !tablenames.has(t.name.toLowerCase()),'Invalid/duplicate physical table name.');tablenames.add(t.name.toLowerCase());
         const columns=new Map(), names=new Set();
-        for(const c of t.columns){invariant(typeof c.name==='string' && c.name.length>0 && c.name.length<=64 && !names.has(c.name.toLowerCase()),'Invalid/duplicate column.');names.add(c.name.toLowerCase());invariant(!columns.has(c.id),'Duplicate column ID.');columns.set(c.id,c);
+        for(const c of t.columns){invariant(typeof c.name==='string' && /^[A-Za-z_][A-Za-z0-9_]*$/.test(c.name) && c.name.length<=64 && !names.has(c.name.toLowerCase()),'Invalid/duplicate column.');names.add(c.name.toLowerCase());invariant(!columns.has(c.id),'Duplicate column ID.');columns.set(c.id,c);
+            invariant(['INT','FLOAT','STRING','BOOLEAN','ENUM','DATE','TIMESTAMP','UUID'].includes(c.logicalType),'Unsupported logical type.');
             invariant(typeof c.nullable==='boolean' && ['none','auto_increment'].includes(c.generation) && c.onUpdate==='none','Invalid column attributes.');
             const expected=mysql.describeColumnType(fieldForCapacity(c));invariant(canonical(expected)===canonical(c.physicalType),'Physical/logical type mismatch.');
             invariant(canonical(c.character)===canonical(mysql.describeCharacter(fieldForCapacity(c))),'Invalid character profile.');
             invariant(['none','null','literal'].includes(c.default.physical.kind),'Invalid physical default.');
-            if(c.default.declared){const d=c.default.declared;invariant(['STRING','NUMBER','BOOLEAN'].includes(d.type),'Invalid default type.');
+            if(c.default.declared){const d=c.default.declared;invariant(d.type===(['INT','FLOAT'].includes(c.logicalType)?'NUMBER':c.logicalType==='BOOLEAN'?'BOOLEAN':'STRING'),'Invalid default type.');
                 if(c.logicalType==='UUID')invariant(uuid.isUuid(d.value),'Invalid UUID default.');
                 if(c.logicalType==='DATE')invariant(temporal.isDate(d.value),'Invalid DATE default.');
                 if(c.logicalType==='TIMESTAMP')invariant(temporal.isTimestamp(d.value),'Invalid TIMESTAMP default.');
@@ -63,10 +64,10 @@ function validatePhysical(snapshot, altered=new Set()) {
             invariant(canonical(c.default.physical)===canonical(physicalDefault(c.logicalType,c.nullable,c.default.declared)),'Semantic/physical default mismatch.');
         }
         const indexes=[...(t.primaryKey?[t.primaryKey]:[]),...t.indexes], indexnames=new Set();
-        for(const i of indexes){invariant(i.name.length<=64 && !indexnames.has(i.name.toLowerCase()) && i.method==='BTREE' && i.columns.length>0 && i.columns.every(cid=>columns.has(cid)),'Invalid index.');indexnames.add(i.name.toLowerCase());}
-        if(t.primaryKey){invariant(t.primaryKey.name==='PRIMARY'&&t.primaryKey.columns.every(cid=>!columns.get(cid).nullable),'Invalid PRIMARY KEY.');}
+        for(const i of indexes){invariant(typeof i.name==='string'&&/^[A-Za-z_][A-Za-z0-9_]*$/.test(i.name)&&i.name.length<=64 && !indexnames.has(i.name.toLowerCase()) && typeof i.unique==='boolean' && i.method==='BTREE' && i.columns.length>0 && new Set(i.columns).size===i.columns.length && i.columns.every(cid=>columns.has(cid)),'Invalid index.');indexnames.add(i.name.toLowerCase());}
+        if(t.primaryKey){invariant(t.primaryKey.name==='PRIMARY'&&t.primaryKey.unique&&t.primaryKey.columns.every(cid=>!columns.get(cid).nullable),'Invalid PRIMARY KEY.');}
         const auto=t.columns.filter(c=>c.generation==='auto_increment');invariant(auto.length<=1 && auto.every(c=>c.logicalType==='INT'&&c.default.physical.kind==='none'&&indexes.some(i=>i.columns[0]===c.id)),'Invalid AUTO_INCREMENT support.');
-        for(const c of t.checks){invariant(c.name.length<=64&&!checknames.has(c.name)&&c.enforced===true&&columns.has(c.condition.columnId),'Invalid CHECK.');checknames.add(c.name);const col=columns.get(c.condition.columnId);invariant(col.generation!=='auto_increment','CHECK references AUTO_INCREMENT.');invariant(['value','char_length'].includes(c.condition.measure)&&(c.condition.min!==null||c.condition.max!==null),'Invalid CHECK condition.');for(const v of [c.condition.min,c.condition.max]) invariant(v===null || Number.isFinite(v),'Invalid CHECK operand.');}
+        for(const c of t.checks){invariant(typeof c.name==='string'&&/^[A-Za-z_][A-Za-z0-9_]*$/.test(c.name)&&c.name.length<=64&&!checknames.has(c.name)&&c.enforced===true&&columns.has(c.condition.columnId),'Invalid CHECK.');checknames.add(c.name);const col=columns.get(c.condition.columnId);invariant(col.generation!=='auto_increment','CHECK references AUTO_INCREMENT.');invariant(['value','char_length'].includes(c.condition.measure)&&(c.condition.min!==null||c.condition.max!==null),'Invalid CHECK condition.');for(const v of [c.condition.min,c.condition.max]) invariant(v===null || (Number.isFinite(v)&&(c.condition.measure!=='char_length'||(Number.isSafeInteger(v)&&v>=0))),'Invalid CHECK operand.');invariant(c.condition.min===null||c.condition.max===null||c.condition.min<=c.condition.max,'Invalid CHECK bounds.');}
         for(const f of t.foreignKeys){invariant(f.name.length<=64&&!fknames.has(f.name.toLowerCase())&&f.columns.length>0&&f.columns.every(cid=>columns.has(cid)),'Invalid FK namespace/columns.');fknames.add(f.name.toLowerCase());const parent=snapshot.tables.find(p=>p.id===f.referencedTableId);invariant(parent&&f.referencedColumns.length===f.columns.length&&f.referencedColumns.every(cid=>parent.columns.some(c=>c.id===cid)),'Invalid FK target.');
             const covers=(list,parts)=>list.some(i=>parts.every((p,n)=>i.columns[n]===p));
             invariant(covers(indexes,f.columns)&&covers([...(parent.primaryKey?[parent.primaryKey]:[]),...parent.indexes],f.referencedColumns),'Missing FK support.');
@@ -85,28 +86,33 @@ function physicalDefault(type,nullable,declared) {
     if(type==='BOOLEAN')value=value?1:0;
     return {kind:'literal',type:declared.type,value};
 }
-function validateSnapshot(s) {
+function validateSnapshotRecords(s) {
     canonical(s);if(s?.formatVersion!==1)fail('MIGRATION_VERSION_UNSUPPORTED','Snapshot formatVersion must be 1.');
     keys(s,['formatVersion','target','sourcePlanVersions','tables','relations']);
     if(canonical(s.target)!==canonical({kind:'mysql',contractVersion:1,physicalNamingVersion:1,profile}))fail('MIGRATION_PROFILE_UNSUPPORTED','Expected immutable mysql-8.4-v1 profile.');
     invariant(canonical(s.sourcePlanVersions)===canonical({effectiveFormatVersion:1,policyVersion:1,namingVersion:1}),'Unsupported Effective Schema Plan version.');
     invariant(Array.isArray(s.tables)&&Array.isArray(s.relations),'Invalid snapshot collections.');
+    const sorted=(list,key)=>invariant(list.every((v,n)=>n===0||compare(key(list[n-1]),key(v))<0),'Unordered or duplicate snapshot collection.');
+    sorted(s.tables,t=>t.name);sorted(s.relations,r=>r.logicalRef);
     for(const t of s.tables){keys(t,['id','logicalRef','name','origin','identity','columns','primaryKey','indexes','checks','foreignKeys']);invariant(t.id===id('table',t.name),'Invalid table ID.');
         keys(t.origin,['kind','relationRef']);invariant(['entity','junction'].includes(t.origin.kind),'Invalid table origin.');
-        if(t.identity){keys(t.identity,['columnId','generationIntent']);invariant(['database_integer','runtime_uuid','none'].includes(t.identity.generationIntent)&&t.primaryKey?.columns.length===1&&t.primaryKey.columns[0]===t.identity.columnId,'Invalid identity metadata.');}
+        invariant(typeof t.logicalRef==='string'&&Array.isArray(t.columns)&&Array.isArray(t.indexes)&&Array.isArray(t.checks)&&Array.isArray(t.foreignKeys),'Invalid table collections/references.');
+        sorted(t.indexes,i=>i.name);sorted(t.checks,c=>c.name);sorted(t.foreignKeys,f=>f.name);
+        if(t.identity){keys(t.identity,['columnId','generationIntent']);invariant(['database_integer','runtime_uuid','none'].includes(t.identity.generationIntent)&&t.primaryKey?.columns.length===1&&t.primaryKey.columns[0]===t.identity.columnId,'Invalid identity metadata.');const c=t.columns.find(c=>c.id===t.identity.columnId);invariant(c&&((t.identity.generationIntent==='database_integer'&&c.generation==='auto_increment')||(t.identity.generationIntent==='runtime_uuid'&&c.logicalType==='UUID'&&!c.default.declared&&c.generation==='none')||(t.identity.generationIntent==='none'&&c.generation==='none')),'Identity intent contradicts column storage.');}
         for(const c of t.columns){keys(c,['id','logicalRef','name','origin','logicalType','typeSourceRef','physicalType','character','nullable','default','generation','onUpdate']);invariant(c.id===id('column',t.name,c.name),'Invalid column ID.');keys(c.default,['declared','physical']);
+            keys(c.origin,c.origin.kind==='junction_fk'?['kind','relationId','endpoint']:['kind','relationId']);invariant(c.origin.kind!=='junction_fk'||['source','target'].includes(c.origin.endpoint),'Invalid junction endpoint.');invariant(typeof c.logicalRef==='string'&&(c.typeSourceRef===null||typeof c.typeSourceRef==='string')&&(c.origin.relationId===null||typeof c.origin.relationId==='string'),'Invalid column references.');
             invariant(['declared','implicit_key','relationship_fk','junction_fk'].includes(c.origin.kind),'Invalid column origin.');
             if(c.default.declared) keys(c.default.declared,['type','value']);
             keys(c.default.physical,c.default.physical.kind==='literal'?['kind','type','value']:['kind']);
         }
-        for(const i of t.indexes)keys(i,['id','name','unique','method','columns','purposes','implicit']);
-        if(t.primaryKey)keys(t.primaryKey,['id','name','unique','method','columns','purposes','implicit']);
-        for(const c of t.checks){keys(c,['id','name','enforced','condition']);keys(c.condition,['columnId','measure','min','max']);}
-        for(const f of t.foreignKeys)keys(f,['id','name','columns','referencedTableId','referencedColumns','onDelete','onUpdate','relationRef']);
+        for(const i of [t.primaryKey,...t.indexes].filter(Boolean)){keys(i,['id','name','unique','method','columns','purposes','implicit']);invariant(i.id===id('index',t.name,i.name)&&Array.isArray(i.columns)&&Array.isArray(i.purposes)&&typeof i.implicit==='boolean','Invalid index metadata.');sorted(i.purposes,p=>p);invariant(i.purposes.length>0&&i.purposes.every(p=>['primary','unique','fk_support'].includes(p)),'Invalid index purposes.');}
+        for(const c of t.checks){keys(c,['id','name','enforced','condition']);keys(c.condition,['columnId','measure','min','max']);const col=t.columns.find(x=>x.id===c.condition.columnId);invariant(col&&c.id===id('check',t.name,col.name,c.condition.measure),'Invalid CHECK ID.');}
+        for(const f of t.foreignKeys){keys(f,['id','name','columns','referencedTableId','referencedColumns','onDelete','onUpdate','relationRef']);invariant(f.id===id('fk',t.name,f.name)&&Array.isArray(f.columns)&&Array.isArray(f.referencedColumns)&&typeof f.relationRef==='string','Invalid FK metadata.');}
     }
     for(const r of s.relations){keys(r,['logicalRef','name','sourceTableId','targetTableId','cardinality','storage']);invariant(['ONE_TO_MANY','MANY_TO_ONE','ONE_TO_ONE','MANY_TO_MANY'].includes(r.cardinality)&&s.tables.some(t=>t.id===r.sourceTableId)&&s.tables.some(t=>t.id===r.targetTableId),'Invalid relation endpoints.');keys(r.storage,['kind','tableId','columnIds']);const t=s.tables.find(t=>t.id===r.storage.tableId);invariant(t&&r.storage.columnIds.every(cid=>t.columns.some(c=>c.id===cid)),'Invalid relation storage.');}
     validatePhysical(s);return s;
 }
+function validateSnapshot(s){try{return validateSnapshotRecords(s);}catch(error){if(error.name==='MigrationError')throw error;fail('MIGRATION_HISTORY_CORRUPT','Malformed snapshot record.');}}
 const snapshotSha256=s=>hash(validateSnapshot(s));
 const physicalSha256=s=>hash(physicalProjection(s));
 module.exports={profile,clone,compare,id,canonical,hash,parseCanonical,validateSnapshot,validatePhysical,physicalProjection,physicalDefault,snapshotSha256,physicalSha256,fieldForCapacity,deepFreeze};

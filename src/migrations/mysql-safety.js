@@ -31,7 +31,9 @@ function classify(intent,old,next){const {kind,before:a,after:b,tableId}=intent;
     if(kind==='drop_index'&&a.unique)warnings.push('Uniqueness enforcement is removed.');
     if(['add_check','replace_check'].includes(kind)){
         const previous=table?.checks.find(c=>c.condition.columnId===b.condition.columnId&&c.condition.measure===b.condition.measure);
-        const implied=previous&&(b.condition.min===null||(previous.condition.min!==null&&previous.condition.min>=b.condition.min))&&(b.condition.max===null||(previous.condition.max!==null&&previous.condition.max<=b.condition.max));
+        const oldColumn=table?.columns.find(c=>c.id===b.condition.columnId);
+        const capacityImplied=b.condition.measure==='char_length'&&oldColumn?.logicalType==='STRING'&&(b.condition.min===null||b.condition.min===0)&&(b.condition.max===null||b.condition.max>=oldColumn.physicalType.length);
+        const implied=capacityImplied||previous&&(b.condition.min===null||(previous.condition.min!==null&&previous.condition.min>=b.condition.min))&&(b.condition.max===null||(previous.condition.max!==null&&previous.condition.max<=b.condition.max));
         const c=known(b.condition.columnId),d=c?.default.declared;let staticallyValid=c?.nullable&&!d;
         if(d){const value=b.condition.measure==='char_length'?Array.from(d.value).length:d.value;staticallyValid=(b.condition.min===null||value>=b.condition.min)&&(b.condition.max===null||value<=b.condition.max);}
         if(!implied&&!staticallyValid)requireData('VALUES_SATISFY_CHECK',{condition:b.condition});
