@@ -34,7 +34,7 @@ function physicalPlan(candidate) {
     const fields=new Map(plan.entities.flatMap(e=>e.fields.map(f=>[f.id,f])));
     const physical={profile:names.PROFILE,tables:[],relations:[],issues:[]};
     const relations=new Map(),constraints=new Map();
-    function issue(message,nodeId){physical.issues.push({message,nodeId});}
+    function issue(message,nodeId,locationKey='name'){physical.issues.push({message,nodeId,locationKey});}
     function reserve(name,owner,namespace='public') {
         const problem=names.identifierIssue(name); if(problem)issue('PostgreSQL identifier '+JSON.stringify(name)+' '+problem+'.',owner);
         const registry=namespace==='public'?relations:constraints;
@@ -65,7 +65,11 @@ function physicalPlan(candidate) {
         }
         if(columns.length>LIMITS.columns)issue('PostgreSQL table '+JSON.stringify(name)+' exceeds 1600 columns.',id);
         // Fixed-width tuple feasibility only. Variable-width values may use TOAST.
-        const fixed=24+align(Math.ceil(columns.length/8))+t.columns.reduce((n,c)=>['STRING','ENUM'].includes(c.dataType)?n:align(n)+maxIndexBytes(c),0);
+        const fixed=t.columns.reduce((offset,c)=>{
+            if(['STRING','ENUM'].includes(c.dataType))return offset;
+            const alignment={INT:4,FLOAT:4,BOOLEAN:1,DATE:4,TIMESTAMP:8,UUID:1}[c.dataType];
+            return Math.ceil(offset/alignment)*alignment+maxIndexBytes(c);
+        },24+align(Math.ceil(columns.length/8)));
         if(fixed>8160)issue('PostgreSQL fixed-width heap tuple exceeds the stock 8192-byte block profile.',id);
         constraint(t,'pk',keyIds,'primary');physical.tables.push(t);return t;
     }
@@ -89,8 +93,9 @@ function physicalPlan(candidate) {
             }
             if(c.defaultValue) {
                 const value=c.defaultValue.value;
-                if(c.dataType==='INT'&&(value< -2147483648||value>2147483647))issue('PostgreSQL INTEGER DEFAULT is outside storage range.',c.id);
-                if(c.dataType==='FLOAT'&&(!Number.isFinite(Math.fround(value))||(value!==0&&Math.fround(value)===0)))issue('PostgreSQL REAL DEFAULT overflows or underflows binary32.',c.id);
+                if(c.dataType==='STRING'&&Array.from(value).length>capacity(c))issue('PostgreSQL STRING DEFAULT exceeds generated VARCHAR capacity.',c.id,'DEFAULT');
+                if(c.dataType==='INT'&&(value< -2147483648||value>2147483647))issue('PostgreSQL INTEGER DEFAULT is outside storage range.',c.id,'DEFAULT');
+                if(c.dataType==='FLOAT'&&(!Number.isFinite(Math.fround(value))||(value!==0&&Math.fround(value)===0)))issue('PostgreSQL REAL DEFAULT overflows or underflows binary32.',c.id,'DEFAULT');
                 // Literal rendering also independently rejects malformed Unicode.
                 literal(value);
             }
@@ -144,7 +149,7 @@ function targetIssues(entities,relations=[]) {
         for(const problem of physical.issues) {
             const entity=candidate.plan.entities.find(e=>e.id===problem.nodeId||e.fields.some(f=>f.id===problem.nodeId));
             const field=entity?.fields.find(f=>f.id===problem.nodeId);
-            add(problem.message,field?entities[entity.order].fields[field.declaredOrder]||entities[entity.order]:entity?entities[entity.order]:relations.find(r=>(r.relationName||r.name)===candidate.plan.relations.find(r=>r.id===problem.nodeId)?.relationName)||entities[0]);
+            add(problem.message,field?entities[entity.order].fields[field.declaredOrder]||entities[entity.order]:entity?entities[entity.order]:relations.find(r=>(r.relationName||r.name)===candidate.plan.relations.find(r=>r.id===problem.nodeId)?.relationName)||entities[0],problem.locationKey);
         }
         for(const problem of candidate.issues.filter(i=>['DUPLICATE_STORAGE_FIELD','IMPLICIT_KEY_COLLISION'].includes(i.code)))add(problem.message,entities[0]);
     } catch(error) { add(error.message,entities[0]); }
