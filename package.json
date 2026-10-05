@@ -32,7 +32,9 @@
     "test:uuid": "node tests/uuid.test.js",
     "test:uuid-mysql": "node tests/uuid-mysql.test.js",
     "test:effective-schema-plan": "node tests/effective-schema-plan.test.js",
-    "test:effective-schema-equivalence": "node tests/effective-schema-equivalence.test.js"
+    "test:effective-schema-equivalence": "node tests/effective-schema-equivalence.test.js",
+    "test:g22-plan": "node tests/effective-schema-plan.test.js",
+    "test:g22-equivalence": "node tests/effective-schema-equivalence.test.js"
   },
   "keywords": [
     "compiler",

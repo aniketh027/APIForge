@@ -170,6 +170,33 @@ function directIRCases(pinned) {
     ];
 }
 
+// Raw SQL deliberately bypasses admission: these target-invalid/shape-invalid
+// operands must remain native rejection witnesses, not sanitized SQL.
+function rawSQLCases() {
+    const cases = [];
+    const add = (dataType, mode, value) => {
+        const isDefault = mode === 'DEFAULT';
+        const ir = program([{ op: 'CREATE_ENTITY', entity: 'Item' },
+            field('Item', 'score', dataType, [], isDefault ? { type: 'NUMBER', value } : null,
+                isDefault ? [] : [{ type: mode, value }])]);
+        const operand = String(value), sqlType = dataType === 'STRING' ? 'VARCHAR(255)' : dataType;
+        const expression = isDefault ? `DEFAULT ${operand}`
+            : `${mode.includes('LENGTH') ? 'CHAR_LENGTH(score)' : 'score'} ${mode.startsWith('MIN') ? '>=' : '<='} ${operand}`;
+        cases.push({ name: `raw-${dataType}-${mode}-${operand}`, ir, value,
+            irAccepted: !Number.isNaN(value) && !mode.includes('LENGTH'),
+            sqlFragment: `score ${sqlType} ${isDefault ? expression : `CHECK (${expression})`}` });
+    };
+    for (const type of ['FLOAT', 'INT', 'STRING']) {
+        for (const mode of ['DEFAULT', 'MIN', 'MAX']) {
+            for (const value of [Infinity, -Infinity, NaN]) add(type, mode, value);
+        }
+    }
+    for (const mode of ['MIN_LENGTH', 'MAX_LENGTH']) {
+        for (const value of [Infinity, -Infinity, NaN]) add('STRING', mode, value);
+    }
+    return cases;
+}
+
 // These witnesses intentionally leave the exact-compatibility corpus: the
 // approved planner may reject the baseline's three incoherent accepted forms.
 // Unresolved endpoints were already rejected and preserve their precedence.
@@ -188,4 +215,4 @@ function structuralIRCases() {
     ];
 }
 
-module.exports = { CARDS, sourceCases, directIRCases, structuralIRCases };
+module.exports = { CARDS, sourceCases, directIRCases, rawSQLCases, structuralIRCases };

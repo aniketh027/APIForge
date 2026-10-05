@@ -3,7 +3,8 @@
 const baseAssert = require('assert/strict');
 const vm = require('vm');
 const { PINNED_BASE, CHECKOUT_POLICY, createPinnedCompiler, currentCompiler, compileSource } = require('./pinned-compiler-loader');
-const { sourceCases, directIRCases, structuralIRCases } = require('./effective-schema-corpus');
+const { sourceCases, directIRCases, rawSQLCases, structuralIRCases } = require('./effective-schema-corpus');
+const schema = require('../src/planning/effective-schema');
 
 function runEquivalence() {
     let assertions = 0;
@@ -21,7 +22,8 @@ function runEquivalence() {
         uniqueSources: corpus.cases.length, validSources: 0, invalidDiagnosticMatches: 0,
         validGuideExamples: corpus.validGuideCount, generatedExactFiles: 0, emittedJavaScriptParsed: 0,
         corpusInventory: corpus.inventory,
-        forgedIRComparisons: 0, forgedExactFiles: 0, forgedJavaScriptParsed: 0,
+        completeDirectIRComparisons: 0, forgedExactFiles: 0, forgedJavaScriptParsed: 0,
+        rawSQLComparisons: 0, rawIRAccepted: 0, rawIRRejected: 0, rawFullRejectionMatches: 0,
         structuralBaselineWitnesses: 0, exactMismatches: 0
     };
     const publicData = value => JSON.parse(JSON.stringify(value));
@@ -78,7 +80,50 @@ function runEquivalence() {
         const actual = current.Codegen.generate(example.ir, false).files;
         compareFiles(actual, original, example.name, true);
         assert.equal(JSON.stringify(example.ir), before, example.name + ': no input mutation');
-        report.forgedIRComparisons++;
+        report.completeDirectIRComparisons++;
+    }
+    for (const example of rawSQLCases()) {
+        const label = example.name;
+        const originalValidation = pinned.compiler.IR.validate(example.ir), actualValidation = current.IR.validate(example.ir);
+        assert.equal(originalValidation.valid, example.irAccepted, label + ': baseline IR shape admission');
+        assert.deepEqual(actualValidation, originalValidation, label + ': exact IR shape admission');
+        const originalSQL = pinned.compiler.Codegen.generateSQL(example.ir);
+        assert(originalSQL.includes(example.sqlFragment), label + ': baseline preserves the raw operand');
+        assert.equal(current.Codegen.generateSQL(example.ir), originalSQL, label + ': exact unchecked SQL bytes');
+        const rejection = compiler => {
+            try { compiler.Codegen.generate(example.ir, false); }
+            catch (error) { return { name: error.name, message: error.message, properties: { ...error } }; }
+            assert.fail(label + ': complete generation must reject');
+        };
+        const originalError = rejection(pinned.compiler);
+        assert(originalError.message.startsWith(example.irAccepted
+            ? 'Cannot generate target code: MySQL target preflight failed.'
+            : 'Cannot generate target code: Invalid IR -'), label + ': original admission phase');
+        assert.deepEqual(rejection(current), originalError, label + ': exact complete-generation rejection');
+        const candidate = schema.buildCandidate(example.ir);
+        const rawField = candidate.definitions.entities[0].fields[0];
+        const rawValue = rawField.defaultValue ? rawField.defaultValue.value : rawField.validations[0].value;
+        assert(Object.is(rawValue, example.value), label + ': raw definitions retain the exact primitive');
+        const nonFinite = [];
+        const json = JSON.stringify(candidate.plan, (key, value) => {
+            if (typeof value === 'number' && !Number.isFinite(value)) nonFinite.push(key);
+            return value;
+        });
+        assert.deepEqual(nonFinite, [], label + ': serializer sees no non-finite plan operands');
+        assert(!/Infinity|NaN/.test(json), label + ': serialized plan has no non-finite spellings');
+        assert.deepEqual(JSON.parse(json), candidate.plan, label + ': lossless canonical JSON round trip');
+        assert.equal(Object.getOwnPropertyDescriptor(candidate, 'definitions').enumerable, false,
+            label + ': raw definitions stay outside serializable candidate');
+        const plannedField = candidate.plan.entities[0].fields.find(field => field.origin.kind === 'declared');
+        assert.equal(plannedField.defaultValue ? plannedField.defaultValue.value : plannedField.validations[0].value,
+            null, label + ': canonical operand remains sanitized');
+        assert.equal(candidate.issues.filter(issue => issue.code === 'NON_FINITE_VALUE').length, 1,
+            label + ': canonical loss is explicitly recorded');
+        assert(Object.is(rawField.defaultValue ? rawField.defaultValue.value : rawField.validations[0].value,
+            example.value), label + ': helpers do not mutate the raw witness');
+        report.rawSQLComparisons++;
+        report[example.irAccepted ? 'rawIRAccepted' : 'rawIRRejected']++;
+        report.rawFullRejectionMatches++;
     }
     for (const example of structuralIRCases()) {
         assert.equal(pinned.compiler.IR.validate(example.ir).valid, true, example.name + ': structural witness passes IR shape gate');

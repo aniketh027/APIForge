@@ -400,3 +400,216 @@ pass, protected artifacts are intact, and the branch remains local for external
 review.
 
 G22 EFFECTIVE SCHEMA PLAN — READY FOR EXTERNAL REVIEW
+
+## 34. External-review correction: unchecked raw SQL operands
+
+External review found a blocking compatibility gap after the original section
+33 closure, at feature tip `b702972153ad33a33783fd0aa5399af4e87770fc`.
+That original closure statement is retained as historical evidence. Closure was
+restored only after the correction and fresh verification recorded below.
+The correction remains on `g22-effective-schema-plan`, in a new commit, with
+no amendment, rebase, push, merge, main change or tag change.
+
+### Reproduction before the renderer fix
+
+The independent pinned compiler is still approved main
+`d91859e30a5ed0f91be9826a3d8d3a5c5b7261ce`, loaded with the original complete
+local dependency closure and checkout policy. This exact JavaScript direct IR
+passes both baseline and pre-fix current `IR.validate`:
+
+```js
+const ir = {
+    type: 'PROGRAM',
+    instructions: [
+        { op: 'CREATE_ENTITY', entity: 'Item' },
+        { op: 'ADD_FIELD', entity: 'Item', field: 'score', dataType: 'FLOAT',
+          constraints: [], validations: [],
+          defaultValue: { type: 'NUMBER', value: Infinity } }
+    ]
+};
+IR.validate(ir);                 // { valid: true, errors: [] }
+Codegen.generateSQL(ir);         // unchecked raw SQL helper
+Codegen.generate(ir, false);     // rejects through numeric target preflight
+```
+
+Pinned raw SQL, including its existing header and implicit identity:
+
+```sql
+-- ============================================================
+-- MySQL Database Schema
+-- Generated automatically by APIForge Compiler
+-- ============================================================
+
+CREATE TABLE Item (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    score FLOAT DEFAULT Infinity
+);
+```
+
+Pre-fix G22 emitted the same surrounding bytes but changed the column to
+`score FLOAT DEFAULT null`. For the validation reproducer, replace the field's
+default with `null` and validations with `[{ type: 'MIN', value: Infinity }]`.
+Both IR validators again accept it. Pinned SQL contains
+`score FLOAT CHECK (score >= Infinity)`; pre-fix G22 contains
+`score FLOAT CHECK (score >= null)`.
+
+Before changing production code, the new pinned raw corpus and assertions were
+added to the equivalence test. Running
+`node tests/effective-schema-equivalence.test.js` failed at
+`raw-FLOAT-DEFAULT-Infinity: exact unchecked SQL bytes`, showing precisely the
+`DEFAULT null` versus `DEFAULT Infinity` difference. A separate pre-fix probe
+captured the MIN witness and the complete 33-case matrix: **33 raw mismatches**,
+**18 shape-accepted cases**, **15 shape-rejected cases**, and **33 already exact
+complete-generation rejection matches**. Thus the observed blocker concerned
+unchecked DDL presentation, not production admission.
+
+| Raw witness family | Cases | Baseline/current IR acceptance | Full generation |
+|---|---:|---|---|
+| FLOAT, INT, STRING numeric DEFAULT with either infinity | 6 | Accept | Existing numeric target preflight rejects |
+| FLOAT, INT, STRING MIN/MAX with either infinity | 12 | Accept | Existing numeric target preflight rejects |
+| FLOAT, INT, STRING numeric DEFAULT/MIN/MAX with NaN | 9 | Reject | Existing IR gate rejects |
+| STRING MIN_LENGTH/MAX_LENGTH with Infinity, -Infinity or NaN | 6 | Reject | Existing IR gate rejects |
+
+INT does admit either infinity as a numeric default or MIN/MAX at the shape
+gate. No non-finite length bound in this matrix is shape-accepted: length bounds
+require non-negative integers. NaN is not shape-accepted. Their raw helper
+witnesses are nevertheless included because `generateSQL` bypasses that gate.
+
+### Root cause and correction
+
+`finiteCopy` correctly replaces non-finite numeric values with `null`, records
+`NON_FINITE_VALUE`, and retains the originals in nonenumerable
+`candidate.definitions`. The new MySQL renderer previously formatted the
+canonical null operands directly, losing the baseline's invalid DDL witness.
+
+`mysqlTarget.renderSchema(candidate)` now reads only the matching raw default
+or validation **primitive operand** from those ephemeral definitions. It
+recovers a value only when the canonical operand is null and the raw value is
+a non-finite number. Canonical default types, bound kinds/order, field views,
+types, constraints, identity, synthetic fields, entities, names and relation
+topology still determine every schema decision. Finite canonical operands
+cannot be overridden. No raw value is written into the plan, and no policy is
+reconstructed from raw definitions.
+
+The full `generate` pipeline, its one-candidate construction, all admission
+code and admission order are unchanged. For example, both pinned and corrected
+complete generation report exactly:
+
+```text
+Cannot generate target code: MySQL target preflight failed. Numeric literal Infinity for field 'score' must be finite.
+```
+
+INT witnesses retain the existing "finite and an exactly representable safe
+integer" diagnostic. NaN/length witnesses retain their earlier IR errors.
+Existing mixed-invalid tests also preserve preflight precedence over structural
+rejection. A serialized plan alone cannot recover an unchecked source operand;
+the raw oracle requires the candidate's adapter-local definitions.
+
+### Tests and updated exact comparison counts
+
+The corpus contains **33 pinned raw-helper cases**: all required FLOAT witnesses,
+the accepted INT witnesses, STRING numeric witnesses, NaN and rejected length
+witnesses. Every case compares the entire raw SQL string, exact IR validation,
+and complete-generation error name/message/properties. Every case verifies its
+exact raw primitive with `Object.is`, nonenumerable definitions, canonical null
+and loss issue, a JSON serializer that observes no non-finite numbers, a
+lossless JSON round trip, and retained raw values after rendering.
+
+A separate adapter test freezes canonical plan/provenance and changes raw
+names, datatype, PK/UNIQUE constraints, default type, bound kinds and added
+checks. The SQL remains identical. It also checks two distinct entities with
+the same field name, mixed non-finite/finite operands, serialized-plan behavior,
+and that mutated raw non-finite values cannot replace finite canonical values.
+
+| Exact equivalence category | Corrected result |
+|---|---|
+| Source programs | 498: 235 valid, 263 exact invalid diagnostic/phase matches |
+| Source-generated files | 3,088 exact ordered files; 1,913 generated JavaScript parses |
+| Complete `Codegen.generate` direct-IR comparisons | 12 accepted cases; 117 exact files; 57 JavaScript parses |
+| Unchecked `generateSQL` comparisons | 33 exact whole-SQL witnesses; 18 shape-accepted, 15 shape-rejected |
+| Complete-generation failures for raw witnesses | 33 exact pinned error matches |
+| Structural baseline witnesses | 4, unchanged |
+| Pinned local modules | 18, unchanged |
+| Exact mismatches | **0** |
+| Equivalence assertions | **3,002**, up from 2,540: 462 added assertions |
+| Planner/adapter tests | **21 groups / 2,616 assertions**, up from 20 / 2,610 |
+
+The equivalence JSON explicitly separates `completeDirectIRComparisons` from
+`rawSQLComparisons` and `rawFullRejectionMatches`. The new cases are in the
+pinned compatibility corpus, not solely in the planner unit suite.
+
+### Raw-helper callers and regression
+
+The `generateSQL(` search covered production and all test/documentation callers.
+The G16 native suite uses raw SQL for rejected schemas, while its accepted
+schemas use full generation. Capacity tests use it for CHECK grouping and
+native constraint names. G17/numeric target tests use it to examine DDL before
+the complete-generation gate. Core and STRING-length tests use the standalone
+renderer for defaults, bounds, identifiers and every relationship cardinality.
+These callers retain the same unchecked behavior. The new differential loop
+adds explicit raw compatibility coverage alongside complete generation.
+
+| Fresh command | Result |
+|---|---|
+| `npm test` | PASS: core 1,060/1,060 and all focused suites, including updated G22 suites |
+| `npm run test:g22-plan` | PASS: 21 groups / 2,616 assertions |
+| `npm run test:g22-equivalence` | PASS: 3,002 assertions; zero mismatches |
+| `node tests/mysql-target.test.js` | PASS: 6 groups |
+| `node tests/mysql-target-capacity.test.js` | PASS: 8 groups / 514 assertions |
+| `npm run test:disk-generation` | PASS: disk regression and 22 atomic-publication groups |
+| `node docs/verify-language-guide.js` | PASS: 20 valid / 79 invalid examples; 133 JavaScript parses; real CLI evidence |
+| `npm run test:db-error-taxonomy` | PASS: 1,436 assertions / 1,515 mock HTTP requests |
+| `npm run test:date-timestamp` | PASS: 21 groups / 1,581 deterministic assertions |
+| `npm run test:uuid` | PASS: 18 groups / 1,120 deterministic assertions |
+| `git diff --check` | PASS |
+
+The package adds the requested `test:g22-plan` and `test:g22-equivalence` aliases
+while preserving both existing `test:effective-schema-*` entries. Windows
+denied the three conditional directory/file/relative symlink creations with
+EPERM in publication tests; those variants are explicitly skipped, with all
+other publication checks passing. Mock HTTP and deterministic datatype checks
+are not represented as new live persistence evidence.
+
+### G16 native rerun, integrity and revised closure
+
+Because the MySQL render path changed, the unchanged
+`tests/mysql-target-capacity-mysql.test.js` was rerun with credentials provided
+only through its child-process environment. Configured MySQL again returned
+ECONNREFUSED / errno -4078. The authorized cached MySQL 8.4 Docker fallback used
+loopback-only publication and guarded disposable database names.
+
+Observed target: MySQL **8.4.11**, 16,384-byte pages, InnoDB DYNAMIC,
+innodb_strict_mode=1, utf8mb4/utf8mb4_unicode_ci, and
+`IGNORE_SPACE,STRICT_TRANS_TABLES,NO_ENGINE_SUBSTITUTION`.
+**155 schemas / 53 imports / 102 expected structural rejections / 1,698 checks
+passed**, seed `0x16a84`; cleanup passed. An independent information_schema
+query then found **zero `apiforge_e2e_*` databases**. The temporary Docker
+container was stopped and removed. This is fresh native evidence for the
+existing G16 admission/rejection oracle; the 33 new non-finite witnesses have
+the pinned raw-byte and full-admission evidence described above.
+
+Valid generated output and runtime bytes have zero mismatches, so the unrelated
+four live runtime suites from section 24 were not rerun for this correction.
+Their original evidence remains historical and unchanged.
+
+Preflight and post-verification protected checks confirm all **36 paths, sizes,
+SHA-256 values, creation times and modification times unchanged**. The six
+changed files are `src/utils/mysql-target.js`, `tests/effective-schema-corpus.js`,
+`tests/effective-schema-equivalence.test.js`, `tests/effective-schema-plan.test.js`,
+`package.json`, and this appended verification report. No protected artifact,
+public compiler phase, IR validator, fixture, generated output or lockfile is
+changed.
+
+The new corrective commit is the commit containing this section, resolvable
+with `git log -1 --format=%H -- docs/effective-schema-plan-verification.md`;
+its exact SHA is reported in the handoff. After that commit, the branch is
+**7 ahead / 0 behind** approved main, with a clean tracked working tree/index
+and only the original four protected roots untracked. Local main, origin/main
+and live remote main remain `d91859e30a5ed0f91be9826a3d8d3a5c5b7261ce`;
+peeled `v1.0.0` remains `9d5b223b0af350a237625f4cd8dfbc700e35dd1b`.
+No feature branch has been pushed, and no merge or history rewrite occurred.
+
+**Revised closure: G22 CLOSED after this correction, ready for external review.**
+No blocking or correctness issues found in the reviewed correction scope.
+
+G22 RAW SQL ORACLE FIX — READY FOR EXTERNAL REVIEW

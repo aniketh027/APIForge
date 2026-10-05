@@ -358,6 +358,39 @@ async function main() {
         assert.throws(() => schema.assertStructural(candidate), /finite/);
     });
 
+    await test('raw SQL presentation cannot replace canonical schema policy or finite operands', () => {
+        const raw = [Infinity, -Infinity].map((value, index) => ({ name: 'Item' + index, fields: [
+            { name: 'score', dataType: 'FLOAT', constraints: [], defaultValue: { type: 'NUMBER', value },
+                validations: [{ type: 'MIN', value }, { type: 'MAX', value: 5 }] }
+        ] }));
+        const candidate = schema.projectDefinitions(raw);
+        freeze(candidate.plan); freeze(candidate.provenance);
+        const before = JSON.stringify(candidate), sql = mysqlTarget.renderSchema(candidate);
+        assert(sql.includes('score FLOAT DEFAULT Infinity CHECK (score >= Infinity AND score <= 5)'));
+        assert(sql.includes('score FLOAT DEFAULT -Infinity CHECK (score >= -Infinity AND score <= 5)'));
+        for (const entity of raw) {
+            entity.name = 'Changed';
+            const source = entity.fields[0];
+            source.name = 'other'; source.dataType = 'INT'; source.constraints = ['PRIMARY_KEY', 'UNIQUE'];
+            source.defaultValue.type = 'STRING'; source.validations[0].type = 'MAX';
+            source.validations[1].value = Infinity;
+            source.validations.push({ type: 'MIN_LENGTH', value: Infinity });
+        }
+        assert.equal(mysqlTarget.renderSchema(candidate), sql,
+            'Raw names, types, keys, constraints, bound kinds and added checks cannot drive SQL policy.');
+        assert.equal(JSON.stringify(candidate), before, 'Rendering does not mutate the frozen canonical data.');
+        const restored = JSON.parse(JSON.stringify(candidate.plan));
+        assert(mysqlTarget.renderSchema(restored).includes('score FLOAT DEFAULT null CHECK (score >= null AND score <= 5)'),
+            'A serialized plan carries no recoverable unchecked source operand.');
+
+        const finiteRaw = [{ name: 'Finite', fields: [{ name: 'score', dataType: 'FLOAT', constraints: [],
+            defaultValue: { type: 'NUMBER', value: 1 }, validations: [{ type: 'MIN', value: 0 }] }] }];
+        const finite = schema.projectDefinitions(finiteRaw), finiteSQL = mysqlTarget.renderSchema(finite);
+        finiteRaw[0].fields[0].defaultValue.value = Infinity;
+        finiteRaw[0].fields[0].validations[0].value = -Infinity;
+        assert.equal(mysqlTarget.renderSchema(finite), finiteSQL, 'Finite canonical operands cannot be overridden.');
+    });
+
     await test('tolerant semantic projection preserves malformed ENUM AST diagnostic behavior', () => {
         const original = createPinnedCompiler().compiler.Semantic;
         for (const values of [undefined, null, {}, [], Array(1), [1], ['a', 'a']]) {

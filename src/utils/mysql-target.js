@@ -222,6 +222,15 @@ function renderSchema(input) {
     const tableStatements = plan.entities.map(entity => {
         const identity = policy.identity(entity);
         const columnDefs = policy.fieldViews(entity, 'declared').map(field => {
+            // The unchecked generateSQL seam must retain invalid native DDL
+            // witnesses. Only recover non-finite primitive operands that the
+            // JSON-safe plan replaced with null; all schema policy stays above.
+            const rawField = input.definitions?.entities?.[entity.order]?.fields?.[field.declaredOrder];
+            const operand = (value, raw) => value === null && typeof raw === 'number' && !Number.isFinite(raw) ? raw : value;
+            const defaultValue = field.defaultValue && { ...field.defaultValue,
+                value: operand(field.defaultValue.value, rawField?.defaultValue?.value) };
+            const validations = field.validations.map((validation, index) => ({ ...validation,
+                value: operand(validation.value, rawField?.validations?.[index]?.value) }));
             const mysqlType = columnType(field);
             const isPk = field.id === entity.key.fieldId;
             const isRequired = field.constraints.includes('REQUIRED');
@@ -253,8 +262,8 @@ function renderSchema(input) {
             // DEFAULT clause
             if (hasDefault) {
                 const sqlDefault = field.dataType === 'TIMESTAMP'
-                    ? { ...field.defaultValue, value: field.defaultValue.value.slice(0, 10) + ' ' + field.defaultValue.value.slice(11, 19) }
-                    : field.defaultValue;
+                    ? { ...defaultValue, value: defaultValue.value.slice(0, 10) + ' ' + defaultValue.value.slice(11, 19) }
+                    : defaultValue;
                 const sqlVal = formatSQLLiteral(sqlDefault, field.dataType === 'ENUM');
                 parts.push(`DEFAULT ${sqlVal}`);
             }
@@ -265,11 +274,11 @@ function renderSchema(input) {
             }
 
             // CHECK constraints for numeric range and string-length validations
-            if (Array.isArray(field.validations) && field.validations.length > 0) {
-                const minV = field.validations.find(v => v.type === 'MIN');
-                const maxV = field.validations.find(v => v.type === 'MAX');
-                const minLengthV = field.validations.find(v => v.type === 'MIN_LENGTH');
-                const maxLengthV = field.validations.find(v => v.type === 'MAX_LENGTH');
+            if (validations.length > 0) {
+                const minV = validations.find(v => v.type === 'MIN');
+                const maxV = validations.find(v => v.type === 'MAX');
+                const minLengthV = validations.find(v => v.type === 'MIN_LENGTH');
+                const maxLengthV = validations.find(v => v.type === 'MAX_LENGTH');
 
                 if (minV && maxV) {
                     parts.push(`CHECK (${quoteIdentifier(field.name)} >= ${minV.value} AND ${quoteIdentifier(field.name)} <= ${maxV.value})`);
