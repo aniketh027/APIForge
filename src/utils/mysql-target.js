@@ -50,20 +50,34 @@ const MYSQL_TYPE_MAP = {
  * @returns {string} - MySQL column type
  */
 function columnType(field) {
-    if (field?.dataType === 'ENUM') {
-        return `ENUM(${field.enumValues.map(value => formatSQLLiteral({ type: 'STRING', value }, true)).join(', ')}) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin`;
-    }
-    if (!field || field.dataType !== 'STRING') {
-        return MYSQL_TYPE_MAP[field && field.dataType] || (field && field.dataType);
-    }
+    return renderPhysicalType(describeColumnType(field), describeCharacter(field));
+}
 
-    const declaredLengths = Array.isArray(field.validations)
-        ? field.validations
-            .filter(v => (v.type === 'MIN_LENGTH' || v.type === 'MAX_LENGTH') && Number.isInteger(v.value) && v.value >= 0)
-            .map(v => v.value)
-        : [];
-    const capacity = Math.max(255, ...declaredLengths);
-    return `VARCHAR(${capacity})`;
+// One structured physical vocabulary shared by CREATE, snapshots and ALTER.
+function describeColumnType(field) {
+    if (!field) return null;
+    if (field.dataType === 'STRING') return { kind: 'VARCHAR', length: Math.max(255,
+        ...(Array.isArray(field.validations) ? field.validations : []).filter(v =>
+            ['MIN_LENGTH','MAX_LENGTH'].includes(v.type) && Number.isInteger(v.value) && v.value >= 0).map(v => v.value)) };
+    if (field.dataType === 'ENUM') return { kind: 'ENUM', members: [...field.enumValues] };
+    if (field.dataType === 'UUID') return { kind: 'CHAR', length: 36 };
+    if (field.dataType === 'BOOLEAN') return { kind: 'TINYINT', displayWidth: 1 };
+    if (field.dataType === 'TIMESTAMP') return { kind: 'TIMESTAMP', precision: 0 };
+    return { kind: field.dataType };
+}
+function describeCharacter(field, inherited = {characterSet:'utf8mb4',collation:'utf8mb4_unicode_ci'}) {
+    if (field?.dataType === 'UUID') return {source:'explicit',characterSet:'ascii',collation:'ascii_bin'};
+    if (field?.dataType === 'ENUM') return {source:'explicit',characterSet:'utf8mb4',collation:'utf8mb4_bin'};
+    if (field?.dataType === 'STRING') return {source:'inherited',...inherited};
+    return null;
+}
+function renderPhysicalType(type, character, resolveInherited = false) {
+    if (!type) return undefined;
+    let sql = type.kind === 'ENUM' ? `ENUM(${type.members.map(value => formatSQLLiteral({type:'STRING',value},true)).join(', ')})`
+        : type.kind === 'TINYINT' && type.displayWidth === 1 ? 'BOOLEAN'
+        : ['VARCHAR','CHAR'].includes(type.kind) ? `${type.kind}(${type.length})` : type.kind;
+    if (character && (character.source === 'explicit' || resolveInherited)) sql += ` CHARACTER SET ${character.characterSet} COLLATE ${character.collation}`;
+    return sql;
 }
 
 const MYSQL_RESERVED_WORDS = new Set([
@@ -492,6 +506,7 @@ function numericIssues(field) {
     return issues;
 }
 module.exports = { targetIssuesFromPlan, physicalPlanFromPlan, sourceContext, relationPhysicalNames,
+    describeColumnType, describeCharacter, renderPhysicalType,
     renderSchema, columnType, quoteIdentifier, formatSQLLiteral, targetIssues, numericIssues, capacity, IDENTIFIER_LIMIT, KEY_BYTES, VARCHAR_CAPACITY,
     physicalPlan, planIssues, rowBudget, storageBytes, COLUMN_LIMIT, SECONDARY_INDEX_LIMIT, KEY_PART_LIMIT,
     LOGICAL_ROW_BYTES, LOCAL_RECORD_BYTES, INDEX_LIMIT };

@@ -1448,7 +1448,7 @@ function generateSwagger(entities, relations = [], suppliedContext) {
  * @param {boolean} [writeToDisk=true] - Whether to write output files to disk
  * @returns {Object} - { success: true, files: [{ path, content }] }
  */
-function generate(optimizedIR, writeToDisk = true) {
+function prepareAdmittedGeneration(optimizedIR) {
     const validation = IRGenerator.validate(optimizedIR);
     if (!validation.valid) {
         throw new Error(`Cannot generate target code: Invalid IR - ${validation.errors.join(', ')}`);
@@ -1479,6 +1479,12 @@ function generate(optimizedIR, writeToDisk = true) {
 
     effectiveSchema.assertStructural(candidate);
 
+    return { candidate, context, entities, relations };
+}
+
+function generate(optimizedIR, writeToDisk = true) {
+    const { context, entities, relations } = prepareAdmittedGeneration(optimizedIR);
+
     const files = [
         { path: 'database/schema.sql', content: generateSQL(optimizedIR, context) },
         { path: 'config/db.js', content: generateDBConfig(entities, relations, context) },
@@ -1505,6 +1511,7 @@ function generate(optimizedIR, writeToDisk = true) {
 }
 
 module.exports = {
+    prepareAdmittedGeneration,
     generate,
     generateSQL,
     getEffectiveKey,
