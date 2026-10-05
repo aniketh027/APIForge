@@ -62,4 +62,15 @@ function buildMysqlSnapshot(plan) {
     for(const t of s.tables){for(const list of [t.indexes,t.checks,t.foreignKeys])list.sort((a,b)=>compare(a.name,b.name));for(const i of [t.primaryKey,...t.indexes])if(i)i.purposes.sort(compare);}
     return validateSnapshot(s);
 }
-module.exports={buildMysqlSnapshot,indexName};
+// InnoDB-created FK support survives DROP FK. A newly added suitable index
+// can supersede it; explicit user indexes never disappear through this rule.
+function applyImplicitIndexEffects(table,addedIndex) {
+    if(!addedIndex)return;
+    table.indexes=table.indexes.filter(old=>{
+        if(!old.implicit||old.id===addedIndex.id||!old.columns.every((c,n)=>addedIndex.columns[n]===c))return true;
+        const alternatives=[table.primaryKey,...table.indexes.filter(i=>i.id!==old.id)].filter(Boolean);
+        const users=table.foreignKeys.filter(f=>f.columns.every((c,n)=>old.columns[n]===c));
+        return users.some(f=>!alternatives.some(i=>f.columns.every((c,n)=>i.columns[n]===c)));
+    });
+}
+module.exports={buildMysqlSnapshot,indexName,applyImplicitIndexEffects};

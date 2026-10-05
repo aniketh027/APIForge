@@ -7,7 +7,7 @@ function classify(intent,old,next){const {kind,before:a,after:b,tableId}=intent;
     const requireData=(type,scope)=>{requirements.push({type,tableId,...scope});set('REQUIRES_DATA_CHECK',type);};
     const physical=c=>({physicalType:c.physicalType,character:c.character,nullable:c.nullable,default:c.default.physical,generation:c.generation,onUpdate:c.onUpdate});
     if(['drop_table','drop_column'].includes(kind))set('DESTRUCTIVE','REMOVES_ROWS_OR_ASSOCIATIONS');
-    if(['replace_primary_key','reorder_columns'].includes(kind))set('UNSUPPORTED',kind.toUpperCase());
+    if(kind==='reorder_columns'||(kind==='replace_primary_key'&&!equal({name:a.name,columns:a.columns,unique:a.unique,method:a.method},{name:b.name,columns:b.columns,unique:b.unique,method:b.method})))set('UNSUPPORTED',kind.toUpperCase());
     if(kind==='table_metadata'&&!equal(a.identity,b.identity))set('UNSUPPORTED','IDENTITY_INTENT_CHANGE');
     if(kind==='relation_metadata'){
         for(const x of a)for(const y of b)if(x.sourceTableId===y.sourceTableId&&x.targetTableId===y.targetTableId&&(x.cardinality!==y.cardinality||!equal(x.storage,y.storage)))set('UNSUPPORTED','RELATION_TOPOLOGY_CONVERSION');
@@ -49,7 +49,7 @@ function authorize(plan,options={}){
     if(options.expectPlan!==S.hash(plan))fail('MIGRATION_PLAN_CHANGED','Authorization requires the exact plan SHA-256.');
     if(plan.blockers.length)fail('MIGRATION_UNSUPPORTED_TRANSITION','Plan contains unsupported transitions.',{blockers:plan.blockers});
     const destructive=[...new Set(options.allowDestructiveOperationIds||[])].sort(S.compare),data=[...new Set(options.acknowledgeDataCheckOperationIds||[])].sort(S.compare);
-    for(const [selected,kind] of [[destructive,'DESTRUCTIVE'],[data,'REQUIRES_DATA_CHECK']])for(const selectedId of selected){const op=plan.operations.find(o=>o.id===selectedId);if(!op||op.safetyClass!==kind)fail('MIGRATION_AUTHORIZATION_REQUIRED','Unknown or inapplicable authorization operation ID.');}
+    for(const [selected,kind] of [[destructive,'DESTRUCTIVE'],[data,'REQUIRES_DATA_CHECK']])for(const selectedId of selected){const op=plan.operations.find(o=>o.id===selectedId);if(!op||(kind==='DESTRUCTIVE'?op.safetyClass!==kind:!op.requirements.length))fail('MIGRATION_AUTHORIZATION_REQUIRED','Unknown or inapplicable authorization operation ID.');}
     for(const op of plan.operations)if((op.safetyClass==='DESTRUCTIVE'&&!destructive.includes(op.id))||(op.requirements.length&&!data.includes(op.id)))fail('MIGRATION_AUTHORIZATION_REQUIRED','Explicit operation authorization required.',{operationId:op.id,safetyClass:op.safetyClass,requirements:op.requirements});
     return{planSha256:S.hash(plan),destructiveOperationIds:destructive,dataCheckOperationIds:data};
 }
