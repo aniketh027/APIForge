@@ -3,10 +3,16 @@
 V1 hardening adds SEM034 generated entity/field/relationship allocation checks,
 prototype-safe own-key registries, SEM035 finite/raw safe numeric checks, SEM036
 native ENUM trailing-space rejection and SEM037 MySQL deterministic preflight.
-The supported target is MySQL >=8.0.16, utf8mb4, InnoDB DYNAMIC with 16 KiB pages,
+The supported target is MySQL >=8.0.16, utf8mb4, InnoDB DYNAMIC with pages >=16 KiB,
 strict mode and NO_BACKSLASH_ESCAPES disabled. Caller configures server defaults.
 STRING/ENUM literal escaping is unified; generated Node engines require >=18.
-Whole-row/page and scalar storage limits remain DB-authoritative; G19 is deferred.
+G16 plans physical columns/indexes, checks logical and DYNAMIC admission row
+budgets, ENUM capacity, internal InnoDB column names and DDL numeric DEFAULT ranges.
+Stock MySQL has a 64-total-index limit including PRIMARY, so APIForge allows 63
+secondary indexes even though InnoDB documents a separate 64-secondary limit.
+Server settings and actual runtime row layout remain database-authoritative.
+G19 stages/read-back-verifies output and preserves user roots using reversible
+same-filesystem renames. See docs/mysql-target-preflight-completion-verification.md.
 
 Treat these as implementation facts to verify when the relevant code changes, not as reasons to preserve accidental defects forever.
 

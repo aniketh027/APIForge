@@ -1107,16 +1107,28 @@ including LATERAL, INTERSECT, ARRAY and MEMBER. Valid declared columns named
 reconstruction in generated config/db.js; composed relationship columns receive
 the same protection. Automatic keys are readOnly in operation Read schemas.
 
-Use MySQL >=8.0.16, utf8mb4, InnoDB DYNAMIC row format and 16 KiB pages,
+Use MySQL >=8.0.16, utf8mb4, InnoDB DYNAMIC row format and pages >=16 KiB,
 with strict mode and NO_BACKSLASH_ESCAPES disabled for import and runtime connections.
 Configure server/database defaults; generated DDL does not override them. Ordinary
 STRING equality uses the configured collation; native ENUM uses utf8mb4_bin.
 SEM037 checks 64-character table/column/FK/junction/constraint identifiers, including
 automatic CHECK/FK composed names; single VARCHAR capacity floor((65535-2)/4)=16383;
-3072-byte individual STRING indexes and combined junction primary keys. Invalid
-configurations reject before IR or disk writes. No truncation or silent renaming.
-Whole-row/page layout, column/index counts, scalar storage ranges and actual server
-configuration remain database-authoritative. G19 disk publication handles
+3072-byte full-column indexes (UUID costs 36 ASCII bytes); 1017 physical columns,
+including implicit keys and relationship columns; 64 secondary indexes and the
+stock MySQL limit of 64 total indexes including PRIMARY (effectively 63 secondary);
+16 index parts; a 65,535-byte logical row budget with VARCHAR length/nullable bytes;
+and a conservative DYNAMIC local-record admission budget for 16 KiB pages.
+ENUM permits <=65,535 members, each <=255 characters / <=1020 utf8mb4 bytes.
+Final physical columns cannot use DB_ROW_ID, DB_TRX_ID or DB_ROLL_PTR in any casing.
+INT/FLOAT DEFAULT literals must fit their generated storage types; HTTP numeric
+contracts and legal wide CHECK bounds are unchanged. Invalid configurations reject
+with located SEM037 before IR or disk publication; direct IR repeats the check.
+No truncation, silent renaming, or generated table-option rewrite occurs.
+Server version, page size, engine, row format, charset and sql_mode remain deployment
+prerequisites requiring live verification. Passing preflight does not simulate all
+runtime row values or later schema migrations. See
+[G16 verification](mysql-target-preflight-completion-verification.md) for the model,
+native boundaries, differential evidence and limitations. G19 disk publication handles
 operation failures with staging and reversible user-root renames as described
 in the generated-output section. Node.js >=18 is required by generated Express dependencies.
 

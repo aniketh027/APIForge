@@ -74,6 +74,17 @@ The generated README documents dependency installation, `.env` creation, MySQL d
 
 ## SQL contract
 
+G16 target preflight models physical entity/junction columns and indexes without
+changing SQL bytes or public IR. SEM037 covers 1017 columns, 64 secondary indexes,
+the stricter stock-MySQL 64-total-index cap including PRIMARY, 16 key parts,
+3072-byte full keys, logical/DYNAMIC admission row budgets, ENUM definition limits,
+internal InnoDB column names and out-of-storage-range numeric DEFAULT literals.
+Supporting FK indexes reuse an existing leftmost prefix; ONE_TO_ONE reuses its
+UNIQUE and M2M adds only the target-side supporting index. Deployment defaults must
+meet the documented target; the compiler does not inspect running server settings.
+See docs/mysql-target-preflight-completion-verification.md for live evidence and
+the conservative 16 KiB local-record model. HTTP numeric semantics are unchanged.
+
 UUID fields and keys map to CHAR(36) CHARACTER SET ascii COLLATE ascii_bin; all
 referencing/junction columns use identical physical types and collations.
 getEffectiveKey distinguishes generation auto_increment/runtime_uuid/none;
