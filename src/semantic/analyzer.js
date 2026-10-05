@@ -80,7 +80,9 @@
 
 const { createDiagnostic, createWarningDiagnostic, sortDiagnostics, locate } = require('../utils/diagnostics');
 const { didYouMeanSuffix } = require('../utils/errors');
-const { SUPPORTED_DATA_TYPES, DATE_MIN, DATE_MAX, TIMESTAMP_MIN, TIMESTAMP_MAX,
+const { SUPPORTED_DATA_TYPES } = require('../utils/data-types');
+const { isUuid } = require('../utils/uuid');
+const { DATE_MIN, DATE_MAX, TIMESTAMP_MIN, TIMESTAMP_MAX,
     isDate, isTimestamp } = require('../utils/temporal');
 
 const RESERVED_WORDS = new Set([
@@ -103,7 +105,7 @@ const VALID_DATA_TYPES = new Set(SUPPORTED_DATA_TYPES);
 // ── Types Allowed for PRIMARY KEY ───────────────────────────
 
 const PRIMARY_KEY_ALLOWED_TYPES = new Set([
-    'INT', 'STRING'
+    'INT', 'STRING', 'UUID'
 ]);
 
 // ── Valid Constraints ───────────────────────────────────────
@@ -432,10 +434,10 @@ class SemanticAnalyzer {
                     );
                 }
 
-                // PK type restriction (INT or STRING only)
+                // Explicit textual UUID keys share the existing immutable-key contract.
                 if (!PRIMARY_KEY_ALLOWED_TYPES.has(field.dataType)) {
                     this.addError(
-                        `PRIMARY KEY on field '${field.name}' in entity '${entity.name}' requires INT or STRING, but found '${field.dataType}'.`,
+                        `PRIMARY KEY on field '${field.name}' in entity '${entity.name}' requires INT, STRING or UUID, but found '${field.dataType}'.`,
                         locate(field, 'type', field.typeColumn),
                         'INVALID_PRIMARY_KEY_TYPE'
                     );
@@ -654,6 +656,17 @@ class SemanticAnalyzer {
                         this.addError(`DEFAULT ${JSON.stringify(def.value)} is not one of the declared ENUM values.`,
                             location, 'INVALID_ENUM_DEFAULT',
                             `Use one of: ${preview.slice(0, 200)}${field.enumValues.length > 5 || preview.length > 200 ? ', ...' : ''}.`);
+                    }
+                } else if (field.dataType === 'UUID') {
+                    const occurrence = Math.max(0, (field.sourceLocations?.DEFAULT?.length || 1) - 1);
+                    const location = field.sourceLocations?.DEFAULT_LITERAL?.[occurrence] ||
+                        locate(field, 'DEFAULT', field.typeColumn || field.nameColumn, occurrence);
+                    if (def.type !== 'STRING' || typeof def.value !== 'string') {
+                        this.addError(`Default value for UUID field '${field.name}' must be a quoted canonical string.`,
+                            location, 'INVALID_DEFAULT_TYPE');
+                    } else if (!isUuid(def.value)) {
+                        this.addError(`Default value for UUID field '${field.name}' must be a canonical lowercase UUID.`,
+                            location, 'INVALID_UUID_DEFAULT', 'Use lowercase hexadecimal text in exact 8-4-4-4-12 form.');
                     }
                 } else if (field.dataType === 'DATE' || field.dataType === 'TIMESTAMP') {
                     const occurrence = Math.max(0, (field.sourceLocations?.DEFAULT?.length || 1) - 1);

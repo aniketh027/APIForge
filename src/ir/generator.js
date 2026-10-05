@@ -44,7 +44,9 @@
  * ============================================================
  */
 
-const { SUPPORTED_DATA_TYPES, isDate, isTimestamp } = require('../utils/temporal');
+const { SUPPORTED_DATA_TYPES } = require('../utils/data-types');
+const { isDate, isTimestamp } = require('../utils/temporal');
+const { isUuid } = require('../utils/uuid');
 const VALID_DATA_TYPES = new Set(SUPPORTED_DATA_TYPES);
 
 const VALID_RELATION_TYPES = new Set([
@@ -135,6 +137,14 @@ function validate(ir) {
                     }
                     if ((Array.isArray(inst.constraints) && inst.constraints.includes('PRIMARY_KEY')) || inst.validations?.length) {
                         errors.push(`ENUM field at index ${index} cannot have PRIMARY_KEY or bound validations.`);
+                    }
+                }
+
+                if (inst.dataType === 'UUID') {
+                    if (inst.validations?.length) errors.push(`UUID field at index ${index} cannot have bound validations.`);
+                    if (inst.defaultValue !== undefined && inst.defaultValue !== null &&
+                        (inst.defaultValue.type !== 'STRING' || !isUuid(inst.defaultValue.value))) {
+                        errors.push(`UUID default at index ${index} must be a canonical lowercase STRING literal.`);
                     }
                 }
 
@@ -275,7 +285,7 @@ function generate(ast, semanticResult = null) {
                 defaultValue,
                 line: field.line
             });
-            if (['ENUM', 'DATE', 'TIMESTAMP'].includes(field.dataType) && field.sourceLocations) {
+            if (['ENUM', 'DATE', 'TIMESTAMP', 'UUID'].includes(field.dataType) && field.sourceLocations) {
                 Object.defineProperty(instructions[instructions.length - 1], 'sourceLocations',
                     { value: field.sourceLocations });
             }

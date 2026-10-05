@@ -1,8 +1,7 @@
 // Shared language/runtime contract. These validators use explicit Gregorian
 // calendar rules and lexical UTC ranges; they never parse a JavaScript Date.
-const SUPPORTED_DATA_TYPES = Object.freeze([
-    'INT', 'STRING', 'FLOAT', 'BOOLEAN', 'ENUM', 'DATE', 'TIMESTAMP'
-]);
+// Compatibility export; vocabulary ownership lives outside temporal validation.
+const { SUPPORTED_DATA_TYPES } = require('./data-types');
 const DATE_PATTERN = '^[0-9]{4}-[0-9]{2}-[0-9]{2}$';
 const TIMESTAMP_PATTERN = '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$';
 const DATE_MIN = '1000-01-01';

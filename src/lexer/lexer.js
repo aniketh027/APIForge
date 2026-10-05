@@ -101,7 +101,7 @@ const RELATION_TYPES = new Set([
  *   DATE    → DATE
  *   TIMESTAMP → TIMESTAMP
  */
-const { SUPPORTED_DATA_TYPES } = require('../utils/temporal');
+const { SUPPORTED_DATA_TYPES } = require('../utils/data-types');
 const DATA_TYPES = new Set(SUPPORTED_DATA_TYPES);
 
 /**

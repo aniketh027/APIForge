@@ -6,7 +6,7 @@ const VARCHAR_CAPACITY = Math.floor((65535 - 2) / CHARACTER_BYTES);
 const capacity = field => Math.max(255, ...(field.validations || [])
     .filter(v => ['MIN_LENGTH', 'MAX_LENGTH'].includes(v.type)).map(v => v.value));
 const key = entity => entity.fields.find(f => f.constraints?.includes('PRIMARY_KEY')) || { name: 'id', dataType: 'INT' };
-const keyBytes = field => field.dataType === 'STRING' ? capacity(field) * CHARACTER_BYTES : 4;
+const keyBytes = field => field.dataType === 'STRING' ? capacity(field) * CHARACTER_BYTES : field.dataType === 'UUID' ? 36 : 4;
 function targetIssues(entities, relations = []) {
     const issues = [];
     const issue = (node, message, locationKey = 'name', hint) => issues.push({ node, message, locationKey, ...(hint ? { hint } : {}) });

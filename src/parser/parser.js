@@ -48,7 +48,7 @@
 const { ProgramNode, EntityNode, FieldNode, RelationNode } = require('../ast/ast');
 const { attachDiagnostic } = require('../utils/diagnostics');
 const { didYouMeanSuffix } = require('../utils/errors');
-const { SUPPORTED_DATA_TYPES } = require('../utils/temporal');
+const { SUPPORTED_DATA_TYPES } = require('../utils/data-types');
 
 // ── Candidate lists for "did you mean?" suggestions ─────────
 const DATA_TYPES = SUPPORTED_DATA_TYPES;
@@ -430,7 +430,7 @@ class Parser {
             if (['PRIMARY', 'MIN', 'MAX', 'MIN_LENGTH', 'MAX_LENGTH', 'DEFAULT'].includes(token.value)) end = this.tokens[i + 1];
             (sourceLocations[key] ||= []).push({ line: token.line, column: token.column,
                 ...(end.endLine ? { endLine: end.endLine, endColumn: end.endColumn } : {}) });
-            if (token.value === 'DEFAULT' && ['DATE', 'TIMESTAMP'].includes(dataTypeToken.value)) {
+            if (token.value === 'DEFAULT' && ['DATE', 'TIMESTAMP', 'UUID'].includes(dataTypeToken.value)) {
                 (sourceLocations.DEFAULT_LITERAL ||= []).push(end);
             }
         }
