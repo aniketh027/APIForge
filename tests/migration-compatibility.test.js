@@ -3,6 +3,8 @@ const assert = require('assert/strict');
 const fs = require('fs');
 const vm = require('vm');
 const path = require('path');
+const os = require('os');
+const {spawnSync,execFileSync}=require('child_process');
 const { createPinnedCompiler, currentCompiler, compileSource } = require('./pinned-compiler-loader');
 const { sourceCases, directIRCases, rawSQLCases } = require('./effective-schema-corpus');
 const BASE = '1caf927b5bcef627575a36c1d29800ce03e6f17c';
@@ -51,5 +53,23 @@ async function zip(source, historical) {
 (async () => {
     const source='ENTITY Item\nvalue STRING';
     same(await zip(compileSource(source,current).files,false),await zip(pinned.compile(source).files,true),'ZIP exact bytes');
+    const root=fs.mkdtempSync(path.join(os.tmpdir(),'apiforge-g26-compatibility-'));
+    try{
+        for(const state of ['missing','populated','corrupt']){
+            const cwd=path.join(root,state);fs.mkdirSync(cwd);const workspace=path.join(cwd,'migrations');
+            if(state==='populated')require('../src/migrations').publishMigrationRevision(workspace,require('../src/migrations').compileSourceForSnapshot(source),{baseline:true});
+            if(state==='corrupt'){fs.mkdirSync(path.join(workspace,'revisions','000002'),{recursive:true});fs.writeFileSync(path.join(workspace,'revisions','000002','snapshot.json'),'broken');}
+            const sourceFile=path.join(cwd,'source.apiforge');fs.writeFileSync(sourceFile,source);
+            const cli=spawnSync(process.execPath,[path.resolve(__dirname,'../index.js'),sourceFile],{cwd,encoding:'utf8'});same(cli.status,0,'ordinary CLI '+state);
+            for(const file of pinned.compile(source).files)same(fs.readFileSync(path.join(cwd,'output',file.path),'utf8'),file.content,'ordinary CLI bytes '+state+' '+file.path);
+            same(api(source,false),api(source,true),'API with '+state+' state');
+            same(await zip(compileSource(source,current).files,false),await zip(pinned.compile(source).files,true),'ZIP with '+state+' state');
+            same(plain(compileSource(source,current)),plain(pinned.compile(source)),'public phases with '+state+' state');
+        }
+        // UI repository objects have unchanged bytes. The compiler oracle's
+        // deliberate CRLF smudge policy is for its dependency closure; this
+        // checkout's untouched stylesheet uses LF. Compare UI Git blobs raw.
+        for(const file of ['frontend/app.js','frontend/index.html','frontend/style.css'])same(execFileSync('git',['show','HEAD:'+file]),execFileSync('git',['show',BASE+':'+file]),'browser Git blob bytes '+file);
+    }finally{fs.rmSync(root,{recursive:true,force:true});}
     console.log(JSON.stringify({base:BASE,valid,invalid,files,checks,result:'PASS'}));
 })().catch(e=>{console.error(e);process.exitCode=1;});

@@ -6,14 +6,32 @@ const {readServerConfig,createTemporaryDatabaseName,quoteTemporaryDatabaseName}=
 async function connect(){const c=await mysql.createConnection({...readServerConfig(process.env),multipleStatements:true,connectTimeout:5000,dateStrings:true});
     const [r]=await c.query('SELECT VERSION() version, @@innodb_page_size pages, @@lower_case_table_names casing, @@sql_mode mode, @@innodb_strict_mode strict, @@default_storage_engine engine, @@innodb_default_row_format rowFormat');
     assert(/^8\.4\./.test(r[0].version)&&r[0].pages===16384&&r[0].casing===0&&r[0].strict&&r[0].engine==='InnoDB'&&r[0].rowFormat==='dynamic'&&/STRICT_(TRANS|ALL)_TABLES/.test(r[0].mode)&&!/NO_BACKSLASH_ESCAPES/.test(r[0].mode),'mysql-8.4-v1 server required');
-    await c.query("SET SESSION time_zone='+00:00'; SET SESSION explicit_defaults_for_timestamp=ON");console.log('G26 native profile: '+JSON.stringify(r[0]));return c;}
+    await c.query("SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci; SET SESSION time_zone='+00:00'; SET SESSION explicit_defaults_for_timestamp=ON");console.log('G26 native profile: '+JSON.stringify(r[0]));return c;}
 async function database(c,run){const name=createTemporaryDatabaseName(),q=quoteTemporaryDatabaseName(name);await c.query('CREATE DATABASE '+q+' CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci');try{await c.query('USE '+q);return await run(name);}finally{await c.query('DROP DATABASE '+q);}}
 function enumMembers(type){const result=[];let i=5;while(i<type.length-1){assert(type[i]==="'");i++;let value='';while(i<type.length){const ch=type[i++];if(ch==='\\'){value+=type[i++];continue;}if(ch==="'"){if(type[i]==="'"){value+="'";i++;continue;}break;}value+=ch;}result.push(value);if(type[i]===',')i++;}return result;}
-function type(c){switch(c.DATA_TYPE){case'int':return{kind:'INT'};case'float':return{kind:'FLOAT'};case'tinyint':assert.equal(c.COLUMN_TYPE,'tinyint(1)');return{kind:'TINYINT',displayWidth:1};case'varchar':return{kind:'VARCHAR',length:c.CHARACTER_MAXIMUM_LENGTH};case'char':return{kind:'CHAR',length:c.CHARACTER_MAXIMUM_LENGTH};case'date':return{kind:'DATE'};case'timestamp':return{kind:'TIMESTAMP',precision:c.DATETIME_PRECISION};case'enum':return{kind:'ENUM',members:enumMembers(c.COLUMN_TYPE)};default:throw Error('Unexpected native type '+c.COLUMN_TYPE);}}
+function type(c){switch(c.DATA_TYPE){case'int':return{kind:'INT'};case'float':return{kind:'FLOAT'};case'tinyint':assert.equal(c.COLUMN_TYPE,'tinyint(1)');return{kind:'TINYINT',displayWidth:1};case'varchar':return{kind:'VARCHAR',length:c.CHARACTER_MAXIMUM_LENGTH};case'char':return{kind:'CHAR',length:c.CHARACTER_MAXIMUM_LENGTH};case'date':return{kind:'DATE'};case'timestamp':return{kind:'TIMESTAMP',precision:c.DATETIME_PRECISION};case'enum':return{kind:'ENUM',members:c.nativeEnumMembers||enumMembers(c.COLUMN_TYPE)};default:throw Error('Unexpected native type '+c.COLUMN_TYPE);}}
 function condition(sql){const clean=sql.replace(/char_length\((`[^`]+`)\)/gi,'$1#length').replace(/[()]/g,'').trim();let out;
     for(const part of clean.split(/\s+and\s+/i)){const match=part.trim().match(/^`([^`]+)`(#length)?\s*(>=|<=)\s*(-?[\d.eE+]+)$/);assert(match,'Unknown native CHECK presentation: '+sql);const current={columnId:match[1],measure:match[2]?'char_length':'value',min:null,max:null};if(out)assert.equal(out.columnId,current.columnId);else out=current;out[match[3]==='>='?'min':'max']=Number(match[4]);}return out;}
 async function introspect(c,db,target){const get=async table=>(await c.query('SELECT * FROM information_schema.'+table+' WHERE '+(['CHECK_CONSTRAINTS','REFERENTIAL_CONSTRAINTS'].includes(table)?'CONSTRAINT_SCHEMA':'TABLE_SCHEMA')+'=?',[db]))[0];
     const columns=await get('COLUMNS'), stats=await get('STATISTICS'), tc=await get('TABLE_CONSTRAINTS'), kc=await get('KEY_COLUMN_USAGE'), rc=await get('REFERENTIAL_CONSTRAINTS'), checks=await get('CHECK_CONSTRAINTS'), tables=await get('TABLES');
+    for(const col of columns)if(['varchar','char','enum'].includes(col.DATA_TYPE)&&col.COLUMN_DEFAULT?.includes('?')){
+        const q=name=>'`'+name.replace(/`/g,'``')+'`';
+        // DEFAULT() reads the typed native constant. The outer join guarantees
+        // one result even for an empty table, without inserting a production row.
+        col.COLUMN_DEFAULT=(await c.query(`SELECT DEFAULT(native_default.${q(col.COLUMN_NAME)}) value FROM (SELECT 1) seed LEFT JOIN ${q(col.TABLE_NAME)} native_default ON FALSE`))[0][0].value;
+    }
+    for(const col of columns)if(col.DATA_TYPE==='enum'&&col.COLUMN_TYPE.includes('?')){
+        // MySQL's metadata/SHOW serializer loses supplementary characters while
+        // the enum values themselves remain intact. An isolated CTAS preserves
+        // the native enum type. Read numeric ordinals from that copy, never from
+        // expected snapshots, to resolve the presentation ambiguity exactly.
+        const probe='_g26_enum_'+require('crypto').randomBytes(8).toString('hex');
+        const q=name=>'`'+name.replace(/`/g,'``')+'`';
+        await c.query(`CREATE TEMPORARY TABLE ${q(probe)} AS SELECT ${q(col.COLUMN_NAME)} FROM ${q(col.TABLE_NAME)} LIMIT 0`);
+        try{const count=enumMembers(col.COLUMN_TYPE).length;for(let first=1;first<=count;first+=256)await c.query(`INSERT INTO ${q(probe)} VALUES `+Array.from({length:Math.min(256,count-first+1)},(_,n)=>'('+(first+n)+')').join(','));
+            col.nativeEnumMembers=(await c.query(`SELECT ${q(col.COLUMN_NAME)} value FROM ${q(probe)} ORDER BY ${q(col.COLUMN_NAME)}+0`))[0].map(r=>r.value);
+        }finally{await c.query(`DROP TEMPORARY TABLE ${q(probe)}`);}
+    }
     return{formatVersion:1,target,tables:tables.map(t=>{const cols=columns.filter(v=>v.TABLE_NAME===t.TABLE_NAME).sort((a,b)=>a.ORDINAL_POSITION-b.ORDINAL_POSITION).map(v=>{const ty=type(v);const d=v.COLUMN_DEFAULT===null?{kind:v.IS_NULLABLE==='YES'?'null':'none'}:{kind:'literal',type:['INT','FLOAT'].includes(ty.kind)?'NUMBER':ty.kind==='TINYINT'?'BOOLEAN':'STRING',value:['INT','FLOAT','TINYINT'].includes(ty.kind)?Number(v.COLUMN_DEFAULT):v.COLUMN_DEFAULT};
         assert(!v.EXTRA || v.EXTRA==='auto_increment','Unexpected native EXTRA '+v.EXTRA);return{name:v.COLUMN_NAME,type:ty,character:v.CHARACTER_SET_NAME?{characterSet:v.CHARACTER_SET_NAME,collation:v.COLLATION_NAME}:null,nullable:v.IS_NULLABLE==='YES',default:d,generation:v.EXTRA==='auto_increment'?'auto_increment':'none',onUpdate:'none'};});
         const indexed=[...new Set(stats.filter(v=>v.TABLE_NAME===t.TABLE_NAME).map(v=>v.INDEX_NAME))].map(name=>{const parts=stats.filter(v=>v.TABLE_NAME===t.TABLE_NAME&&v.INDEX_NAME===name).sort((a,b)=>a.SEQ_IN_INDEX-b.SEQ_IN_INDEX);assert(parts.every(p=>p.SUB_PART===null&&p.COLLATION==='A'&&p.IS_VISIBLE==='YES'),'Unexpected index semantics');return{name,columns:parts.map(p=>p.COLUMN_NAME),unique:!parts[0].NON_UNIQUE,method:parts[0].INDEX_TYPE};});

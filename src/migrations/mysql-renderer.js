@@ -55,7 +55,7 @@ function renderMysqlMigration(old, next, plan, options = {}) {
         '-- Data-check acknowledgement is an operator assertion; APIForge has not executed prerequisite queries.\n' +
         '-- Review every prerequisite before executing any DDL. MySQL DDL is not transactionally rollbackable.\n' +
         '-- ' + S.canonical(facts).trimEnd() + '\n' +
-        "SET SESSION time_zone = '+00:00';\nSET SESSION explicit_defaults_for_timestamp = ON;\n\n" +
+        "SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci;\nSET SESSION time_zone = '+00:00';\nSET SESSION explicit_defaults_for_timestamp = ON;\n\n" +
         statements.map(s => `-- operation ${s.operationId}\n${s.sql}`).join('\n\n') + '\n' : null;
     return { sql, statements, authorization, requirements, simulation };
 }

@@ -1,7 +1,7 @@
 'use strict';
 const S=require('./snapshot'),{equal}=require('./diff'),{fail}=require('./errors');
 const {applyImplicitIndexEffects,indexName}=require('./mysql-snapshot');
-function simulateMigration(old,plan,expected){S.validateSnapshot(old);if(plan.fromSnapshotSha256!==S.snapshotSha256(old))fail('MIGRATION_HEAD_MISMATCH','Simulator base mismatch.');if(plan.blockers.length)fail('MIGRATION_UNSUPPORTED_TRANSITION','Cannot simulate unsupported plan.');
+function simulateMigration(old,plan,expected){S.validateSnapshot(old);if(plan.fromSnapshotSha256!==S.snapshotSha256(old))fail('MIGRATION_HEAD_MISMATCH','Simulator base mismatch.');if(expected&&plan.toSnapshotSha256!==S.snapshotSha256(expected))fail('MIGRATION_PLAN_CHANGED','Simulator target mismatch.');if(plan.blockers.length)fail('MIGRATION_UNSUPPORTED_TRANSITION','Cannot simulate unsupported plan.');
     const state=S.clone(old),altered=new Set(),steps=[],seen=new Set();
     for(const operationId of plan.executionOrder){const op=plan.operations.find(o=>o.id===operationId);if(!op||seen.has(op.id)||op.dependsOn.some(id=>!seen.has(id)))fail('MIGRATION_DEPENDENCY_CYCLE','Invalid execution order.');seen.add(op.id);
         let t=state.tables.find(t=>t.id===op.tableId);
@@ -28,7 +28,7 @@ function simulateMigration(old,plan,expected){S.validateSnapshot(old);if(plan.fr
         for(const table of state.tables){table.indexes.sort((a,b)=>S.compare(a.name,b.name));table.checks.sort((a,b)=>S.compare(a.name,b.name));table.foreignKeys.sort((a,b)=>S.compare(a.name,b.name));}
         state.tables.sort((a,b)=>S.compare(a.name,b.name));S.validatePhysical(state,altered);steps.push({operationId:op.id,physicalSha256:S.physicalSha256(state)});
     }
-    if(seen.size!==plan.operations.length||S.physicalSha256(state)!==plan.toPhysicalSha256||(expected&&S.physicalSha256(state)!==S.physicalSha256(expected)))fail('MIGRATION_INTERMEDIATE_UNREPRESENTABLE','Simulation did not reach the exact target physical state.');
+    if(seen.size!==plan.operations.length||S.physicalSha256(state)!==plan.toPhysicalSha256||(expected&&(S.physicalSha256(state)!==S.physicalSha256(expected)||S.hash(state)!==S.snapshotSha256(expected))))fail('MIGRATION_INTERMEDIATE_UNREPRESENTABLE','Simulation did not reach the exact target physical and metadata state.');
     return{snapshot:state,steps,physicalSha256:S.physicalSha256(state)};
 }
 module.exports={simulateMigration};

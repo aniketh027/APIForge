@@ -1,14 +1,16 @@
 'use strict';
 const S=require('./snapshot'),{equal}=require('./diff');
+const {describeRequirement}=require('./mysql-requirements');
 const classes=['SAFE','REQUIRES_DATA_CHECK','DESTRUCTIVE','UNSUPPORTED'];
-function classify(intent,old,next){const {kind,before:a,after:b,tableId}=intent;const requirements=[],warnings=[];let safetyClass='SAFE',reason='PRESERVES_RETAINED_DATA';
+function classify(intent,old,next){const {kind,before:a,after:b,tableId}=intent;const requirements=[],warnings=[],reasons=[];let safetyClass='SAFE';
     const table=old.tables.find(t=>t.id===tableId),newTable=next.tables.find(t=>t.id===tableId);
-    const set=(c,r)=>{if(classes.indexOf(c)>classes.indexOf(safetyClass))safetyClass=c;reason=r;};
-    const requireData=(type,scope)=>{requirements.push({type,tableId,...scope});set('REQUIRES_DATA_CHECK',type);};
+    const set=(c,r)=>{if(classes.indexOf(c)>classes.indexOf(safetyClass))safetyClass=c;if(!reasons.includes(r))reasons.push(r);};
+    const requireData=(type,scope)=>{requirements.push(describeRequirement(type,{tableId,...scope},old,next));set('REQUIRES_DATA_CHECK',type);};
     const physical=c=>({physicalType:c.physicalType,character:c.character,nullable:c.nullable,default:c.default.physical,generation:c.generation,onUpdate:c.onUpdate});
     if(['drop_table','drop_column'].includes(kind))set('DESTRUCTIVE','REMOVES_ROWS_OR_ASSOCIATIONS');
     if(kind==='reorder_columns'||(kind==='replace_primary_key'&&!equal({name:a.name,columns:a.columns,unique:a.unique,method:a.method},{name:b.name,columns:b.columns,unique:b.unique,method:b.method})))set('UNSUPPORTED',kind.toUpperCase());
     if(kind==='table_metadata'&&!equal(a.identity,b.identity))set('UNSUPPORTED','IDENTITY_INTENT_CHANGE');
+    if(kind==='table_metadata'&&a.origin.kind!==b.origin.kind)set('UNSUPPORTED','TABLE_STORAGE_OWNERSHIP_CHANGE');
     if(kind==='relation_metadata'){
         for(const x of a)for(const y of b)if(x.sourceTableId===y.sourceTableId&&x.targetTableId===y.targetTableId&&(x.cardinality!==y.cardinality||!equal(x.storage,y.storage)))set('UNSUPPORTED','RELATION_TOPOLOGY_CONVERSION');
     }
@@ -37,6 +39,7 @@ function classify(intent,old,next){const {kind,before:a,after:b,tableId}=intent;
         const c=known(b.condition.columnId),d=c?.default.declared;let staticallyValid=c?.nullable&&!d;
         if(d){const value=b.condition.measure==='char_length'?Array.from(d.value).length:d.value;staticallyValid=(b.condition.min===null||value>=b.condition.min)&&(b.condition.max===null||value<=b.condition.max);}
         if(!implied&&!staticallyValid)requireData('VALUES_SATISFY_CHECK',{condition:b.condition});
+        if(previous&&implied&&!equal(previous.condition,b.condition))warnings.push('CHECK enforcement is relaxed.');
     }
     if(kind==='drop_check')warnings.push('CHECK enforcement is removed.');
     if(['add_foreign_key','replace_foreign_key'].includes(kind)){
@@ -44,7 +47,7 @@ function classify(intent,old,next){const {kind,before:a,after:b,tableId}=intent;
         if(!nullFilled(b.columns))requireData('NO_ORPHAN_FOREIGN_KEYS',{columnIds:b.columns,referencedTableId:b.referencedTableId,referencedColumnIds:b.referencedColumns});
     }
     if(kind==='drop_foreign_key')warnings.push('Referential enforcement is removed.');
-    return{safetyClass,reasonCodes:[reason],requirements,warnings};
+    return{safetyClass,reasonCodes:reasons.length?reasons.sort(S.compare):['PRESERVES_RETAINED_DATA'],requirements,warnings};
 }
 function authorize(plan,options={}){
     const {fail}=require('./errors');

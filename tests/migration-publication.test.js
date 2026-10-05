@@ -18,6 +18,12 @@ try {
         assert.deepEqual(bytes(path.join(work, 'revisions')), before); checks++;
     }
     const work = path.join(root, 'locks'), baseline = M.publishMigrationRevision(work, a, { baseline: true });
+    for(let nth=2;nth<=5;nth++){
+        let writes=0;const io=new Proxy(fs,{get(target,key){if(key==='writeFileSync')return(...args)=>{if(++writes===nth)throw Error('staged artifact write fault');return target[key](...args);};return target[key];}});
+        const before=bytes(path.join(work,'revisions'));assert.throws(()=>M.publishMigrationRevision(work,b,{fileSystem:io,expectHead:baseline.headToken,expectPlan:M.hash(M.planMysqlMigration(a,b))}));assert.deepEqual(bytes(path.join(work,'revisions')),before);assert.equal(M.readMigrationWorkspace(work).head.sequence,'000000');checks+=3;
+    }
+    let competed=false;const competing=new Proxy(fs,{get(target,key){if(key==='renameSync')return(...args)=>{assert.throws(()=>M.publishMigrationRevision(work,b,{expectHead:baseline.headToken,expectPlan:M.hash(M.planMysqlMigration(a,b))}),{code:'MIGRATION_WORKSPACE_BUSY'});competed=true;throw Error('stop owner before commit');};return target[key];}});
+    assert.throws(()=>M.publishMigrationRevision(work,b,{fileSystem:competing,expectHead:baseline.headToken,expectPlan:M.hash(M.planMysqlMigration(a,b))}));assert(competed);checks+=3;
     for (const lock of ['active', '{"pid":999999,"old":true}', 'malformed']) {
         fs.writeFileSync(path.join(work, '.writer.lock'), lock);
         assert.throws(() => M.publishMigrationRevision(work, b, { expectHead: baseline.headToken, expectPlan: M.hash(M.planMysqlMigration(a, b)) }), { code: 'MIGRATION_WORKSPACE_BUSY' }); checks++;

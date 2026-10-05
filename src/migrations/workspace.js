@@ -41,7 +41,9 @@ function entry(io, file, directory = false) {
 
 function readBytes(io, file) {
     entry(io, file);
-    return io.readFileSync(file, 'utf8');
+    const bytes=io.readFileSync(file),text=bytes.toString('utf8');
+    if(!Buffer.isBuffer(bytes)||!bytes.equals(Buffer.from(text,'utf8')))fail('MIGRATION_HISTORY_CORRUPT','History artifacts must be exact UTF-8 bytes.');
+    return text;
 }
 
 function fileFacts(artifacts) {

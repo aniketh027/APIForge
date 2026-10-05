@@ -30,13 +30,14 @@ function planMysqlMigration(old,next){const diff=diffSnapshots(old,next),operati
             if(o.kind==='add_foreign_key'&&((p.kind==='create_table'&&p.tableId===o.after.referencedTableId)||(['add_column','modify_column','add_index'].includes(p.kind)&&p.tableId===o.tableId)))dependencies.add(p.id);
             if(o.kind==='add_foreign_key'&&p.kind==='drop_foreign_key')dependencies.add(p.id);
             if(o.kind==='add_check'&&p.kind==='drop_check')dependencies.add(p.id);
-            if(o.kind.startsWith('add_')&&p.kind.startsWith('drop_')&&o.tableId===p.tableId&&o.after?.name===p.before?.name)dependencies.add(p.id);
+            if(o.kind.startsWith('add_')&&p.kind.startsWith('drop_')&&o.tableId===p.tableId&&o.after?.name?.toLowerCase()===p.before?.name?.toLowerCase())dependencies.add(p.id);
             if(['drop_table','drop_column','modify_column','drop_index'].includes(o.kind)&&p.kind==='drop_foreign_key'&&(p.tableId===o.tableId||p.before.referencedTableId===o.tableId))dependencies.add(p.id);
             if(['drop_column','modify_column'].includes(o.kind)&&p.kind==='drop_check'&&p.tableId===o.tableId&&p.before.condition.columnId===o.before.id)dependencies.add(p.id);
             if(o.kind==='drop_column'&&p.kind==='drop_index'&&p.tableId===o.tableId&&p.before.columns.includes(o.before.id))dependencies.add(p.id);
             if(o.kind==='add_column'&&o.afterColumnId&&p.kind==='add_column'&&p.after.id===o.afterColumnId)dependencies.add(p.id);
             if(o.kind==='add_check'&&['add_column','modify_column'].includes(p.kind)&&p.after.id===o.after.condition.columnId)dependencies.add(p.id);
             if(['add_column','modify_column','add_index'].includes(o.kind)&&['drop_column','drop_index'].includes(p.kind)&&o.tableId===p.tableId)dependencies.add(p.id);
+            if(p.kind==='drop_table'&&((o.kind==='add_check'&&p.before.checks.some(c=>c.name.toLowerCase()===o.after.name.toLowerCase()))||(o.kind==='create_table'&&o.after.checks.some(c=>p.before.checks.some(old=>old.name.toLowerCase()===c.name.toLowerCase())))))dependencies.add(p.id);
             if(o.kind==='create_table'&&o.after.origin.kind==='junction'&&p.kind==='create_table'&&next.relations.some(r=>r.storage.tableId===o.tableId&&[r.sourceTableId,r.targetTableId].includes(p.tableId)))dependencies.add(p.id);
             if(o.kind==='add_foreign_key'&&o.automaticName&&p.kind==='add_foreign_key'&&p.tableId===o.tableId&&S.compare(p.after.name,o.after.name)<0)dependencies.add(p.id);
             if(o.kind==='update_metadata'&&p.kind!=='update_metadata'&&p.kind!=='unsupported')dependencies.add(p.id);
