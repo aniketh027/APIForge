@@ -63,3 +63,5 @@ Then summarize verification performed, reviewed scope, unverified areas or remai
 If no meaningful issue is found, state: `No blocking or correctness issues found in the reviewed scope.` Then summarize verification and any remaining limits.
 
 Use [references/review-report-template.md](references/review-report-template.md) for a compact output shape; omit irrelevant empty sections.
+
+For G26 reviews, require native snapshot naming evidence, exact final/intermediate physical comparisons, SAFE seeded-data preservation, and positive/negative prerequisite evidence. Check exact plan-bound operation authorizations, unsupported-transition refusal, simulator omission failures, complete strict history inventory, immutable publication, lock contention and committed cleanup-failure reporting. Verify ordinary compatibility independently of missing/populated/corrupt migration history and preserve both pinned oracles. See [the migration contract](../../../docs/schema-migrations.md) and [verification report](../../../docs/schema-migrations-verification.md).

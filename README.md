@@ -23,6 +23,13 @@ watch each compiler phase run live.
 For the complete syntax, validation rules, and worked examples, read the
 [APIForge Language Guide](docs/APIForge-Language-Guide.md).
 
+G26 provides a separate offline `migrate.js` CLI for physical snapshots,
+explicit baselines, schema diffs, and immutable MySQL migration revisions.
+It targets the certified `mysql-8.4-v1` profile and requires exact plan-bound
+authorization for destructive operations and data-check prerequisites.
+See [the migration workflow](docs/schema-migrations.md) and
+[verification evidence](docs/schema-migrations-verification.md).
+
 DATE and TIMESTAMP are first-class types. DATE uses Gregorian `YYYY-MM-DD`
 strings (1000-01-01 through 9999-12-31); TIMESTAMP uses UTC
 `YYYY-MM-DDTHH:mm:ssZ` strings (1970-01-01T00:00:01Z through

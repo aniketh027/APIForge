@@ -37,7 +37,7 @@ function classify(intent,old,next){const {kind,before:a,after:b,tableId}=intent;
         const capacityImplied=b.condition.measure==='char_length'&&oldColumn?.logicalType==='STRING'&&(b.condition.min===null||b.condition.min===0)&&(b.condition.max===null||b.condition.max>=oldColumn.physicalType.length);
         const implied=capacityImplied||previous&&(b.condition.min===null||(previous.condition.min!==null&&previous.condition.min>=b.condition.min))&&(b.condition.max===null||(previous.condition.max!==null&&previous.condition.max<=b.condition.max));
         const c=known(b.condition.columnId),d=c?.default.declared;let staticallyValid=c?.nullable&&!d;
-        if(d){const value=b.condition.measure==='char_length'?Array.from(c.default.physical.value).length:c.default.physical.value;staticallyValid=(b.condition.min===null||value>=b.condition.min)&&(b.condition.max===null||value<=b.condition.max);}
+        if(d){const proven=b.condition.measure==='char_length'?c.logicalType==='STRING':['INT','FLOAT','BOOLEAN'].includes(c.logicalType);const value=b.condition.measure==='char_length'&&proven?Array.from(c.default.physical.value).length:c.default.physical.value;staticallyValid=proven&&(b.condition.min===null||value>=b.condition.min)&&(b.condition.max===null||value<=b.condition.max);}
         if(!implied&&!staticallyValid)requireData('VALUES_SATISFY_CHECK',{condition:b.condition});
         if(previous&&implied&&!equal(previous.condition,b.condition))warnings.push('CHECK enforcement is relaxed.');
     }

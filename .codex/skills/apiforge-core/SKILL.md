@@ -66,3 +66,7 @@ For implementation tasks, report:
 - unresolved issues or risks
 
 Editing files alone is not evidence of success.
+
+## G26 offline migration boundary
+
+Use [the migration contract](../../../docs/schema-migrations.md) for `migrate.js` and `src/migrations/`. Ordinary compilation stays independent of migration state and retains its complete ordered file bytes. Migration workspaces are separate from generated `output/`; do not add migration artifacts or endpoints to ordinary generation. G26 V1 generates offline one-shot SQL for `mysql-8.4-v1`; APPLY, DOWN, drift, rename inference, backfills and cardinality conversions are deferred.

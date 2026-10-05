@@ -59,3 +59,5 @@ Codegen-specific tests
 ```
 
 Use [references/backend-verification-checklist.md](references/backend-verification-checklist.md). Keep checks proportional: metadata-only changes do not require expensive runtime or database work.
+
+For G26, keep migration SQL separate from ordinary CREATE output and G19 publication. Reuse MySQL presentation primitives, emit complete MODIFY definitions, model implicit FK-index side effects, and validate every intermediate G16 boundary. Certify `mysql-8.4-v1` with native metadata and seeded preservation evidence. Prerequisite acknowledgement is an operator assertion; production G26 never executes data-check queries. See [the migration contract](../../../docs/schema-migrations.md).

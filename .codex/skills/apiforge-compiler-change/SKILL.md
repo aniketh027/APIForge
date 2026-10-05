@@ -50,3 +50,5 @@ Run supported syntax checks for changed generated JavaScript. Use available data
 Update samples and documentation only after implementation is verified. Describe implemented syntax and semantics, never planned behavior.
 
 Use [references/compiler-change-checklist.md](references/compiler-change-checklist.md) during implementation and final review.
+
+For G26 snapshot work, reuse the complete `prepareAdmittedGeneration` admission path and admitted Effective Schema Plan. Preserve failure order/messages and the independent approved-main G26 oracle; do not weaken the G22 oracle. Verify native physical naming before extending diff/planning. Migration behavior does not introduce new DSL syntax or compiler phases; see [the migration contract](../../../docs/schema-migrations.md).

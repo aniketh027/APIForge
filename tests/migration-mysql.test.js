@@ -36,13 +36,15 @@ RELATION User GROUPS Group MANY_TO_MANY`],
 ['check-100','ENTITY Checks\n'+Array.from({length:100},(_,n)=>'v'+n+' INT MIN 0').join('\n')],
 ['index-suffix','ENTITY Collision\nprimary INT UNIQUE\nprimary_2 INT UNIQUE\nENTITY Parent\nk INT PRIMARY KEY\nRELATION Parent LINK Collision ONE_TO_MANY'],
 ['enum-255','ENTITY Choice\nv ENUM('+Array.from({length:255},(_,i)=>'"v'+i+'"').join(',')+')'],
-['enum-256','ENTITY Choice\nv ENUM('+Array.from({length:256},(_,i)=>'"v'+i+'"').join(',')+')']];
+['enum-256','ENTITY Choice\nv ENUM('+Array.from({length:256},(_,i)=>'"v'+i+'"').join(',')+')'],
+['unicode-defaults','ENTITY Literal\nv STRING DEFAULT "😀"\ne ENUM("?", "😀") DEFAULT "😀"\nf FLOAT DEFAULT 0.1']];
 async function run(){const c=await connect();let count=0;try{
     for(const [name,source] of snapshotCases){await database(c,async db=>{const expected=compile(source);const sql=compileProject(source).find(f=>f.path==='database/schema.sql').content;await c.query(sql);assert.deepEqual(await introspect(c,db,expected.target),S.physicalProjection(expected),name+' exact native snapshot');count++;console.log('  snapshot '+name+' PASS');});}
     const Codegen=require('../src/codegen/codegen'),IR=require('../src/ir/generator');
     const forged={type:'PROGRAM',instructions:[{op:'CREATE_ENTITY',entity:'Mixed'},{op:'ADD_FIELD',entity:'Mixed',field:'v',dataType:'STRING',constraints:[],validations:[{type:'MIN',value:0},{type:'MAX',value:10},{type:'MIN_LENGTH',value:0},{type:'MAX_LENGTH',value:300}],defaultValue:null}]};
     if(IR.validate(forged).valid)await database(c,async db=>{const expected=require('../src/migrations/mysql-snapshot').buildMysqlSnapshot(Codegen.prepareAdmittedGeneration(forged).candidate.plan);await c.query(Codegen.generate(forged,false).files[0].content);assert.deepEqual(await introspect(c,db,expected.target),S.physicalProjection(expected));count++;});
     console.log('G26 HARD NATIVE SNAPSHOT GATE: '+count+' exact schemas PASS; cleanup PASS.');
+    await require('./migration-native-cases').runNativeTransitions(c);
 }finally{await c.end();}}
 if(require.main===module)run().catch(e=>{console.error(e);process.exitCode=1;});
 module.exports={snapshotCases,run};
