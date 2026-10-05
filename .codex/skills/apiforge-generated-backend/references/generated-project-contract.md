@@ -215,3 +215,18 @@ If ZIP construction throws, the browser downloads a single `apiforge-generated-p
 The opt-in `npm run test:generated-integration` harness verifies the generated project as a consumer artifact without mutating repository `output/`: it compiles representative DSL, materializes the in-memory files in a temporary directory, installs declared dependencies, starts the backend through `npm start` on an ephemeral port, confirms `GET /health`, stops the process tree, and removes the temporary project. It is intentionally excluded from the offline-friendly `npm test` command. The absence of a generated lockfile means compatible dependency releases may vary between integration runs.
 
 This harness proves generated-project install and server startup, not database behavior. A complete DB-backed standalone claim still requires configuring MySQL, importing `database/schema.sql`, and exercising CRUD, validation, constraints, and relationships against that database.
+
+## G22 internal planning contract
+
+Complete generation uses one Effective Schema Plan after optimized IR. It owns
+logical identity/fields, `roles.http`, separate trusted-model `modelPolicy`,
+relationship storage and allocated resource/file/helper/path names. The
+MySQL adapter owns physical representation/admission and SQL rendering;
+OpenAPI and Express renderers consume the normalized facts. Exported partial
+helpers remain tolerant and byte-compatible. Implicit identity and synthetic
+FKs remain unknown HTTP inputs but trusted direct-create fields; every direct
+update own identity property stays immutable before SQL, while FK payloads
+remain trusted. Declared UUID/temporal checks are not broadened to synthetic
+fields. Model.fields remains declaration-only with existing metadata shape.
+See `docs/effective-schema-plan.md` and its verification report for ordering,
+provenance, exact-output and guarded live-MySQL evidence.

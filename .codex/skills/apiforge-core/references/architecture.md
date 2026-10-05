@@ -18,7 +18,7 @@ APIForge compiles a small declarative backend language into MySQL DDL, a modular
 ## Information flow
 
 - Field constraints, numeric `MIN`/`MAX`, STRING `MIN_LENGTH`/`MAX_LENGTH`, and typed defaults become structured AST properties, then target-independent `ADD_FIELD` data. Codegen maps them to MySQL constraints/defaults/checks, controller validation, and OpenAPI schema properties.
-- A relationship becomes a `RelationNode`; semantic analysis verifies its unique name, endpoints, cardinality, and non-self-reference; the IR carries those facts in `CREATE_RELATION`. Codegen chooses the target-specific foreign-key or junction-table form and generates source-entity relationship handlers, routes, and OpenAPI paths.
+- A relationship becomes a `RelationNode`; semantic analysis verifies its unique name, endpoints, cardinality, and non-self-reference; the IR carries those facts in `CREATE_RELATION`. Within codegen, the internal Effective Schema Plan normalizes identity, HTTP roles, logical names and relationship storage. Target adapters render SQL and source-entity relationship handlers, routes and OpenAPI paths from that plan.
 - The optimizer must not silently choose between conflicting declarations. Exact duplicates may be removed; conflicts remain visible as warnings.
 - ENUM remains `dataType: "ENUM"` with ordered `enumValues` through AST, symbols,
   IR and optimized IR. Duplicate-field comparison includes the exact value array.
@@ -36,3 +36,22 @@ Effective-key generation modes are codegen metadata, outside source IR. SQL wire
 UTC session initialization and row normalization remain target decisions.
 
 Keep the IR about declared entities, fields, constraints, validations, defaults, and relationship meaning. SQL names, Express route wiring, HTTP handler structure, and MySQL-specific foreign-key layout belong in code generation unless an explicit architecture change decides otherwise.
+
+## Internal effective schema boundary (G22)
+
+`src/planning/effective-policy.js` owns pure shared identity/service policy;
+`effective-schema.js` produces one JSON-safe canonical plan and primitive
+provenance sidecar after optimized IR, inside codegen. The six public phases
+and source-declared representations remain unchanged. Full generation constructs
+one tolerant candidate, preserves IR/MySQL/numeric/ENUM/naming/endpoint error
+precedence, then rejects incoherent effective/storage names or competing keys.
+Partial exports use tolerant shared projection; semantic preflight never invokes
+strict post-IR admission.
+
+Canonical keys use `database_integer`, `runtime_uuid`, or `none`; the legacy
+key wrapper maps the first to `auto_increment`. `roles.http` governs request,
+read, response and collection roles. `modelPolicy` separately retains trusted
+create payloads, trusted update payloads except immutable identity, and declared
+UUID/temporal checks. MySQL owns types/quoting/DDL/indexes/limits; OpenAPI owns
+schema presentation. See `docs/effective-schema-plan.md` for the shape,
+provenance, compatibility and G26/G27 adapter boundaries.

@@ -18,8 +18,8 @@ Treat these as implementation facts to verify when the relevant code changes, no
 
 ## Tests and pipeline
 
-- `npm test` runs `node tests/test.js`. The harness reports per-phase and aggregate pass/fail totals and exits nonzero on failures.
-- Current HEAD `024ba02` describes the suite as expanded to 1002 tests. The full suite was intentionally not rerun during this metadata-only skill creation, so always run the current suite for an authoritative live count and result.
+- `npm test` runs the core harness, focused regression suites and G22 plan/equivalence suites listed in package.json. The core harness reports per-phase and aggregate totals; every suite exits nonzero on failure.
+- G22 verification observed 1060/1060 core tests, plus passing focused and plan/equivalence suites. See docs/effective-schema-plan-verification.md for the exact separate counts; rerun the current suite when changing behavior.
 - The CLI writes generated files; the compiler API generates the same file contents in memory and does not write them.
 
 ## Parser and language boundaries
@@ -116,3 +116,17 @@ optimizer field/type/endpoint conflicts and invalid-IR fallback use WRN002-005
 instead of strings (use `.message` for text). CLI/API/playground aggregate
 warnings in phase/location/code order; warning-only compilation remains successful,
 HTTP 200, CLI exit 0, with six succeeded phases and unchanged generated files.
+
+## G22 effective schema planning
+
+Effective identity, HTTP roles, synthetic fields, relation receiver/junction
+storage and logical name allocation now have one internal normalized authority.
+The plan/provenance pair is not exposed through public compiler data. Full
+`generate()` builds it once. Exported partial helpers delegate through tolerant
+shared primitives/projections and preserve their reviewed bytes, including raw
+primitive metadata in `Model.fields`, WRITE_FIELDS and PRIMARY_KEY presentation.
+The exact oracle pins all compiler-local dependencies at approved base
+`d91859e30a5ed0f91be9826a3d8d3a5c5b7261ce`, with approved CRLF checkout bytes.
+No comparison normalization is permitted. G22 adds dedicated plan and exact
+comparison suites to `npm test`; core baseline remains 1060 tests. The final
+verification report records the current observed result, not an inferred count.
