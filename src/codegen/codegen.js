@@ -36,6 +36,26 @@ const IRGenerator = require('../ir/generator');
 const apiForgePackage = require('../../package.json');
 const { publishGeneratedFiles } = require('./publish-output');
 const { generateDatabaseErrorHandler } = require('./db-error-taxonomy');
+const temporal = require('../utils/temporal');
+
+const isTemporalField = field => field.dataType === 'DATE' || field.dataType === 'TIMESTAMP';
+const hasTemporalFields = entities => entities.some(entity => entity.fields.some(isTemporalField));
+const temporalFields = fields => fields.filter(isTemporalField).map(field => ({ name: field.name, dataType: field.dataType }));
+const readArguments = fields => JSON.stringify(fields.filter(f => f.dataType === 'BOOLEAN').map(f => f.name)) +
+    (fields.some(isTemporalField) ? ', ' + JSON.stringify(temporalFields(fields)) : '');
+
+// Emit the same pure calendar validators used by semantic and IR validation.
+function generateTemporalValidation() {
+    return [temporal.isCalendarDate, temporal.isDate, temporal.isTimestamp].map(fn => fn.toString()).join('\n\n') + '\n\n';
+}
+
+function temporalSchema(dataType) {
+    if (dataType === 'DATE') return { format: 'date', pattern: temporal.DATE_PATTERN,
+        description: 'Canonical Gregorian YYYY-MM-DD string, from 1000-01-01 through 9999-12-31.' };
+    if (dataType === 'TIMESTAMP') return { format: 'date-time', pattern: temporal.TIMESTAMP_PATTERN,
+        description: 'Canonical Gregorian UTC YYYY-MM-DDTHH:mm:ssZ string, from 1970-01-01T00:00:01Z through 2038-01-19T03:14:07Z. Uppercase Z and second precision only; offsets and fractional seconds are rejected.' };
+    return {};
+}
 
 const GENERATED_RUNTIME_DEPENDENCIES = ['dotenv', 'express', 'mysql2'];
 
@@ -95,7 +115,9 @@ const MYSQL_TYPE_MAP = {
     'INT': 'INT',
     'STRING': 'VARCHAR(255)',
     'FLOAT': 'FLOAT',
-    'BOOLEAN': 'BOOLEAN'
+    'BOOLEAN': 'BOOLEAN',
+    'DATE': 'DATE',
+    'TIMESTAMP': 'TIMESTAMP'
 };
 
 /**
@@ -130,7 +152,9 @@ const SWAGGER_TYPE_MAP = {
     'STRING': 'string',
     'FLOAT': 'number',
     'BOOLEAN': 'boolean',
-    'ENUM': 'string'
+    'ENUM': 'string',
+    'DATE': 'string',
+    'TIMESTAMP': 'string'
 };
 
 /**
@@ -324,11 +348,17 @@ function generateSQL(ir) {
             // REQUIRED constraint
             if (isRequired) {
                 parts.push('NOT NULL');
+            } else if (field.dataType === 'TIMESTAMP') {
+                // Explicit NULL avoids legacy TIMESTAMP's implicit auto attributes.
+                parts.push('NULL');
             }
 
             // DEFAULT clause
             if (hasDefault) {
-                const sqlVal = formatSQLLiteral(field.defaultValue, field.dataType === 'ENUM');
+                const sqlDefault = field.dataType === 'TIMESTAMP'
+                    ? { ...field.defaultValue, value: field.defaultValue.value.slice(0, 10) + ' ' + field.defaultValue.value.slice(11, 19) }
+                    : field.defaultValue;
+                const sqlVal = formatSQLLiteral(sqlDefault, field.dataType === 'ENUM');
                 parts.push(`DEFAULT ${sqlVal}`);
             }
 
@@ -436,6 +466,8 @@ function generateSQL(ir) {
               `-- MySQL Database Schema\n` +
               `-- Generated automatically by APIForge Compiler\n` +
               `-- ============================================================\n\n` +
+              (entities.some(entity => entity.fields.some(field => field.dataType === 'TIMESTAMP'))
+                  ? "-- Interpret static TIMESTAMP defaults as UTC and disable legacy implicit attributes.\nSET SESSION time_zone = '+00:00';\nSET SESSION explicit_defaults_for_timestamp = ON;\n\n" : '') +
               tableStatements.join('\n\n') + '\n';
 
     if (relationStatements.length > 0) {
@@ -455,6 +487,7 @@ function generateSQL(ir) {
  * @returns {string} - DB connection file content
  */
 function generateDBConfig(entities = [], relations = []) {
+    const temporalRuntime = hasTemporalFields(entities);
     const privateColumns = new Set(['__proto__', '__defineGetter__', '__defineSetter__', '__lookupGetter__', '__lookupSetter__']);
     const hasPrototypeColumn = entities.some(e => e.fields.some(f => privateColumns.has(f.name))) || relations.some(rel => {
         return entities.some(entity => [rel.sourceEntity, rel.targetEntity].includes(entity.name) &&
@@ -483,9 +516,38 @@ pool.query = async (sql, values) => {
            `    database: process.env.DB_NAME || 'apiforge_db',\n` +
            `    waitForConnections: true,\n` +
            `    connectionLimit: 10,\n` +
-           `    queueLimit: 0\n` +
+           `    queueLimit: 0${temporalRuntime ? ",\n    timezone: 'Z',\n    dateStrings: ['DATE', 'TIMESTAMP']" : ''}\n` +
            `});\n\n` +
-           safeRows + `module.exports = pool;\n`;
+           (temporalRuntime ? `// Check out a connection exclusively, then await UTC initialization before use.
+// Repeat on reuse so a previous borrower cannot leave a non-UTC session behind.
+const rawGetConnection = pool.getConnection.bind(pool);
+pool.getConnection = async () => {
+    const connection = await rawGetConnection();
+    try {
+        await connection.query("SET SESSION time_zone = '+00:00'");
+        return connection;
+    } catch (error) {
+        connection.destroy();
+        throw error;
+    }
+};
+for (const method of ['query', 'execute']) {
+    pool[method] = async (...args) => {
+        const connection = await pool.getConnection();
+        try {
+            return await connection[method](...args);
+        } catch (error) {
+            // Discard failed sessions, including driver failover/read-only errors.
+            connection.destroy();
+            throw error;
+        } finally {
+            // mysql2 release is a no-op after destroy removes the connection.
+            connection.release();
+        }
+    };
+}
+
+` : '') + safeRows + `module.exports = pool;\n`;
 }
 
 /**
@@ -579,6 +641,10 @@ function generateReadme(entities) {
            `${routeList}\n` +
            `- \`/health\` reports server health.\n\n` +
            `The OpenAPI document is at \`swagger.json\` in the project root. The generated server does not serve Swagger UI or expose that file over HTTP.\n\n` +
+           (hasTemporalFields(entities) ? `## DATE and TIMESTAMP\n\n` +
+           `DATE uses canonical Gregorian YYYY-MM-DD strings (1000-01-01 through 9999-12-31). TIMESTAMP uses UTC YYYY-MM-DDTHH:mm:ssZ strings (1970-01-01T00:00:01Z through 2038-01-19T03:14:07Z): uppercase Z, second precision, no offsets or fractions. Bodies and equality filters use the same calendar/range checks. Optional null stays null; REQUIRED null is rejected.\n\n` +
+           `Only quoted canonical static DEFAULT values are supported; dynamic defaults and temporal bounds are unavailable. SQL uses DATE and TIMESTAMP, without fractional precision. Import the complete schema: its preamble sets the import session to UTC and enables explicit_defaults_for_timestamp, preserving declared instants and preventing legacy implicit CURRENT_TIMESTAMP/ON UPDATE attributes.\n\n` +
+           `mysql2 returns DATE/TIMESTAMP as strings. Every pool checkout awaits SET SESSION time_zone = '+00:00'; initialization failure destroys the connection before any application query. Query/execute wrappers use the initialized lease, then release it; failed query sessions are discarded. Driver timezone Z supplements this session setting. Reads convert only declared TIMESTAMP fields from SQL spaces to canonical T/Z, including related target rows. Writes convert a private copy; request data and create echoes stay canonical. Omitted database-default fields are omitted from create responses; a later GET reads them. OpenAPI date/date-time formats include the stricter canonical patterns and ranges.\n\n` : '') +
            `## Write requests\n\n` +
            `POST and PUT require a JSON object. Unknown properties, implicit generated \`id\`, and SQL-added relationship fields are rejected with HTTP 400 before model access. Only declared supplied fields are forwarded.\n\n` +
            `INT values must be finite safe integers; FLOAT values finite numbers; BOOLEAN values booleans; STRING values strings; ENUM values exact member strings. Bounds and Unicode code-point lengths apply to non-null values.\n\n` +
@@ -659,7 +725,7 @@ function generateWriteValidation(entity) {
         validations: field.validations || [],
         ...(field.dataType === 'ENUM' ? { enumValues: field.enumValues } : {})
     }));
-    return generatePrimaryKeyPolicy(entity) + `const WRITE_FIELDS = ${JSON.stringify(metadata, null, 4)};
+    return generatePrimaryKeyPolicy(entity) + (entity.fields.some(isTemporalField) ? generateTemporalValidation() : '') + `const WRITE_FIELDS = ${JSON.stringify(metadata, null, 4)};
 
 // First error: shape, unknown own keys, immutable key, then declaration order (presence/null/type/bounds).
 function validate${entity.name}(data, operation = 'update') {
@@ -699,7 +765,13 @@ ${key.origin === 'explicit' && key.autoGenerated ? `                if (operatio
             case 'ENUM':
                 if (typeof value !== 'string' || !field.enumValues.includes(value)) return label + ' must be one of: ' + field.enumValues.join(', ') + '.';
                 break;
-        }
+${entity.fields.some(isTemporalField) ? `            case 'DATE':
+                if (!isDate(value)) return label + ' must be a valid DATE string (YYYY-MM-DD, 1000-01-01 through 9999-12-31).';
+                break;
+            case 'TIMESTAMP':
+                if (!isTimestamp(value)) return label + ' must be a valid UTC TIMESTAMP string (YYYY-MM-DDTHH:mm:ssZ, 1970-01-01T00:00:01Z through 2038-01-19T03:14:07Z).';
+                break;
+` : ''}        }
         // Normalize bound order independently of modifier order in the source.
         for (const type of ['MIN', 'MAX', 'MIN_LENGTH', 'MAX_LENGTH']) {
             const bound = field.validations.find(validation => validation.type === type);
@@ -728,7 +800,33 @@ function select${entity.name}WriteData(body) {
 `;
 }
 
-function generateReadNormalization() {
+function generateReadNormalization(temporalRuntime = false) {
+    if (temporalRuntime) return generateTemporalValidation() + `// Read normalization: declared BOOLEAN and temporal columns only.
+function normalizeRow(row, booleanFields, temporalFields = []) {
+    if (row == null) return row;
+    const result = { ...row };
+    for (const name of booleanFields) {
+        if (Object.prototype.hasOwnProperty.call(result, name) && result[name] != null && typeof result[name] === 'number') {
+            result[name] = result[name] !== 0;
+        }
+    }
+    for (const field of temporalFields) {
+        if (!Object.prototype.hasOwnProperty.call(result, field.name) || result[field.name] == null) continue;
+        const value = result[field.name];
+        if (field.dataType === 'DATE') {
+            if (!isDate(value)) throw new Error('Invalid database DATE representation.');
+        } else {
+            const canonical = typeof value === 'string' && /^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$/.test(value)
+                ? value.slice(0, 10) + 'T' + value.slice(11) + 'Z' : value;
+            if (!isTimestamp(canonical)) throw new Error('Invalid database TIMESTAMP representation.');
+            result[field.name] = canonical;
+        }
+    }
+    return result;
+}
+// End read normalization
+
+`;
     return `// Read normalization: declared BOOLEAN columns only.
 function normalizeRow(row, booleanFields) {
     if (row == null) return row;
@@ -796,7 +894,9 @@ function generateCollectionMethods(entity) {
                 value = raw === 'true';
             } else if (field.dataType === 'ENUM' && !field.enumValues.includes(raw)) {
                 fail("Invalid value for ENUM filter '" + field.name + "'.");
-            }
+${entity.fields.some(isTemporalField) ? `            } else if ((field.dataType === 'DATE' && !isDate(raw)) || (field.dataType === 'TIMESTAMP' && !isTimestamp(raw))) {
+                fail("Invalid value for temporal filter '" + field.name + "'.");
+` : ''}            }
             filters[field.name] = value;
         }
         return { filters, sort, order, paginated, page, limit, offset };
@@ -808,8 +908,12 @@ function generateCollectionMethods(entity) {
         for (const field of QUERY_FIELDS) {
             if (Object.prototype.hasOwnProperty.call(options.filters || {}, field.name)) {
                 clauses.push(field.column + ' = ?');
-                values.push(options.filters[field.name]);
-            }
+${entity.fields.some(isTemporalField) ? `                const value = options.filters[field.name];
+                if (field.dataType === 'DATE' && !isDate(value)) throw new Error('Invalid DATE filter.');
+                if (field.dataType === 'TIMESTAMP' && !isTimestamp(value)) throw new Error('Invalid TIMESTAMP filter.');
+                values.push(field.dataType === 'TIMESTAMP' ? value.slice(0, 10) + ' ' + value.slice(11, 19) : value);
+` : `                values.push(options.filters[field.name]);
+`}            }
         }
         return { where: clauses.length ? ' WHERE ' + clauses.join(' AND ') : '', values };
     }
@@ -829,7 +933,7 @@ function generateCollectionMethods(entity) {
             values.push(options.limit, options.offset);
         }
         const [rows] = await pool.query(sql, values);
-        return rows.map(row => normalizeRow(row, ${JSON.stringify(entity.fields.filter(f => f.dataType === 'BOOLEAN').map(f => f.name))}));
+        return rows.map(row => normalizeRow(row, ${readArguments(entity.fields)}));
     }
 
     static async countFiltered(options) {
@@ -853,6 +957,9 @@ function generateCollectionMethods(entity) {
  * @returns {string} - JS model module content
  */
 function generateModel(entityName, fields, relations = [], entities = []) {
+    const temporalRuntime = fields.some(isTemporalField) || relations.some(rel => rel.sourceEntity === entityName &&
+        entities.find(entity => entity.name === rel.targetEntity)?.fields.some(isTemporalField));
+    const temporalWrites = fields.some(isTemporalField);
     const fieldsJson = JSON.stringify(fields, null, 12);
     const queryFieldsJson = JSON.stringify(collectionFields({ name: entityName, fields }).map(field => ({
         name: field.name, column: quoteIdentifier(field.name), dataType: field.dataType,
@@ -884,7 +991,7 @@ function generateModel(entityName, fields, relations = [], entities = []) {
                     `            'SELECT t.* FROM ${quoteIdentifier(rel.targetEntity)} t JOIN ${quoteIdentifier(junctionTable)} j ON t.${quoteIdentifier(targetPk.name)} = j.${quoteIdentifier(targetFkCol)} WHERE j.${quoteIdentifier(sourceFkCol)} = ?',\n` +
                     `            [${lowerFirst(entityName)}Id]\n` +
                     `        );\n` +
-                    `        return rows.map(row => normalizeRow(row, ${JSON.stringify(targetEntity.fields.filter(f => f.dataType === 'BOOLEAN').map(f => f.name))}));\n` +
+                    `        return rows.map(row => normalizeRow(row, ${readArguments(targetEntity.fields)}));\n` +
                     `    }\n\n` +
                     `    static async add${upperFirst(rel.targetEntity)}(${lowerFirst(entityName)}Id, ${targetParam}) {\n` +
                     `        await pool.query(\n` +
@@ -910,7 +1017,7 @@ function generateModel(entityName, fields, relations = [], entities = []) {
                     `            'SELECT * FROM ${quoteIdentifier(rel.targetEntity)} WHERE ${quoteIdentifier(sourceFkCol)} = ?',\n` +
                     `            [${lowerFirst(entityName)}Id]\n` +
                     `        );\n` +
-                    `        return rows.map(row => normalizeRow(row, ${JSON.stringify(targetEntity.fields.filter(f => f.dataType === 'BOOLEAN').map(f => f.name))}));\n` +
+                    `        return rows.map(row => normalizeRow(row, ${readArguments(targetEntity.fields)}));\n` +
                     `    }`
                 );
             } else if (rel.relationType === 'MANY_TO_ONE') {
@@ -922,7 +1029,7 @@ function generateModel(entityName, fields, relations = [], entities = []) {
                     `            'SELECT t.* FROM ${quoteIdentifier(rel.targetEntity)} t JOIN ${quoteIdentifier(entityName)} s ON t.${quoteIdentifier(targetPk.name)} = s.${quoteIdentifier(targetFkCol)} WHERE s.${quoteIdentifier(sourcePk.name)} = ?',\n` +
                     `            [${lowerFirst(entityName)}Id]\n` +
                     `        );\n` +
-                    `        return rows.length > 0 ? normalizeRow(rows[0], ${JSON.stringify(targetEntity.fields.filter(f => f.dataType === 'BOOLEAN').map(f => f.name))}) : null;\n` +
+                    `        return rows.length > 0 ? normalizeRow(rows[0], ${readArguments(targetEntity.fields)}) : null;\n` +
                     `    }`
                 );
             } else if (rel.relationType === 'ONE_TO_ONE') {
@@ -934,7 +1041,7 @@ function generateModel(entityName, fields, relations = [], entities = []) {
                     `            'SELECT * FROM ${quoteIdentifier(rel.targetEntity)} WHERE ${quoteIdentifier(sourceFkCol)} = ?',\n` +
                     `            [${lowerFirst(entityName)}Id]\n` +
                     `        );\n` +
-                    `        return rows.length > 0 ? normalizeRow(rows[0], ${JSON.stringify(targetEntity.fields.filter(f => f.dataType === 'BOOLEAN').map(f => f.name))}) : null;\n` +
+                    `        return rows.length > 0 ? normalizeRow(rows[0], ${readArguments(targetEntity.fields)}) : null;\n` +
                     `    }`
                 );
             }
@@ -952,7 +1059,21 @@ function generateModel(entityName, fields, relations = [], entities = []) {
            `// Collection validation provenance: only locally registered errors expose text.\n` +
            `const queryValidationErrors = new WeakMap();\n\n` +
            generatePrimaryKeyPolicy({ name: entityName, fields }, true) +
-           generateReadNormalization() +
+           generateReadNormalization(temporalRuntime) +
+           (temporalWrites ? `// Convert only a private database-write copy, keeping public create echoes canonical.
+function databaseWriteData(data) {
+    const result = { ...data };
+    for (const field of ${JSON.stringify(fields.filter(isTemporalField).map(field => ({ name: field.name, dataType: field.dataType, required: !!field.constraints?.includes('REQUIRED') })))}) {
+        if (!Object.prototype.hasOwnProperty.call(data, field.name)) continue;
+        const value = data[field.name];
+        if (value === null && !field.required) continue;
+        if (field.dataType === 'DATE' ? !isDate(value) : !isTimestamp(value)) throw new Error('Invalid temporal write value.');
+        if (field.dataType === 'TIMESTAMP') result[field.name] = value.slice(0, 10) + ' ' + value.slice(11, 19);
+    }
+    return result;
+}
+
+` : '') +
            `class ${entityName}Model {\n` +
            `    static queryValidationMessage(error) {\n` +
            `        return queryValidationErrors.get(error);\n` +
@@ -966,18 +1087,19 @@ function generateModel(entityName, fields, relations = [], entities = []) {
            generateCollectionMethods({ name: entityName, fields }) +
            `    static async findById(id) {\n` +
            `        const [rows] = await pool.query('SELECT * FROM ${quoteIdentifier(entityName)} WHERE ${quoteIdentifier(pkField.name)} = ?', [id]);\n` +
-           `        return rows.length > 0 ? normalizeRow(rows[0], ${JSON.stringify(fields.filter(f => f.dataType === 'BOOLEAN').map(f => f.name))}) : null;\n` +
+           `        return rows.length > 0 ? normalizeRow(rows[0], ${readArguments(fields)}) : null;\n` +
            `    }\n\n` +
            `    static async create(data) {\n` +
+           (temporalWrites ? `        const databaseData = databaseWriteData(data);\n` : '') +
            `        const [result] = Object.keys(data).length === 0\n` +
            `            ? await pool.query('INSERT INTO ${quoteIdentifier(entityName)} () VALUES ()')\n` +
-           `            : await pool.query('INSERT INTO ${quoteIdentifier(entityName)} SET ?', [data]);\n` +
+           `            : await pool.query('INSERT INTO ${quoteIdentifier(entityName)} SET ?', [${temporalWrites ? 'databaseData' : 'data'}]);\n` +
            `        const identity = resolveCreateIdentity(data, result);\n` +
            `        const response = { ...data };\n` +
            `        if (identity.resolved) {\n` +
            `            Object.defineProperty(response, PRIMARY_KEY.name, { value: identity.value, enumerable: true, writable: true, configurable: true });\n` +
            `        }\n` +
-           `        return normalizeRow(response, ${JSON.stringify(fields.filter(f => f.dataType === 'BOOLEAN').map(f => f.name))});\n` +
+           `        return normalizeRow(response, ${readArguments(fields)});\n` +
            `    }\n\n` +
            `    static async update(id, data) {\n` +
            `        const keyError = primaryKeyUpdateError(data);\n` +
@@ -985,7 +1107,7 @@ function generateModel(entityName, fields, relations = [], entities = []) {
            `        if (!data || Object.keys(data).length === 0) {\n` +
            `            return await this.findById(id);\n` +
            `        }\n` +
-           `        await pool.query('UPDATE ${quoteIdentifier(entityName)} SET ? WHERE ${quoteIdentifier(pkField.name)} = ?', [data, id]);\n` +
+           `        await pool.query('UPDATE ${quoteIdentifier(entityName)} SET ? WHERE ${quoteIdentifier(pkField.name)} = ?', [${temporalWrites ? 'databaseWriteData(data)' : 'data'}, id]);\n` +
            `        return await this.findById(id);\n` +
            `    }\n\n` +
            `    static async delete(id) {\n` +
@@ -1335,6 +1457,7 @@ function generateSwagger(entities, relations = []) {
                 name: field.name, in: 'query', required: false, description: 'Exact-match filter. One value only; no special null syntax.',
                 ...(field.dataType === 'STRING' || (field.dataType === 'ENUM' && field.enumValues.includes('')) ? { allowEmptyValue: true } : {}),
                 schema: { type: SWAGGER_TYPE_MAP[field.dataType] || 'string',
+                    ...temporalSchema(field.dataType),
                     ...(field.dataType === 'INT' ? { minimum: Number.MIN_SAFE_INTEGER, maximum: Number.MAX_SAFE_INTEGER } : {}),
                     ...(field.dataType === 'ENUM' ? { enum: [...field.enumValues] } : {}) }
             }))
@@ -1397,7 +1520,7 @@ function generateSwagger(entities, relations = []) {
             properties[effectiveKey.name] = { type: SWAGGER_TYPE_MAP[effectiveKey.dataType], readOnly: true };
         }
         entity.fields.forEach(f => {
-            const prop = { type: SWAGGER_TYPE_MAP[f.dataType] || 'string' };
+            const prop = { type: SWAGGER_TYPE_MAP[f.dataType] || 'string', ...temporalSchema(f.dataType) };
             if (f.dataType === 'ENUM') prop.enum = [...f.enumValues];
 
             // Add numeric and string-length bounds if validations exist
