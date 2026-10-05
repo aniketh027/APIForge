@@ -17,5 +17,5 @@ token UUID DEFAULT "ffffffff-ffff-ffff-ffff-ffffffffffff"
 __proto__ STRING
 constructor STRING
 prototype STRING`;
-const relations=Object.freeze(['ONE_TO_MANY','MANY_TO_ONE','ONE_TO_ONE','MANY_TO_MANY'].map((kind,i)=>`ENTITY Source${i} sourceKey UUID PRIMARY KEY ENTITY Target${i} targetKey STRING PRIMARY KEY MAX_LENGTH 260 RELATION Source${i} related Target${i} ${kind}`));
+const relations=Object.freeze(['ONE_TO_MANY','MANY_TO_ONE','ONE_TO_ONE','MANY_TO_MANY'].map((kind,i)=>`ENTITY Source${i} sourceKey UUID PRIMARY KEY ENTITY Target${i} targetKey STRING PRIMARY KEY MAX_LENGTH 260 RELATION Source${i} related${i} Target${i} ${kind}`));
 module.exports={keys,scalars,relations};

@@ -50,6 +50,6 @@ function admit(source) {
     const ast=c.Parser.parse(c.Lexer.tokenize(source));const semantic=c.Semantic.analyze(ast,{target:'postgres'});
     assert.equal(semantic.valid,true,JSON.stringify(semantic.diagnostics));
     const ir=c.Optimizer.optimize(c.IR.generate(ast,semantic)).ir;
-    return c.Codegen.prepareAdmittedGeneration(ir,{target:'postgres'});
+    return {...c.Codegen.prepareAdmittedGeneration(ir,{target:'postgres'}),ir};
 }
 module.exports={nativeSession,admit,delay};
