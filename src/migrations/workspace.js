@@ -140,7 +140,7 @@ function publishMigrationRevision(workspace, snapshot, options = {}) {
     S.validateSnapshot(snapshot);
     const io = options.fileSystem || fs; // Fault-injection seam; no policy lives here.
     const root = safePath(workspace, io), lock = path.join(root, '.writer.lock');
-    io.mkdirSync(root, { recursive: true });
+    try{io.mkdirSync(root, { recursive: true });}catch(error){fail('MIGRATION_PUBLICATION_FAILED','Cannot initialize migration workspace.',{committed:false});}
     safePath(root, io);
     const lockBytes = S.canonical({ formatVersion: 1, nonce: crypto.randomUUID(), pid: process.pid });
     let fd;

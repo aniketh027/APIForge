@@ -37,7 +37,7 @@ function classify(intent,old,next){const {kind,before:a,after:b,tableId}=intent;
         const capacityImplied=b.condition.measure==='char_length'&&oldColumn?.logicalType==='STRING'&&(b.condition.min===null||b.condition.min===0)&&(b.condition.max===null||b.condition.max>=oldColumn.physicalType.length);
         const implied=capacityImplied||previous&&(b.condition.min===null||(previous.condition.min!==null&&previous.condition.min>=b.condition.min))&&(b.condition.max===null||(previous.condition.max!==null&&previous.condition.max<=b.condition.max));
         const c=known(b.condition.columnId),d=c?.default.declared;let staticallyValid=c?.nullable&&!d;
-        if(d){const value=b.condition.measure==='char_length'?Array.from(d.value).length:d.value;staticallyValid=(b.condition.min===null||value>=b.condition.min)&&(b.condition.max===null||value<=b.condition.max);}
+        if(d){const value=b.condition.measure==='char_length'?Array.from(c.default.physical.value).length:c.default.physical.value;staticallyValid=(b.condition.min===null||value>=b.condition.min)&&(b.condition.max===null||value<=b.condition.max);}
         if(!implied&&!staticallyValid)requireData('VALUES_SATISFY_CHECK',{condition:b.condition});
         if(previous&&implied&&!equal(previous.condition,b.condition))warnings.push('CHECK enforcement is relaxed.');
     }
@@ -51,6 +51,7 @@ function classify(intent,old,next){const {kind,before:a,after:b,tableId}=intent;
 }
 function authorize(plan,options={}){
     const {fail}=require('./errors');
+    if([options.allowDestructiveOperationIds,options.acknowledgeDataCheckOperationIds].some(ids=>ids!==undefined&&(!Array.isArray(ids)||ids.some(id=>typeof id!=='string'))))fail('MIGRATION_AUTHORIZATION_REQUIRED','Authorization operation IDs must be arrays of strings.');
     if(options.expectPlan!==S.hash(plan))fail('MIGRATION_PLAN_CHANGED','Authorization requires the exact plan SHA-256.');
     if(plan.blockers.length)fail('MIGRATION_UNSUPPORTED_TRANSITION','Plan contains unsupported transitions.',{blockers:plan.blockers});
     const destructive=[...new Set(options.allowDestructiveOperationIds||[])].sort(S.compare),data=[...new Set(options.acknowledgeDataCheckOperationIds||[])].sort(S.compare);

@@ -14,22 +14,23 @@ function condition(sql){const clean=sql.replace(/char_length\((`[^`]+`)\)/gi,'$1
     for(const part of clean.split(/\s+and\s+/i)){const match=part.trim().match(/^`([^`]+)`(#length)?\s*(>=|<=)\s*(-?[\d.eE+]+)$/);assert(match,'Unknown native CHECK presentation: '+sql);const current={columnId:match[1],measure:match[2]?'char_length':'value',min:null,max:null};if(out)assert.equal(out.columnId,current.columnId);else out=current;out[match[3]==='>='?'min':'max']=Number(match[4]);}return out;}
 async function introspect(c,db,target){const get=async table=>(await c.query('SELECT * FROM information_schema.'+table+' WHERE '+(['CHECK_CONSTRAINTS','REFERENTIAL_CONSTRAINTS'].includes(table)?'CONSTRAINT_SCHEMA':'TABLE_SCHEMA')+'=?',[db]))[0];
     const columns=await get('COLUMNS'), stats=await get('STATISTICS'), tc=await get('TABLE_CONSTRAINTS'), kc=await get('KEY_COLUMN_USAGE'), rc=await get('REFERENTIAL_CONSTRAINTS'), checks=await get('CHECK_CONSTRAINTS'), tables=await get('TABLES');
-    for(const col of columns)if(['varchar','char','enum'].includes(col.DATA_TYPE)&&col.COLUMN_DEFAULT?.includes('?')){
-        const q=name=>'`'+name.replace(/`/g,'``')+'`';
-        // DEFAULT() reads the typed native constant. The outer join guarantees
-        // one result even for an empty table, without inserting a production row.
-        col.COLUMN_DEFAULT=(await c.query(`SELECT DEFAULT(native_default.${q(col.COLUMN_NAME)}) value FROM (SELECT 1) seed LEFT JOIN ${q(col.TABLE_NAME)} native_default ON FALSE`))[0][0].value;
-    }
-    for(const col of columns)if(col.DATA_TYPE==='enum'&&col.COLUMN_TYPE.includes('?')){
+    for(const col of columns){
+        const enumProbe=col.DATA_TYPE==='enum'&&col.COLUMN_TYPE.includes('?');
+        const defaultProbe=(col.DATA_TYPE==='float'&&col.COLUMN_DEFAULT!==null)||(['varchar','char','enum'].includes(col.DATA_TYPE)&&col.COLUMN_DEFAULT?.includes('?'));
+        if(!enumProbe&&!defaultProbe)continue;
         // MySQL's metadata/SHOW serializer loses supplementary characters while
         // the enum values themselves remain intact. An isolated CTAS preserves
         // the native enum type. Read numeric ordinals from that copy, never from
         // expected snapshots, to resolve the presentation ambiguity exactly.
-        const probe='_g26_enum_'+require('crypto').randomBytes(8).toString('hex');
+        const probe='_g26_value_'+require('crypto').randomBytes(8).toString('hex');
         const q=name=>'`'+name.replace(/`/g,'``')+'`';
         await c.query(`CREATE TEMPORARY TABLE ${q(probe)} AS SELECT ${q(col.COLUMN_NAME)} FROM ${q(col.TABLE_NAME)} LIMIT 0`);
-        try{const count=enumMembers(col.COLUMN_TYPE).length;for(let first=1;first<=count;first+=256)await c.query(`INSERT INTO ${q(probe)} VALUES `+Array.from({length:Math.min(256,count-first+1)},(_,n)=>'('+(first+n)+')').join(','));
-            col.nativeEnumMembers=(await c.query(`SELECT ${q(col.COLUMN_NAME)} value FROM ${q(probe)} ORDER BY ${q(col.COLUMN_NAME)}+0`))[0].map(r=>r.value);
+        try{if(enumProbe){const count=enumMembers(col.COLUMN_TYPE).length;for(let first=1;first<=count;first+=256)await c.query(`INSERT INTO ${q(probe)} VALUES `+Array.from({length:Math.min(256,count-first+1)},(_,n)=>'('+(first+n)+')').join(','));
+            col.nativeEnumMembers=(await c.query(`SELECT ${q(col.COLUMN_NAME)} value FROM ${q(probe)} ORDER BY ${q(col.COLUMN_NAME)}+0`))[0].map(r=>r.value);}
+            if(defaultProbe){await c.query(`DELETE FROM ${q(probe)}`);await c.query(`INSERT INTO ${q(probe)} VALUES (DEFAULT)`);
+                const value=col.DATA_TYPE==='float'?`CAST(${q(col.COLUMN_NAME)} AS DOUBLE)`:q(col.COLUMN_NAME);
+                col.COLUMN_DEFAULT=(await c.query(`SELECT ${value} value FROM ${q(probe)}`))[0][0].value;
+            }
         }finally{await c.query(`DROP TEMPORARY TABLE ${q(probe)}`);}
     }
     return{formatVersion:1,target,tables:tables.map(t=>{const cols=columns.filter(v=>v.TABLE_NAME===t.TABLE_NAME).sort((a,b)=>a.ORDINAL_POSITION-b.ORDINAL_POSITION).map(v=>{const ty=type(v);const d=v.COLUMN_DEFAULT===null?{kind:v.IS_NULLABLE==='YES'?'null':'none'}:{kind:'literal',type:['INT','FLOAT'].includes(ty.kind)?'NUMBER':ty.kind==='TINYINT'?'BOOLEAN':'STRING',value:['INT','FLOAT','TINYINT'].includes(ty.kind)?Number(v.COLUMN_DEFAULT):v.COLUMN_DEFAULT};

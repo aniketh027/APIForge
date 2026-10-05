@@ -24,6 +24,7 @@ function canonical(value) {
 }
 const hash=value=>crypto.createHash('sha256').update(typeof value==='string'||Buffer.isBuffer(value)?value:canonical(value)).digest('hex');
 function parseCanonical(bytes) {
+    if(Buffer.isBuffer(bytes)){const decoded=bytes.toString('utf8');if(!bytes.equals(Buffer.from(decoded,'utf8')))fail('MIGRATION_HISTORY_CORRUPT','Artifact is not exact UTF-8.');bytes=decoded;}
     let value;try{value=JSON.parse(bytes);}catch{fail('MIGRATION_HISTORY_CORRUPT','Invalid JSON artifact.');}
     if(canonical(value)!==bytes) fail('MIGRATION_HISTORY_CORRUPT','Artifact is not canonical JSON (duplicate keys and noncanonical bytes are forbidden).');
     return value;
@@ -87,6 +88,7 @@ function physicalDefault(type,nullable,declared) {
     let value=declared.value;
     if(type==='TIMESTAMP')value=value.slice(0,10)+' '+value.slice(11,19);
     if(type==='BOOLEAN')value=value?1:0;
+    if(type==='FLOAT')value=Math.fround(value);
     return {kind:'literal',type:declared.type,value};
 }
 function validateSnapshotRecords(s) {

@@ -33,7 +33,7 @@ function run(args) {
         if (repeat.has(key)) (options[key] ||= []).push(value); else options[key] = value;
     }
     const requireOption = key => { if (!options[key]) throw new M.MigrationError('MIGRATION_HISTORY_CORRUPT', 'Required --' + key); return options[key]; };
-    const readSnapshot = file => M.validateSnapshot(M.parseCanonical(fs.readFileSync(file, 'utf8')));
+    const readSnapshot = file => M.validateSnapshot(M.parseCanonical(fs.readFileSync(file)));
     const target = () => {
         if (Boolean(options.to) === Boolean(options['to-snapshot'])) throw new M.MigrationError('MIGRATION_HISTORY_CORRUPT', 'Choose exactly one of --to and --to-snapshot.');
         return options.to ? M.compileSourceForSnapshot(fs.readFileSync(options.to, 'utf8'), options.profile) : readSnapshot(options['to-snapshot']);

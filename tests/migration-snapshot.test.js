@@ -11,6 +11,9 @@ for(const key of ['', 'k INT PRIMARY KEY','k INT PRIMARY KEY DEFAULT 0','k STRIN
 check(()=>assert.equal(S.canonical({b:1,a:2}),S.canonical({a:2,b:1})));
 check(()=>assert.throws(()=>S.canonical({a:Infinity})));
 check(()=>assert.throws(()=>S.parseCanonical('{"a":1,"a":2}\n')));
+check(()=>assert.deepEqual(S.parseCanonical(Buffer.from('{"a":1}\n')), {a:1}));
+check(()=>assert.throws(()=>S.parseCanonical(Buffer.from([123,34,97,34,58,34,255,34,125,10])),{code:'MIGRATION_HISTORY_CORRUPT'}));
+check(()=>assert.equal(S.physicalSha256(compile('ENTITY FloatValue\nv FLOAT DEFAULT 0.1')),S.physicalSha256(compile('ENTITY FloatValue\nv FLOAT DEFAULT 0.10000000149011612'))));
 const a=compile('ENTITY Item\nv STRING'),b=compile('ENTITY Item\nid INT PRIMARY KEY\nv STRING');
 check(()=>assert.equal(S.physicalSha256(a),S.physicalSha256(b)));check(()=>assert.notEqual(S.snapshotSha256(a),S.snapshotSha256(b)));
 check(()=>assert.throws(()=>compile('ENTITY Item\nv DATETIME')));
