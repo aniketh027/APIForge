@@ -63,7 +63,15 @@ status ENUM("active", "suspended", "closed") DEFAULT "active"` },
 id INT PRIMARY KEY
 eventDate DATE REQUIRED
 createdAt TIMESTAMP
-publishedAt TIMESTAMP DEFAULT "2026-10-05T12:30:00Z"` }
+publishedAt TIMESTAMP DEFAULT "2026-10-05T12:30:00Z"` },
+    { name: 'UUID User and Groups', code: `ENTITY User
+id UUID PRIMARY KEY
+email STRING REQUIRED UNIQUE
+token UUID
+ENTITY Group
+id UUID PRIMARY KEY
+label STRING
+RELATION User JOINS Group MANY_TO_MANY` }
 ];
 
 let currentExampleIndex = 0;
@@ -716,7 +724,7 @@ function highlightSQL(sql) {
         'FOREIGN', 'REFERENCES', 'CHECK', 'CASCADE', 'ON', 'AND',
         'ALTER', 'ADD', 'COLUMN', 'CONSTRAINT'
     ];
-    const types = ['INT', 'VARCHAR', 'FLOAT', 'BOOLEAN', 'ENUM', 'TEXT', 'DATE', 'TIMESTAMP', 'DATETIME'];
+    const types = ['INT', 'VARCHAR', 'CHAR', 'FLOAT', 'BOOLEAN', 'ENUM', 'TEXT', 'DATE', 'TIMESTAMP', 'DATETIME'];
 
     let result = escapeHtml(sql);
 

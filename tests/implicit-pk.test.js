@@ -71,7 +71,7 @@ function zipEntries(bytes) {
         const { IMPLICIT_PRIMARY_KEY_COLLISION, ...original } = CODES.semantic;
         assert.equal(IMPLICIT_PRIMARY_KEY_COLLISION, 'SEM033');
         assert.deepEqual(require('./v1-hardening-helpers').retainedCodes(CODES, baseline.codes), baseline.codes);
-        assert.equal(Object.values(CODES).flatMap(Object.values).length, 67);
+        assert.equal(Object.values(CODES).flatMap(Object.values).length, 68);
         assert.deepEqual(WARNING_CODES, baseline.warnings);
     });
     await test('explicit id controls and a non-first key retain declared identity', async () => {

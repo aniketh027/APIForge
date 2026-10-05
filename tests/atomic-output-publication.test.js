@@ -152,6 +152,9 @@ try {
         let projects = 0, files = 0;
         for (const name of fs.readdirSync(path.join(repository, 'samples')).filter(name => name.endsWith('.apiforge'))) {
             const source = fs.readFileSync(path.join(repository, 'samples', name), 'utf8');
+            // This frozen V1 comparison predates UUID. G25 separately compares all
+            // non-UUID samples with approved main and exercises UUID disk output.
+            if (/\bUUID\b/.test(source)) continue;
             let current;
             try { current = compile(source); } catch { continue; }
             const original = frozen.generate(current.optimized, false);

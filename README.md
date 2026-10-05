@@ -353,6 +353,7 @@ CREATE TABLE Student_Course (
 | `STRING`  | `VARCHAR(255)` by default | Text strings; widened when a declared length bound exceeds 255 |
 | `FLOAT`   | `FLOAT`           | Decimal numbers          |
 | `BOOLEAN` | `BOOLEAN`         | True/false values        |
+| `UUID` | `CHAR(36) CHARACTER SET ascii COLLATE ascii_bin` | Canonical lowercase UUID text; ordinary field or explicit primary key |
 | `ENUM("a", "b")` | `ENUM('a', 'b')` | Finite set of case-sensitive strings |
 
 ENUM fields declare one or more quoted strings in source order:
@@ -363,8 +364,8 @@ role ENUM("student", "faculty", "admin") REQUIRED UNIQUE
 ```
 
 Values are case-sensitive; duplicates are invalid. DEFAULT must be a quoted
-member. REQUIRED and UNIQUE are allowed; PRIMARY KEY remains restricted to INT
-and STRING. MIN/MAX and MIN_LENGTH/MAX_LENGTH are invalid on ENUM. Whitespace,
+member. REQUIRED and UNIQUE are allowed; PRIMARY KEY supports INT, STRING
+and UUID. MIN/MAX and MIN_LENGTH/MAX_LENGTH are invalid on ENUM. Whitespace,
 comments and multiline value lists follow the normal token grammar. Strings
 retain literal backslashes; no string escape syntax is added.
 
@@ -374,7 +375,19 @@ with `enum` and optional `default`. Omitted fields keep existing database-defaul
 behavior. Optional null is allowed; supplied null for REQUIRED ENUM is rejected.
 Try `samples/enum_account.apiforge` or the ENUM Account playground preset.
 
-> A `PRIMARY KEY` may only be declared on an `INT` or `STRING` field.
+> A `PRIMARY KEY` may only be declared on an `INT`, `STRING` or `UUID` field.
+
+UUID accepts exact lowercase `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx` strings,
+including all versions and nil/max values. REQUIRED, UNIQUE and quoted canonical
+static DEFAULT values are supported; numeric and length bounds are rejected.
+An explicit UUID key without DEFAULT generates with Node core `crypto.randomUUID()`
+when omitted or supplied as optional null; REQUIRED null is rejected. Supplied keys
+are preserved, and static UUID key defaults never generate. Ordinary UUID fields
+never generate. Keys remain immutable on PUT. UUID bodies, equality filters and
+item/relationship UUID path parameters fail with HTTP 400 before DB access when
+invalid. All CRUD/relationship reads reject malformed stored UUIDs with sanitized
+500 responses. OpenAPI includes string/uuid and the exact lowercase pattern.
+See [G25 verification](docs/uuid-verification.md) and `samples/uuid.apiforge`.
 
 ---
 

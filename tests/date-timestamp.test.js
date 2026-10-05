@@ -107,7 +107,7 @@ async function main() {
             ['DATATYPE', 'DATATYPE', 'IDENTIFIER', 'IDENTIFIER', 'IDENTIFIER', 'IDENTIFIER']);
         assert.deepEqual(tokens.slice(0, 2).map(token => [token.value, token.line, token.column, token.endColumn]),
             [['DATE', 1, 1, 5], ['TIMESTAMP', 1, 6, 15]]);
-        for (const value of ['date', 'timestamp', 'Timestamp', 'Date', 'DATETIME', 'TIME', 'YEAR', 'UUID']) {
+        for (const value of ['date', 'timestamp', 'Timestamp', 'Date', 'DATETIME', 'TIME', 'YEAR', 'UUIDv7']) {
             assert.throws(() => parse('ENTITY Event\nd ' + value), error => error.diagnostic.code === 'PAR013');
         }
     });
@@ -583,7 +583,7 @@ async function main() {
         let checked = 0;
         for (const name of samples) {
             const source = fs.readFileSync(path.join(root, 'samples', name), 'utf8');
-            if (/\b(DATE|TIMESTAMP)\b/.test(source)) continue;
+            if (/\b(DATE|TIMESTAMP|UUID)\b/.test(source)) continue;
             const tokens = Lexer.tokenize(source), ast = Parser.parse(tokens), semantic = Semantic.analyze(ast);
             if (!semantic.valid) continue;
             const ir = IR.generate(ast, semantic), optimized = Optimizer.optimize(ir).ir;

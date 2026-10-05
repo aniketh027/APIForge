@@ -1183,7 +1183,7 @@ console.log('── Semantic Test 11: PK with FLOAT fails ──');
 const s11 = lexParseAnalyze('ENTITY Item\nprice FLOAT PRIMARY KEY');
 
 assertTrue('FLOAT PK fails',                       !s11.valid);
-assertTrue('Error mentions INT or STRING',          s11.errors.some(e => e.message.includes('requires INT or STRING')));
+assertTrue('Error mentions INT, STRING or UUID',    s11.errors.some(e => e.message.includes('requires INT, STRING or UUID')));
 
 
 // ── Semantic Test 12: Primary key with BOOLEAN should fail ──
@@ -1194,7 +1194,7 @@ console.log('── Semantic Test 12: PK with BOOLEAN fails ──');
 const s12 = lexParseAnalyze('ENTITY Item\nactive BOOLEAN PRIMARY KEY');
 
 assertTrue('BOOLEAN PK fails',                     !s12.valid);
-assertTrue('Error mentions INT or STRING',          s12.errors.some(e => e.message.includes('requires INT or STRING')));
+assertTrue('Error mentions INT, STRING or UUID',    s12.errors.some(e => e.message.includes('requires INT, STRING or UUID')));
 
 
 // ── Semantic Test 13: PK + REQUIRED + UNIQUE is valid ───────
@@ -2982,7 +2982,7 @@ assertTrue('Missing-target error exists',             !!missingTargetErr);
 assertTrue('Missing-target error carries numeric column', missingTargetErr && typeof missingTargetErr.column === 'number' && missingTargetErr.column >= 1);
 
 const pkTypeRes = lexParseAnalyze('ENTITY Item\nid FLOAT PRIMARY KEY');
-const pkTypeErr = pkTypeRes.errors.find(e => e.message.includes('requires INT or STRING'));
+const pkTypeErr = pkTypeRes.errors.find(e => e.message.includes('requires INT, STRING or UUID'));
 assertTrue('PK-type error exists',                    !!pkTypeErr);
 assertTrue('PK-type error carries numeric column',    pkTypeErr && typeof pkTypeErr.column === 'number' && pkTypeErr.column >= 1);
 
@@ -3333,7 +3333,7 @@ assertTrue('Missing datatype throws error', !!errMissingType);
 assertEqual('Missing datatype error code', errMissingType.code, 'MISSING_DATATYPE');
 assertEqual('Missing datatype line is 4', errMissingType.line, 4);
 assertEqual('Missing datatype column is 5', errMissingType.column, 5);
-assertEqual('Missing datatype userMessage', errMissingType.userMessage, "Missing data type for field 'name'.\nExpected one of: INT, STRING, FLOAT, BOOLEAN, ENUM, DATE, TIMESTAMP.");
+assertEqual('Missing datatype userMessage', errMissingType.userMessage, "Missing data type for field 'name'.\nExpected one of: INT, STRING, FLOAT, BOOLEAN, ENUM, DATE, TIMESTAMP, UUID.");
 assertTrue('Missing datatype contains Expected DATATYPE for compatibility', errMissingType.message.includes('Expected DATATYPE'));
 
 // ── User-Facing Test 2: Missing KEY after PRIMARY at EOF ─────
@@ -3404,7 +3404,7 @@ console.log('');
 console.log('── User-Facing: formatUserFacingError helper ──');
 
 const { formatUserFacingError } = require('../src/utils/errors');
-assertEqual('formatUserFacingError uses userMessage', formatUserFacingError(errMissingType), "Missing data type for field 'name'.\nExpected one of: INT, STRING, FLOAT, BOOLEAN, ENUM, DATE, TIMESTAMP.");
+assertEqual('formatUserFacingError uses userMessage', formatUserFacingError(errMissingType), "Missing data type for field 'name'.\nExpected one of: INT, STRING, FLOAT, BOOLEAN, ENUM, DATE, TIMESTAMP, UUID.");
 assertEqual('formatUserFacingError cleans raw prefix', formatUserFacingError({ message: 'Syntax Error at line 1, column 2: Some error' }), 'Some error');
 
 // ── User-Facing Test 7: API /compile returns userMessage and code ──
@@ -3420,7 +3420,7 @@ assertEqual('API error phase is parser', apiUserFacingTest.phase, 'parser');
 assertEqual('API error code is MISSING_DATATYPE', apiUserFacingTest.errors[0].code, 'MISSING_DATATYPE');
 assertEqual('API error line is 4', apiUserFacingTest.errors[0].line, 4);
 assertEqual('API error column is 5', apiUserFacingTest.errors[0].column, 5);
-assertEqual('API error userMessage matches', apiUserFacingTest.errors[0].userMessage, "Missing data type for field 'name'.\nExpected one of: INT, STRING, FLOAT, BOOLEAN, ENUM, DATE, TIMESTAMP.");
+assertEqual('API error userMessage matches', apiUserFacingTest.errors[0].userMessage, "Missing data type for field 'name'.\nExpected one of: INT, STRING, FLOAT, BOOLEAN, ENUM, DATE, TIMESTAMP, UUID.");
 
 
 

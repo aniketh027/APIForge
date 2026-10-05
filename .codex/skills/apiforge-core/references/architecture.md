@@ -29,7 +29,10 @@ APIForge compiles a small declarative backend language into MySQL DDL, a modular
 
 DATE/TIMESTAMP use the existing dataType and STRING default representation
 through AST, symbols, IR and all optimizer passes. IR explicitly validates the
-seven supported types and canonical temporal defaults. SQL wire conversion,
+eight supported types, canonical temporal defaults and canonical UUID defaults.
+UUID has no numeric/length bounds but permits PRIMARY_KEY. The shared vocabulary
+lives in src/utils/data-types.js, and uuid.js owns the pure emitted validator.
+Effective-key generation modes are codegen metadata, outside source IR. SQL wire conversion,
 UTC session initialization and row normalization remain target decisions.
 
 Keep the IR about declared entities, fields, constraints, validations, defaults, and relationship meaning. SQL names, Express route wiring, HTTP handler structure, and MySQL-specific foreign-key layout belong in code generation unless an explicit architecture change decides otherwise.

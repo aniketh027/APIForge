@@ -26,7 +26,7 @@ function decode(literal) {
         const oldDiagnostics = baselineModule('src/utils/diagnostics.js', revision), diagnostics = require('../src/utils/diagnostics');
         assert.deepEqual(require('./v1-hardening-helpers').retainedCodes(diagnostics.CODES, oldDiagnostics.CODES), oldDiagnostics.CODES);
         assert.deepEqual(diagnostics.WARNING_CODES, oldDiagnostics.WARNING_CODES);
-        assert.equal(Object.values(diagnostics.CODES).flatMap(Object.values).length, 67);
+        assert.equal(Object.values(diagnostics.CODES).flatMap(Object.values).length, 68);
         assert.equal(diagnostics.CODES.semantic.INVALID_TEMPORAL_DEFAULT, 'SEM038');
         const app = express(); app.use(express.json()); app.use('/api', require('../src/api/compiler-api'));
         const server = app.listen(0, '127.0.0.1'); await new Promise(resolve => server.once('listening', resolve));

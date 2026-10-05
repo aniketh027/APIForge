@@ -19,7 +19,11 @@ Milestone 4 appends:
 | SEM036 | ENUM_TRAILING_SPACE | Native ENUM member ends in ASCII space; exact member range |
 | SEM037 | MYSQL_TARGET_LIMIT | Source/composed identifier or STRING capacity exceeds supported MySQL assumptions; MIN/MAX CHECK constraints on an explicit auto-generated INT key are unrepresentable |
 
-There are now 66 public error assignments. All original 62 and WRN001–WRN005
+G24 appends SEM038 / INVALID_TEMPORAL_DEFAULT. G25 appends SEM039 /
+INVALID_UUID_DEFAULT for malformed/noncanonical quoted UUID defaults, at the
+DEFAULT literal. Wrong primitive UUID defaults retain SEM021.
+
+There are now 68 public error assignments. All original 62 and WRN001–WRN005
 retain their mapping. Target errors are semantic HTTP 422/CLI exit 1; no artifacts
 are generated. Raw numeric source metadata is non-enumerable and never enters IR.
 

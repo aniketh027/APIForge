@@ -6,6 +6,8 @@ See [audit evidence and reproduction commands](language-guide-verification.md).
 DATE/TIMESTAMP additions verified on 2026-10-05 from approved main
 `9ef005e18e875bdd83e3b73665c931588aa01ccf`; see
 [G24 evidence](date-timestamp-verification.md).
+UUID additions verified on 2026-10-05 from approved main
+`b5b23024a4938c472b5fa73d0ebfd50e34ef75e8`; see [G25 evidence](uuid-verification.md).
 
 ## 1. Overview
 
@@ -69,7 +71,7 @@ These exact uppercase words are reserved:
 | Category | Words |
 |---|---|
 | Declarations | `ENTITY`, `RELATION` |
-| Datatypes | `INT`, `FLOAT`, `BOOLEAN`, `STRING`, `ENUM`, `DATE`, `TIMESTAMP` |
+| Datatypes | `INT`, `FLOAT`, `BOOLEAN`, `STRING`, `ENUM`, `DATE`, `TIMESTAMP`, `UUID` |
 | Modifiers | `PRIMARY`, `KEY`, `REQUIRED`, `UNIQUE`, `DEFAULT`, `MIN`, `MAX`, `MIN_LENGTH`, `MAX_LENGTH` |
 | Boolean literals | `TRUE`, `FALSE` |
 | Cardinalities | `ONE_TO_ONE`, `ONE_TO_MANY`, `MANY_TO_ONE`, `MANY_TO_MANY` |
@@ -151,7 +153,7 @@ reopening/extension syntax for an existing entity.
 
 ~~~text
 FieldDecl := Identifier DataType Modifier*
-DataType  := INT | FLOAT | BOOLEAN | STRING | ENUM "(" String ("," String)* ")" | DATE | TIMESTAMP
+DataType  := INT | FLOAT | BOOLEAN | STRING | ENUM "(" String ("," String)* ")" | DATE | TIMESTAMP | UUID
 Modifier  := PRIMARY KEY | REQUIRED | UNIQUE
            | DEFAULT Literal
            | MIN Number | MAX Number
@@ -188,6 +190,7 @@ label STRING DEFAULT "ready" MAX_LENGTH 20 REQUIRED MIN_LENGTH 2 UNIQUE
 | ENUM(...) | REQUIRED, UNIQUE, member DEFAULT | Native ENUM(...) | string with enum |
 | DATE | REQUIRED, UNIQUE, canonical string DEFAULT | DATE | string/date with pattern |
 | TIMESTAMP | REQUIRED, UNIQUE, canonical string DEFAULT | TIMESTAMP | string/date-time with pattern |
+| UUID | PRIMARY KEY, REQUIRED, UNIQUE, canonical string DEFAULT | CHAR(36) CHARACTER SET ascii COLLATE ascii_bin | string/uuid with lowercase pattern |
 
 ### INT
 
@@ -262,6 +265,52 @@ id INT PRIMARY KEY
 status ENUM("active", "closed") DEFAULT "active"
 ~~~
 
+### UUID
+
+UUID values match exactly:
+`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`.
+Lowercase hexadecimal text and exact hyphens are mandatory. All UUID versions and
+canonical nil/max values are accepted. Uppercase, whitespace, compact form, braces
+and urn prefixes are rejected without normalization.
+
+<!-- example: valid uuid-fields-and-keys -->
+~~~apiforge
+ENTITY User
+id UUID PRIMARY KEY
+email STRING REQUIRED UNIQUE
+token UUID
+fixed UUID DEFAULT "550e8400-e29b-41d4-a716-446655440000"
+ENTITY Group
+id UUID PRIMARY KEY
+label STRING
+RELATION User JOINS Group MANY_TO_MANY
+~~~
+
+UUID supports PRIMARY KEY, REQUIRED, UNIQUE and quoted canonical static DEFAULT.
+Wrong primitive defaults use SEM021; malformed strings use append-only SEM039 at
+the DEFAULT literal. MIN/MAX use SEM015 and length bounds use SEM016. UUID remains
+UUID through AST, symbols, IR and optimizer; it is not a STRING length-bound type.
+
+A UUID PRIMARY KEY without DEFAULT uses runtime `crypto.randomUUID()` (v4, Node
+core) once when omitted or supplied as optional null. REQUIRED rejects null while
+permitting generation on omission. Supplied canonical keys win exactly. Static
+key defaults never generate and resolve omitted create identity from the declared
+default. Ordinary UUID fields never generate. Models validate/copy input privately,
+insert the resolved key and return it; caller input remains unchanged. Arbitrary
+DB defaults are not reread, and UUID keys remain immutable on PUT.
+
+SQL fields/keys/FKs use CHAR(36) CHARACTER SET ascii COLLATE ascii_bin, with no UUID
+AUTO_INCREMENT or runtime SQL DEFAULT. All four relation cardinalities work with
+UUID and mixed keys. Invalid UUID bodies, equality filters and item/relationship
+URL keys return 400 before DB access. Sorting uses the existing whitelist. All
+CRUD/relationship reads validate declared UUID and generated UUID FK columns;
+canonical strings/optional null remain unchanged, malformed external values fail
+sanitized 500 and STRING stays untouched. OpenAPI uses string/uuid plus the pattern
+across entity roles, filters, paths, FK and association properties. Runtime keys
+are optional in Create, nonnullable in Read/CreateResult; Update omits the key.
+UUID-only projects do not trigger temporal pool configuration. BINARY(16), SQL
+UUID() defaults, arrays, version selectors and migrations are absent.
+
 ### DATE and TIMESTAMP
 
 DATE is a string in exactly `YYYY-MM-DD` form, inclusive range 1000-01-01 through
@@ -283,7 +332,7 @@ publishedAt TIMESTAMP DEFAULT "2026-10-05T12:30:00Z"
 
 Both types support REQUIRED, UNIQUE and quoted canonical static DEFAULT strings.
 Wrong DEFAULT literal types use SEM021; malformed/calendar-invalid/out-of-range
-strings use SEM038 at the literal. PRIMARY KEY remains INT/STRING only (SEM011).
+strings use SEM038 at the literal. DATE/TIMESTAMP PRIMARY KEY is invalid (SEM011).
 Numeric bounds and length bounds remain invalid (SEM015/SEM016). Duplicate
 modifiers use the existing diagnostics. Dynamic DEFAULT CURRENT_TIMESTAMP,
 DEFAULT NOW(), ON UPDATE, and automatic timestamp fields are unavailable.
@@ -309,7 +358,7 @@ string/date-time with canonical patterns and descriptions. Read
 ## 6. Primary Keys
 
 An entity may declare at most one PRIMARY KEY field (SEM010). Only INT and
-STRING are permitted (SEM011). PRIMARY KEY may coexist with REQUIRED, UNIQUE,
+STRING and UUID are permitted (SEM011). PRIMARY KEY may coexist with REQUIRED, UNIQUE,
 applicable bounds, and a type-correct DEFAULT. Repeating the same constraint
 produces SEM009. PRIMARY without KEY produces PAR014; standalone KEY
 produces PAR015. Composite entity keys have no DSL syntax.
@@ -329,6 +378,8 @@ code STRING PRIMARY KEY REQUIRED MAX_LENGTH 80
 | INT PRIMARY KEY without DEFAULT | PRIMARY KEY AUTO_INCREMENT |
 | INT PRIMARY KEY with DEFAULT | PRIMARY KEY DEFAULT value; no AUTO_INCREMENT |
 | STRING PRIMARY KEY | PRIMARY KEY; no AUTO_INCREMENT |
+| UUID PRIMARY KEY without DEFAULT | PRIMARY KEY; runtime generation on omission/optional null |
+| UUID PRIMARY KEY with DEFAULT | PRIMARY KEY DEFAULT canonical text; no runtime generation |
 | No explicit PRIMARY KEY | Prepends id INT PRIMARY KEY AUTO_INCREMENT |
 
 No explicit key is required for semantic validity. Each valid entity without one
@@ -440,9 +491,10 @@ enabled BOOLEAN REQUIRED
 Syntax is DEFAULT literal, once per field. The parser accepts a number,
 double-quoted string, or uppercase boolean; absence/wrong token produces
 PAR020. Semantic analysis checks datatype (SEM021), duplicates (SEM020),
-numeric range (SEM022), STRING length (SEM023), and ENUM membership
-(SEM032). INT requires an integer, FLOAT a number, BOOLEAN a boolean, STRING
-a string, and ENUM a string member.
+numeric range (SEM022), STRING length (SEM023), ENUM membership (SEM032),
+temporal values (SEM038), and canonical UUID text (SEM039). INT requires an integer,
+FLOAT a number, BOOLEAN a boolean, STRING a string, ENUM a string member, and
+DATE/TIMESTAMP/UUID a quoted canonical string.
 
 Defaults emit SQL DEFAULT and OpenAPI default. Express does not insert
 default values into request bodies or reload the inserted record for create
@@ -585,7 +637,8 @@ implicit endpoints consistently use the generated integer id described in sectio
 For source S, target T, and their key fields, foreign-key column names use the
 entity name with only its first character lowercased, followed by an underscore
 and the referenced key name. STRING key foreign keys retain the generated
-VARCHAR capacity. Entity tables are emitted before relationship DDL.
+VARCHAR capacity. UUID foreign keys/junction columns retain CHAR(36), ascii and
+ascii_bin collation. Entity tables are emitted before relationship DDL.
 
 | Cardinality | Generated storage | Generated source-router operation |
 |---|---|---|
@@ -778,7 +831,9 @@ For Student, the server mounts directly at /students:
 | DELETE | `/students/:id` | 200, success/message | 404 absent; 500 DB error |
 
 There is no /api prefix on generated resource routes. Path parameters remain
-named id even for a differently named STRING primary key. Models bind request
+named id even for a differently named STRING or UUID primary key. Invalid UUID
+item/source/target URL parameters return 400 before model access; INT/STRING
+path behavior is unchanged. Models bind request
 values with mysql2 placeholders/object binding. PUT with an empty payload looks
 up the existing record. A supplied explicit primary-key field in PUT returns
 400 before model access. Create returns submitted data plus the resolved key
@@ -813,6 +868,7 @@ are not reapplied to filters.
 | ENUM | Exact declared member, case-sensitive; empty only if declared. |
 | DATE | Canonical Gregorian YYYY-MM-DD, 1000-01-01 through 9999-12-31. |
 | TIMESTAMP | Canonical UTC YYYY-MM-DDTHH:mm:ssZ, 1970-01-01T00:00:01Z through 2038-01-19T03:14:07Z; no offsets/fractions. |
+| UUID | Exact lowercase 8-4-4-4-12 text, all versions/nil/max; directly bound strings. |
 
 No special NULL filter exists: STRING null is text; ENUM null must be a declared
 member. Wildcard/contains, ranges, OR, and nested relationship filters have no
@@ -1021,6 +1077,12 @@ than one semantic diagnostic.
 | date-key | `ENTITY Item ↵ value DATE PRIMARY KEY` | `SEM011` |
 | timestamp-length-bound | `ENTITY Item ↵ value TIMESTAMP MAX_LENGTH 20` | `SEM016` |
 | enum-key | `ENTITY Item ↵ value ENUM("a") PRIMARY KEY` | `SEM011` |
+| uuid-uppercase-default | `ENTITY Item ↵ value UUID DEFAULT "550E8400-E29B-41D4-A716-446655440000"` | `SEM039` |
+| uuid-malformed-default | `ENTITY Item ↵ value UUID DEFAULT "not-a-uuid"` | `SEM039` |
+| uuid-numeric-default | `ENTITY Item ↵ value UUID DEFAULT 5` | `SEM021` |
+| uuid-boolean-default | `ENTITY Item ↵ value UUID DEFAULT TRUE` | `SEM021` |
+| uuid-numeric-bound | `ENTITY Item ↵ value UUID MIN 1` | `SEM015` |
+| uuid-length-bound | `ENTITY Item ↵ value UUID MAX_LENGTH 36` | `SEM016` |
 | enum-numeric-bound | `ENTITY Item ↵ value ENUM("a") MIN 1` | `SEM015` |
 | enum-length-bound | `ENTITY Item ↵ value ENUM("a") MAX_LENGTH 1` | `SEM016` |
 | missing-cardinality | `ENTITY Item ↵ id INT ↵ RELATION Item LINKS Other` | `PAR010` |
@@ -1065,7 +1127,7 @@ imports, namespaces, entity extension, inheritance, reusable named enums,
 arrays/objects, expressions/functions, loops, conditional statements, migrations,
 custom endpoints, authentication declarations, or alternate database targets.
 
-Only the seven listed datatypes exist. DATETIME, TIME, YEAR, UUID, JSON, DECIMAL,
+Only the eight listed datatypes exist. DATETIME, TIME, YEAR, JSON, DECIMAL,
 VARCHAR(n), NULL defaults, regex/email constraints, indexes, composite entity
 primary keys, explicit FOREIGN KEY constraints, and configurable delete actions have
 no DSL construct. SQL composite junction keys are generated from MANY_TO_MANY,

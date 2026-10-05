@@ -33,7 +33,7 @@ RELATION Student ENROLLS_IN Course MANY_TO_MANY
 
 | Category | Supported forms |
 |---|---|
-| Data types | `INT`, `STRING`, `FLOAT`, `BOOLEAN`, `ENUM("a", "b")`, `DATE`, `TIMESTAMP` |
+| Data types | `INT`, `STRING`, `FLOAT`, `BOOLEAN`, `ENUM("a", "b")`, `DATE`, `TIMESTAMP`, `UUID` |
 | Constraints | `PRIMARY KEY`, `REQUIRED`, `UNIQUE` |
 | Validations | `MIN <number>`, `MAX <number>`, `MIN_LENGTH <number>`, `MAX_LENGTH <number>` |
 | Default | `DEFAULT <number>`, `DEFAULT "text"`, `DEFAULT TRUE`, `DEFAULT FALSE` |
@@ -52,6 +52,14 @@ WRN001–WRN005 remain unchanged.
 `MIN` and `MAX` apply only to numeric fields. `INT` bounds and defaults must be integers; `FLOAT` accepts numeric literals. `MIN_LENGTH` and `MAX_LENGTH` apply only to `STRING`, require non-negative integer values, and require `MIN_LENGTH <= MAX_LENGTH` when combined. A default must match the field type, satisfy applicable numeric or STRING-length bounds, and occur at most once. Each validation modifier may appear at most once per field.
 
 ## Lexical and declaration behavior
+
+UUID supports PRIMARY KEY/REQUIRED/UNIQUE and quoted canonical lowercase UUID
+DEFAULT text. All versions and nil/max values are accepted by the shared
+src/utils/uuid.js validator; whitespace/uppercase/compact/braced/prefixed values
+are rejected without normalization. Wrong primitive defaults use SEM021;
+malformed strings use append-only SEM039 at the literal. Numeric/length bounds
+remain invalid. UUID is preserved unchanged through AST/symbols/IR/optimizer.
+See docs/uuid-verification.md for runtime key, SQL, relationship and read contracts.
 
 DATE and TIMESTAMP support REQUIRED/UNIQUE and quoted canonical STRING defaults.
 DATE is Gregorian YYYY-MM-DD, 1000-01-01 through 9999-12-31. TIMESTAMP is UTC
