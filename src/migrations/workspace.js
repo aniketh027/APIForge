@@ -13,7 +13,7 @@ const samePath = (a, b) => process.platform === 'win32' ? a.toLowerCase() === b.
 
 function safePath(workspace, io) {
     const root = path.resolve(workspace);
-    const generatedRoots = [path.resolve(__dirname, '../../..', 'output'), path.resolve(process.cwd(), 'output')];
+    const generatedRoots = [path.resolve(__dirname, '../..', 'output'), path.resolve(process.cwd(), 'output')];
     for (const generated of generatedRoots) {
         const relative = path.relative(generated, root);
         if (!relative || (!relative.startsWith('..' + path.sep) && relative !== '..' && !path.isAbsolute(relative)))

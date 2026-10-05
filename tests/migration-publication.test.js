@@ -6,6 +6,50 @@ const a = M.compileSourceForSnapshot('ENTITY Item\nv STRING'), b = M.compileSour
 let checks = 0;
 function bytes(dir) { return Object.fromEntries(fs.readdirSync(dir).map(name => { const file = path.join(dir, name); return [name, fs.statSync(file).isDirectory() ? bytes(file) : fs.readFileSync(file).toString('hex')]; })); }
 try {
+    const originalCwd = process.cwd(), repositoryRoot = path.resolve(__dirname, '..');
+    const repositoryOutput = path.join(repositoryRoot, 'output');
+    const repositoryWorkspace = path.join(repositoryOutput, path.basename(root));
+    assert.equal(fs.existsSync(repositoryWorkspace), false);
+    try {
+        function rejectsGeneratedWorkspace(workspace) {
+            const mutations = [];
+            const writingMethods = new Set(['mkdirSync', 'openSync', 'writeFileSync', 'fsyncSync', 'renameSync', 'rmSync', 'unlinkSync']);
+            const io = new Proxy(fs, { get(target, key) {
+                if (!writingMethods.has(key)) return target[key];
+                return (...args) => { mutations.push(key); return target[key](...args); };
+            } });
+            assert.throws(() => M.publishMigrationRevision(workspace, a, { baseline: true, fileSystem: io }), { code: 'MIGRATION_HISTORY_CORRUPT' }); checks++;
+            assert.deepEqual(mutations, []); checks++;
+            assert.equal(fs.existsSync(workspace), false); checks++;
+            assert.throws(() => M.readMigrationWorkspace(workspace), { code: 'MIGRATION_HISTORY_CORRUPT' }); checks++;
+        }
+        process.chdir(repositoryRoot);
+        rejectsGeneratedWorkspace(repositoryWorkspace);
+        process.chdir(root);
+        rejectsGeneratedWorkspace(repositoryWorkspace);
+        rejectsGeneratedWorkspace(path.join(root, 'output', 'history'));
+
+        const external = path.join(root, 'external-history');
+        const first = M.publishMigrationRevision(external, a, { baseline: true });
+        assert.equal(first.committed, true); checks++;
+        assert.equal(first.sequence, '000000'); checks++;
+        const firstBytes = bytes(path.join(external, 'revisions', '000000'));
+        const second = M.publishMigrationRevision(external, b, { expectHead: first.headToken, expectPlan: M.hash(M.planMysqlMigration(a, b)) });
+        assert.equal(second.committed, true); checks++;
+        assert.equal(second.sequence, '000001'); checks++;
+        assert.deepEqual(bytes(path.join(external, 'revisions', '000000')), firstBytes); checks++;
+        assert.equal(M.readMigrationWorkspace(external).headToken, second.headToken); checks++;
+        const beforeNoOp = bytes(external);
+        const noOp = M.publishMigrationRevision(external, b, { expectHead: second.headToken, expectPlan: M.hash(M.planMysqlMigration(b, b)) });
+        assert.deepEqual({ committed: noOp.committed, noOp: noOp.noOp }, { committed: false, noOp: true }); checks++;
+        assert.deepEqual(bytes(external), beforeNoOp); checks++;
+    } finally {
+        process.chdir(originalCwd);
+        // A broken guard may have written this unique fixture; remove only that owned child.
+        assert.equal(path.dirname(repositoryWorkspace), repositoryOutput);
+        assert.equal(path.basename(repositoryWorkspace), path.basename(root));
+        fs.rmSync(repositoryWorkspace, { recursive: true, force: true });
+    }
     for (const method of ['writeFileSync', 'fsyncSync', 'renameSync', 'mkdirSync', 'readFileSync']) {
         const work = path.join(root, method), baseline = M.publishMigrationRevision(work, a, { baseline: true }), before = bytes(path.join(work, 'revisions'));
         let failed = false;
