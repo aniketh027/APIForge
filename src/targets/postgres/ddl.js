@@ -120,7 +120,7 @@ function physicalPlan(candidate) {
     }
     return physical;
 }
-function targetIssues(entities,relations=[]) {
+function sourceIssues(entities) {
     const issues=[];
     const add=(message,node,locationKey='name')=>issues.push({message,node,locationKey});
     for(const e of entities) {
@@ -132,6 +132,11 @@ function targetIssues(entities,relations=[]) {
             }
         }
     }
+    return issues;
+}
+function targetIssues(entities,relations=[]) {
+    const issues=sourceIssues(entities);
+    const add=(message,node,locationKey='name')=>issues.push({message,node,locationKey});
     if(issues.length || entities.some(e=>(e.fields||[]).some(f=>!['INT','STRING','FLOAT','BOOLEAN','ENUM','DATE','TIMESTAMP','UUID'].includes(f.dataType)||f.dataType==='ENUM'&&!Array.isArray(f.enumValues))))return issues;
     try {
         const candidate=schema.projectDefinitions(entities,relations,{comparison:v=>v});
@@ -152,7 +157,7 @@ function admissionError(message) {
 function prepare(ir,contextFactory) {
     const validation=IR.validate(ir);if(!validation.valid)throw admissionError('Invalid IR - '+validation.errors.join(', '));
     const definitions=policy.declaredEntitiesFromIR(ir),relations=policy.relationsFromIR(ir);
-    const problems=targetIssues(definitions,relations),numbers=definitions.flatMap(e=>e.fields.flatMap(numericIssues));
+    const problems=sourceIssues(definitions),numbers=definitions.flatMap(e=>e.fields.flatMap(numericIssues));
     if(problems.length||numbers.length)throw admissionError([...problems,...numbers].map(i=>i.message).join(' '));
     const candidate=schema.buildCandidate(ir,{comparison:v=>v});
     const conflicts=neutralNames.namingConflictsFromPlan(candidate,candidate.definitions,{physical:false});
