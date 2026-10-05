@@ -5,7 +5,7 @@ const policy = require('../planning/effective-policy');
 const { projectDefinitions } = require('../planning/effective-schema');
 const uuidSchema = () => ({ type: 'string', format: 'uuid', pattern: UUID_PATTERN,
     description: 'Canonical lowercase UUID text in exact 8-4-4-4-12 form. Any UUID version is accepted; no case normalization.' });
-function enrichFromPlan(doc, plan, { databaseErrors = false, entityScope = null } = {}) {
+function enrichFromPlan(doc, plan, { databaseErrors = false, entityScope = null, generatedIntegerMinimum = () => 0 } = {}) {
     // Current codegen enables G06; older pinned generators omit the option so
     // historical compatibility tests can still reconstruct their reviewed docs.
     const schemas = doc.components.schemas;
@@ -28,7 +28,7 @@ function enrichFromPlan(doc, plan, { databaseErrors = false, entityScope = null 
             if (field.dataType === 'INT') {
                 prop.minimum = Math.max(Number.MIN_SAFE_INTEGER, prop.minimum ?? Number.MIN_SAFE_INTEGER);
                 prop.maximum = Math.min(Number.MAX_SAFE_INTEGER, prop.maximum ?? Number.MAX_SAFE_INTEGER);
-                if (field.id === entity.key.fieldId && entity.key.generation === 'database_integer') prop.minimum = 0;
+                if (field.id === entity.key.fieldId && entity.key.generation === 'database_integer') prop.minimum = generatedIntegerMinimum(prop.minimum);
             }
             if (prop.enum && prop.nullable) prop.enum = [...prop.enum, null];
             createProperties[field.name] = prop;

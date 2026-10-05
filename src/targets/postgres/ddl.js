@@ -165,7 +165,7 @@ function prepare(ir,contextFactory) {
     try {schema.assertStructural(candidate);}catch(error){throw admissionError(error.message);}
     const physical=physicalPlan(candidate);if(physical.issues.length)throw admissionError(physical.issues.map(i=>i.message).join(' '));
     const context=contextFactory(candidate);context.physical=physical;
-    return {candidate,context,entities:candidate.definitions.entities,relations:candidate.definitions.relations};
+    return {candidate,context,entities:candidate.definitions.entities.map(e=>({name:e.name,fields:e.fields.map(({sourceLocations,...field})=>field)})),relations:candidate.definitions.relations};
 }
 function renderSchema(physical) {
     const output=['-- APIForge '+names.PROFILE,'SET standard_conforming_strings = on;',"SET TIME ZONE 'UTC';","SET DateStyle = 'ISO, YMD';"];
