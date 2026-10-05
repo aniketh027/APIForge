@@ -24,8 +24,10 @@ function decode(literal) {
         const revision = 'ff3dbde10ad07ca52b60eccb8828fb6d33a9c54c';
         const oldTarget = baselineModule('src/utils/mysql-target.js', revision), generator = baselineModule('src/codegen/codegen.js', revision);
         const oldDiagnostics = baselineModule('src/utils/diagnostics.js', revision), diagnostics = require('../src/utils/diagnostics');
-        assert.deepEqual(diagnostics.CODES, oldDiagnostics.CODES); assert.deepEqual(diagnostics.WARNING_CODES, oldDiagnostics.WARNING_CODES);
-        assert.equal(Object.values(diagnostics.CODES).flatMap(Object.values).length, 66);
+        assert.deepEqual(require('./v1-hardening-helpers').retainedCodes(diagnostics.CODES, oldDiagnostics.CODES), oldDiagnostics.CODES);
+        assert.deepEqual(diagnostics.WARNING_CODES, oldDiagnostics.WARNING_CODES);
+        assert.equal(Object.values(diagnostics.CODES).flatMap(Object.values).length, 67);
+        assert.equal(diagnostics.CODES.semantic.INVALID_TEMPORAL_DEFAULT, 'SEM038');
         const app = express(); app.use(express.json()); app.use('/api', require('../src/api/compiler-api'));
         const server = app.listen(0, '127.0.0.1'); await new Promise(resolve => server.once('listening', resolve));
         const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'apiforge-auto-check-')), previous = process.cwd();

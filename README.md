@@ -23,6 +23,15 @@ watch each compiler phase run live.
 For the complete syntax, validation rules, and worked examples, read the
 [APIForge Language Guide](docs/APIForge-Language-Guide.md).
 
+DATE and TIMESTAMP are first-class types. DATE uses Gregorian `YYYY-MM-DD`
+strings (1000-01-01 through 9999-12-31); TIMESTAMP uses UTC
+`YYYY-MM-DDTHH:mm:ssZ` strings (1970-01-01T00:00:01Z through
+2038-01-19T03:14:07Z). Quoted static defaults, REQUIRED, UNIQUE, exact filters
+and sorting are supported. Offsets, fractions, dynamic defaults and temporal
+bounds are unavailable. Generated MySQL sessions await UTC initialization;
+reads and private write copies preserve the public canonical representation.
+See [G24 verification and limitations](docs/date-timestamp-verification.md).
+
 ---
 
 ## 📝 DSL Syntax Example

@@ -67,11 +67,11 @@ function zipEntries(bytes) {
         const multiline = Semantic.analyze(Parser.parse(Lexer.tokenize('ENTITY Item\nID\nSTRING')));
         assert.deepEqual([multiline.diagnostics[0].line, multiline.diagnostics[0].column, multiline.diagnostics[0].endColumn], [2, 1, 3]);
     });
-    await test('original 61 errors and five warnings are frozen; SEM033 is the only addition', () => {
+    await test('original 61 errors and five warnings are frozen; later errors are append-only', () => {
         const { IMPLICIT_PRIMARY_KEY_COLLISION, ...original } = CODES.semantic;
         assert.equal(IMPLICIT_PRIMARY_KEY_COLLISION, 'SEM033');
         assert.deepEqual(require('./v1-hardening-helpers').retainedCodes(CODES, baseline.codes), baseline.codes);
-        assert.equal(Object.values(CODES).flatMap(Object.values).length, 66);
+        assert.equal(Object.values(CODES).flatMap(Object.values).length, 67);
         assert.deepEqual(WARNING_CODES, baseline.warnings);
     });
     await test('explicit id controls and a non-first key retain declared identity', async () => {

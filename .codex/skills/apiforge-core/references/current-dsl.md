@@ -33,7 +33,7 @@ RELATION Student ENROLLS_IN Course MANY_TO_MANY
 
 | Category | Supported forms |
 |---|---|
-| Data types | `INT`, `STRING`, `FLOAT`, `BOOLEAN`, `ENUM("a", "b")` |
+| Data types | `INT`, `STRING`, `FLOAT`, `BOOLEAN`, `ENUM("a", "b")`, `DATE`, `TIMESTAMP` |
 | Constraints | `PRIMARY KEY`, `REQUIRED`, `UNIQUE` |
 | Validations | `MIN <number>`, `MAX <number>`, `MIN_LENGTH <number>`, `MAX_LENGTH <number>` |
 | Default | `DEFAULT <number>`, `DEFAULT "text"`, `DEFAULT TRUE`, `DEFAULT FALSE` |
@@ -52,6 +52,15 @@ WRN001–WRN005 remain unchanged.
 `MIN` and `MAX` apply only to numeric fields. `INT` bounds and defaults must be integers; `FLOAT` accepts numeric literals. `MIN_LENGTH` and `MAX_LENGTH` apply only to `STRING`, require non-negative integer values, and require `MIN_LENGTH <= MAX_LENGTH` when combined. A default must match the field type, satisfy applicable numeric or STRING-length bounds, and occur at most once. Each validation modifier may appear at most once per field.
 
 ## Lexical and declaration behavior
+
+DATE and TIMESTAMP support REQUIRED/UNIQUE and quoted canonical STRING defaults.
+DATE is Gregorian YYYY-MM-DD, 1000-01-01 through 9999-12-31. TIMESTAMP is UTC
+YYYY-MM-DDTHH:mm:ssZ, 1970-01-01T00:00:01Z through 2038-01-19T03:14:07Z;
+offsets/fractions/local syntax are rejected. Explicit calendar validators are
+shared by semantics, IR and emitted runtime. SEM038 appends invalid temporal
+default diagnostics at the literal; wrong literal types retain SEM021.
+Bounds and temporal PKs remain invalid; no dynamic defaults or date arithmetic.
+See docs/date-timestamp-verification.md for full G24 evidence.
 
 - Reserved words, data types, cardinalities, and boolean literals are uppercase and case-sensitive. Lowercase spellings are ordinary identifiers and usually cause a later syntax error.
 - Identifiers start with a letter or underscore and continue with letters, digits, or underscores. Identifier matching is case-sensitive.

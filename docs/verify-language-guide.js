@@ -70,7 +70,8 @@ async function main() {
     const { IMPLICIT_PRIMARY_KEY_COLLISION, ...originalSemantic } = CODES.semantic;
     assert.equal(IMPLICIT_PRIMARY_KEY_COLLISION, 'SEM033');
     assert.deepEqual(require('../tests/v1-hardening-helpers').retainedCodes(CODES, baselineCodes), baselineCodes);
-    assert.equal(Object.values(CODES).flatMap(Object.values).length, 66);
+    assert.equal(Object.values(CODES).flatMap(Object.values).length, 67);
+    assert.equal(CODES.semantic.INVALID_TEMPORAL_DEFAULT, 'SEM038');
     const compiled = new Map();
     let javascript = 0;
     for (const example of valid) {
@@ -87,6 +88,17 @@ async function main() {
         assert(!Object.keys(swagger.paths).some(route => route.startsWith('/api/')));
         JSON.parse(content(result, 'package.json'));
         for (const entity of result.ast.entities) {
+            for (const field of entity.fields.filter(field => ['DATE', 'TIMESTAMP'].includes(field.dataType))) {
+                const instruction = result.optimized.ir.instructions.find(i => i.entity === entity.name && i.field === field.name);
+                assert.equal(instruction.dataType, field.dataType);
+                for (const role of ['', '.Create', '.Update', '.Read', '.CreateResult']) {
+                    const property = swagger.components.schemas[entity.name + role].properties[field.name];
+                    assert.equal(property.type, 'string');
+                    assert.equal(property.format, field.dataType === 'DATE' ? 'date' : 'date-time');
+                    assert(property.pattern && property.description);
+                    if (field.defaultValue) assert.equal(property.default, field.defaultValue.value);
+                }
+            }
             for (const field of entity.fields.filter(field => field.dataType === 'ENUM')) {
                 const instruction = result.optimized.ir.instructions.find(i => i.entity === entity.name && i.field === field.name);
                 assert.deepEqual(instruction.enumValues, field.enumValues);

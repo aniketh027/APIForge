@@ -3,6 +3,9 @@
 Verified against compiler baseline `96a1d34a80cfb21e4b5bdbaddf810dbef576f670`
 on 2026-10-01. Implementation and tests are the authority for this guide.
 See [audit evidence and reproduction commands](language-guide-verification.md).
+DATE/TIMESTAMP additions verified on 2026-10-05 from approved main
+`9ef005e18e875bdd83e3b73665c931588aa01ccf`; see
+[G24 evidence](date-timestamp-verification.md).
 
 ## 1. Overview
 
@@ -66,7 +69,7 @@ These exact uppercase words are reserved:
 | Category | Words |
 |---|---|
 | Declarations | `ENTITY`, `RELATION` |
-| Datatypes | `INT`, `FLOAT`, `BOOLEAN`, `STRING`, `ENUM` |
+| Datatypes | `INT`, `FLOAT`, `BOOLEAN`, `STRING`, `ENUM`, `DATE`, `TIMESTAMP` |
 | Modifiers | `PRIMARY`, `KEY`, `REQUIRED`, `UNIQUE`, `DEFAULT`, `MIN`, `MAX`, `MIN_LENGTH`, `MAX_LENGTH` |
 | Boolean literals | `TRUE`, `FALSE` |
 | Cardinalities | `ONE_TO_ONE`, `ONE_TO_MANY`, `MANY_TO_ONE`, `MANY_TO_MANY` |
@@ -148,7 +151,7 @@ reopening/extension syntax for an existing entity.
 
 ~~~text
 FieldDecl := Identifier DataType Modifier*
-DataType  := INT | FLOAT | BOOLEAN | STRING | ENUM "(" String ("," String)* ")"
+DataType  := INT | FLOAT | BOOLEAN | STRING | ENUM "(" String ("," String)* ")" | DATE | TIMESTAMP
 Modifier  := PRIMARY KEY | REQUIRED | UNIQUE
            | DEFAULT Literal
            | MIN Number | MAX Number
@@ -183,6 +186,8 @@ label STRING DEFAULT "ready" MAX_LENGTH 20 REQUIRED MIN_LENGTH 2 UNIQUE
 | BOOLEAN | REQUIRED, UNIQUE, DEFAULT | BOOLEAN | boolean |
 | STRING | PRIMARY KEY, REQUIRED, UNIQUE, DEFAULT, MIN_LENGTH, MAX_LENGTH | VARCHAR(255) or wider | string |
 | ENUM(...) | REQUIRED, UNIQUE, member DEFAULT | Native ENUM(...) | string with enum |
+| DATE | REQUIRED, UNIQUE, canonical string DEFAULT | DATE | string/date with pattern |
+| TIMESTAMP | REQUIRED, UNIQUE, canonical string DEFAULT | TIMESTAMP | string/date-time with pattern |
 
 ### INT
 
@@ -256,6 +261,50 @@ ENTITY Account
 id INT PRIMARY KEY
 status ENUM("active", "closed") DEFAULT "active"
 ~~~
+
+### DATE and TIMESTAMP
+
+DATE is a string in exactly `YYYY-MM-DD` form, inclusive range 1000-01-01 through
+9999-12-31. TIMESTAMP is a string in exactly `YYYY-MM-DDTHH:mm:ssZ` form, inclusive
+UTC range 1970-01-01T00:00:01Z through 2038-01-19T03:14:07Z. Validation explicitly
+checks Gregorian month lengths and leap years, hours 00–23 and minutes/seconds
+00–59. Uppercase literal Z is mandatory; offsets, fractions, local timestamps,
+numeric timestamps and relaxed SQL date syntax are rejected.
+
+<!-- example: valid datatype-temporal -->
+~~~apiforge
+ENTITY Event
+id INT PRIMARY KEY
+eventDate DATE REQUIRED
+startDate DATE UNIQUE DEFAULT "2026-01-01"
+createdAt TIMESTAMP
+publishedAt TIMESTAMP DEFAULT "2026-10-05T12:30:00Z"
+~~~
+
+Both types support REQUIRED, UNIQUE and quoted canonical static DEFAULT strings.
+Wrong DEFAULT literal types use SEM021; malformed/calendar-invalid/out-of-range
+strings use SEM038 at the literal. PRIMARY KEY remains INT/STRING only (SEM011).
+Numeric bounds and length bounds remain invalid (SEM015/SEM016). Duplicate
+modifiers use the existing diagnostics. Dynamic DEFAULT CURRENT_TIMESTAMP,
+DEFAULT NOW(), ON UPDATE, and automatic timestamp fields are unavailable.
+
+SQL uses DATE and TIMESTAMP without fractional precision. The complete TIMESTAMP
+schema sets the import session to `+00:00` and enables explicit timestamp defaults,
+so static SQL defaults preserve the UTC instant without legacy automatic attributes.
+Generated pools use mysql2 `dateStrings: ['DATE', 'TIMESTAMP']` and `timezone: 'Z'`;
+each checkout awaits `SET SESSION time_zone = '+00:00'` before application queries,
+including reused connections. Initialization failures destroy the connection.
+Reads normalize declared TIMESTAMP SQL strings to T/Z, including related targets;
+DATE stays unchanged and optional null remains null. Private model write copies
+convert TIMESTAMP to SQL form; request bodies and create echoes stay canonical.
+Omitted database-default values remain omitted from create responses; GET reads them.
+
+Collection exact filters use the same strict calendar/range validation and reject
+invalid input with HTTP 400 before SQL. TIMESTAMP bindings use UTC SQL strings.
+Both fields support existing whitelisted sorting; no range operators are added.
+OpenAPI Create/Update/Read/default/filter metadata uses string/date or
+string/date-time with canonical patterns and descriptions. Read
+[G24 verification](date-timestamp-verification.md) for driver and live evidence.
 
 ## 6. Primary Keys
 
@@ -620,7 +669,7 @@ Explicit PK creation/default semantics (G12) and mutation (G13) remain separate.
 ## 11. Diagnostics
 
 Public error codes have a prefix and three digits. The registry contains
-66 errors: LEX001–LEX004, PAR001–PAR022, SEM001–SEM037, INP001–INP002, and INT001.
+67 errors: LEX001–LEX004, PAR001–PAR022, SEM001–SEM038, INP001–INP002, and INT001.
 The symbolic identifier is separate: a semantic compatibility error may have
 `code: "DUPLICATE_FIELD"`, while its nested diagnostic has `code: "SEM005"`.
 Do not confuse the legacy symbolic code with the public code.
@@ -762,6 +811,8 @@ are not reapplied to filters.
 | BOOLEAN | Exactly lowercase true or false. |
 | STRING | Raw text, including empty strings; equality follows SQL column collation. |
 | ENUM | Exact declared member, case-sensitive; empty only if declared. |
+| DATE | Canonical Gregorian YYYY-MM-DD, 1000-01-01 through 9999-12-31. |
+| TIMESTAMP | Canonical UTC YYYY-MM-DDTHH:mm:ssZ, 1970-01-01T00:00:01Z through 2038-01-19T03:14:07Z; no offsets/fractions. |
 
 No special NULL filter exists: STRING null is text; ENUM null must be a declared
 member. Wildcard/contains, ranges, OR, and nested relationship filters have no
@@ -918,7 +969,7 @@ than one semantic diagnostic.
 | missing-entity-name | `ENTITY` | `PAR002` |
 | missing-datatype | `ENTITY Item ↵ value` | `PAR012` |
 | datatype-replaced-by-modifier | `ENTITY Item ↵ value REQUIRED` | `PAR013` |
-| unsupported-datatype | `ENTITY Item ↵ value DATE` | `PAR013` |
+| unsupported-datatype | `ENTITY Item ↵ value DATETIME` | `PAR013` |
 | lowercase-datatype | `ENTITY Item ↵ value string` | `PAR013` |
 | primary-without-key | `ENTITY Item ↵ id INT PRIMARY` | `PAR014` |
 | standalone-key | `ENTITY Item ↵ id INT KEY` | `PAR015` |
@@ -963,6 +1014,12 @@ than one semantic diagnostic.
 | auto-key-max | `ENTITY Item ↵ id INT PRIMARY KEY MAX 100 ↵ name STRING` | `SEM037` |
 | auto-key-both | `ENTITY Item ↵ id INT PRIMARY KEY MIN 1 MAX 100 ↵ name STRING` | `SEM037` |
 | enum-nonstring-default | `ENTITY Item ↵ value ENUM("a") DEFAULT TRUE` | `SEM021` |
+| date-invalid-calendar | `ENTITY Item ↵ value DATE DEFAULT "2026-02-30"` | `SEM038` |
+| date-numeric-default | `ENTITY Item ↵ value DATE DEFAULT 123` | `SEM021` |
+| timestamp-local-default | `ENTITY Item ↵ value TIMESTAMP DEFAULT "2026-10-05 12:30:00"` | `SEM038` |
+| timestamp-range-default | `ENTITY Item ↵ value TIMESTAMP DEFAULT "2040-01-01T00:00:00Z"` | `SEM038` |
+| date-key | `ENTITY Item ↵ value DATE PRIMARY KEY` | `SEM011` |
+| timestamp-length-bound | `ENTITY Item ↵ value TIMESTAMP MAX_LENGTH 20` | `SEM016` |
 | enum-key | `ENTITY Item ↵ value ENUM("a") PRIMARY KEY` | `SEM011` |
 | enum-numeric-bound | `ENTITY Item ↵ value ENUM("a") MIN 1` | `SEM015` |
 | enum-length-bound | `ENTITY Item ↵ value ENUM("a") MAX_LENGTH 1` | `SEM016` |
@@ -1008,7 +1065,7 @@ imports, namespaces, entity extension, inheritance, reusable named enums,
 arrays/objects, expressions/functions, loops, conditional statements, migrations,
 custom endpoints, authentication declarations, or alternate database targets.
 
-Only the five listed datatypes exist. DATE/TIMESTAMP, UUID, JSON, DECIMAL,
+Only the seven listed datatypes exist. DATETIME, TIME, YEAR, UUID, JSON, DECIMAL,
 VARCHAR(n), NULL defaults, regex/email constraints, indexes, composite entity
 primary keys, explicit FOREIGN KEY constraints, and configurable delete actions have
 no DSL construct. SQL composite junction keys are generated from MANY_TO_MANY,
