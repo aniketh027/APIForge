@@ -126,15 +126,21 @@ function storageBytes(field) {
 // provenance. Legacy semantic callers retain their exact contributor objects.
 function sourceContext(candidate, definitions = candidate.definitions) {
     const entities = new Map(), fields = new Map(), relations = new Map();
+    const entityList = [], relationList = [];
     for (const [index, entity] of candidate.plan.entities.entries()) {
-        const source = definitions?.entities?.[index];
-        entities.set(entity.id, source || policy.legacyEntity(entity, candidate.provenance));
-        for (const field of policy.fieldViews(entity)) fields.set(field.id,
-            source?.fields?.[field.declaredOrder] || policy.legacyField(field, candidate.provenance));
+        const source = definitions?.entities?.[index] || policy.legacyEntity(entity, candidate.provenance);
+        entityList.push(source); entities.set(entity.id, source);
+        const seen = new Set();
+        for (const field of policy.fieldViews(entity)) if (!seen.has(field.id)) {
+            fields.set(field.id, source.fields?.[field.declaredOrder] || policy.legacyField(field, candidate.provenance));
+            seen.add(field.id);
+        }
     }
-    for (const [index, relation] of candidate.plan.relations.entries()) relations.set(relation.id,
-        definitions?.relations?.[index] || policy.legacyRelation(relation, candidate.plan, candidate.provenance));
-    return { entities, fields, relations };
+    for (const [index, relation] of candidate.plan.relations.entries()) {
+        const source = definitions?.relations?.[index] || policy.legacyRelation(relation, candidate.plan, candidate.provenance);
+        relationList.push(source); relations.set(relation.id, source);
+    }
+    return { entities, fields, relations, entityList, relationList };
 }
 
 function physicalPlan(entities, relations = []) {
@@ -154,14 +160,16 @@ function physicalPlanFromPlan(input, suppliedSources) {
                 ? { name: field.name, dataType: field.dataType } : field;
         }
     };
-    const tables = plan.entities.map(entity => {
-        const key = policy.identity(entity), node = sources.entities.get(entity.id);
+    const tables = plan.entities.map((entity, index) => {
+        const key = policy.identity(entity), node = sources.entityList?.[index] || sources.entities.get(entity.id);
+        const rawField = field => node.fields?.[field.declaredOrder] || sources.fields.get(field.id) || field;
         const columns = policy.fieldViews(entity, 'base').map(field => ({ name: field.name,
-            field: typeField(field.id), node: sources.fields.get(field.id) || node,
+            field: field.origin.kind === 'declared' ? rawField(field) : { name: field.name, dataType: field.dataType },
+            node: field.origin.kind === 'declared' ? rawField(field) : node,
             nullable: field.storage.nullable, origin: field.origin.kind === 'declared' ? 'declared' : 'implicit' }));
-        const indexes = [{ kind: 'PRIMARY', parts: [key.name], node: sources.fields.get(entity.key.fieldId) || node }];
+        const indexes = [{ kind: 'PRIMARY', parts: [key.name], node: key.origin === 'explicit' ? rawField(key.field) : node }];
         for (const field of policy.fieldViews(entity)) if (field.storage.unique) {
-            indexes.push({ kind: 'UNIQUE', parts: [field.name], node: sources.fields.get(field.id) });
+            indexes.push({ kind: 'UNIQUE', parts: [field.name], node: rawField(field) });
         }
         return { name: entity.names.table, node, columns, indexes, altered: false };
     });
@@ -171,8 +179,8 @@ function physicalPlanFromPlan(input, suppliedSources) {
             table.indexes.push({ kind: 'FK', parts, node });
         }
     };
-    for (const relation of plan.relations) {
-        const storage = relation.storage, node = sources.relations.get(relation.id);
+    for (const [index, relation] of plan.relations.entries()) {
+        const storage = relation.storage, node = sources.relationList?.[index] || sources.relations.get(relation.id);
         if (!storage) continue;
         if (storage.kind === 'junction') {
             const columns = storage.table.columns.map(column => ({ name: column.name,
@@ -393,7 +401,7 @@ function targetIssues(entities, relations = []) {
 function targetIssuesFromPlan(input, suppliedSources) {
     const candidate = input.plan ? input : { plan: input, provenance: {} };
     const plan = candidate.plan, sources = suppliedSources || sourceContext(candidate);
-    const entities = plan.entities.map(entity => sources.entities.get(entity.id));
+    const entities = sources.entityList || plan.entities.map(entity => sources.entities.get(entity.id));
     const issues = [];
     const issue = (node, message, locationKey = 'name', hint) => issues.push({ node, message, locationKey, ...(hint ? { hint } : {}) });
     const identifier = (name, node, kind) => {
@@ -443,8 +451,8 @@ function targetIssuesFromPlan(input, suppliedSources) {
             }
         }
     }
-    for (const relation of plan.relations) {
-        const storage = relation.storage, node = sources.relations.get(relation.id);
+    for (const [index, relation] of plan.relations.entries()) {
+        const storage = relation.storage, node = sources.relationList?.[index] || sources.relations.get(relation.id);
         if (!storage) continue;
         const physical = relationPhysicalNames(relation, plan);
         if (storage.kind === 'junction') {

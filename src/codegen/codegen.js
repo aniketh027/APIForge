@@ -741,7 +741,7 @@ function generateModel(entityName, fields, relations = [], entities = [], suppli
                     `    // Relationship: ${entityName} ${rel.relationName} ${targetName} (MANY_TO_MANY)\n` +
                     `    static async ${rel.names.getter}(${rel.names.sourceParam}) {\n` +
                     `        const [rows] = await pool.query(\n` +
-                    `            'SELECT t.* FROM ${quoteIdentifier(targetName)} t JOIN ${quoteIdentifier(junctionTable)} j ON t.${quoteIdentifier(targetPk.name)} = j.${quoteIdentifier(targetFkCol)} WHERE j.${quoteIdentifier(sourceFkCol)} = ?',\n` +
+                    `            'SELECT t.* FROM ${quoteIdentifier(targetEntity.names.table)} t JOIN ${quoteIdentifier(junctionTable)} j ON t.${quoteIdentifier(targetPk.name)} = j.${quoteIdentifier(targetFkCol)} WHERE j.${quoteIdentifier(sourceFkCol)} = ?',\n` +
                     `            [${rel.names.sourceParam}]\n` +
                     `        );\n` +
                     `        return rows.map(row => normalizeRow(row, ${readArguments(targetReadFields)}));\n` +
@@ -767,7 +767,7 @@ function generateModel(entityName, fields, relations = [], entities = [], suppli
                     `    // Relationship: ${entityName} ${rel.relationName} ${targetName} (ONE_TO_MANY)\n` +
                     `    static async ${rel.names.getter}(${rel.names.sourceParam}) {\n` +
                     `        const [rows] = await pool.query(\n` +
-                    `            'SELECT * FROM ${quoteIdentifier(targetName)} WHERE ${quoteIdentifier(sourceFkCol)} = ?',\n` +
+                    `            'SELECT * FROM ${quoteIdentifier(targetEntity.names.table)} WHERE ${quoteIdentifier(sourceFkCol)} = ?',\n` +
                     `            [${rel.names.sourceParam}]\n` +
                     `        );\n` +
                     `        return rows.map(row => normalizeRow(row, ${readArguments(targetReadFields)}));\n` +
@@ -779,7 +779,7 @@ function generateModel(entityName, fields, relations = [], entities = [], suppli
                     `    // Relationship: ${entityName} ${rel.relationName} ${targetName} (MANY_TO_ONE)\n` +
                     `    static async ${rel.names.getter}(${rel.names.sourceParam}) {\n` +
                     `        const [rows] = await pool.query(\n` +
-                    `            'SELECT t.* FROM ${quoteIdentifier(targetName)} t JOIN ${quoteIdentifier(entityName)} s ON t.${quoteIdentifier(targetPk.name)} = s.${quoteIdentifier(targetFkCol)} WHERE s.${quoteIdentifier(sourcePk.name)} = ?',\n` +
+                    `            'SELECT t.* FROM ${quoteIdentifier(targetEntity.names.table)} t JOIN ${quoteIdentifier(entity.names.table)} s ON t.${quoteIdentifier(targetPk.name)} = s.${quoteIdentifier(targetFkCol)} WHERE s.${quoteIdentifier(sourcePk.name)} = ?',\n` +
                     `            [${rel.names.sourceParam}]\n` +
                     `        );\n` +
                     `        return rows.length > 0 ? normalizeRow(rows[0], ${readArguments(targetReadFields)}) : null;\n` +
@@ -791,7 +791,7 @@ function generateModel(entityName, fields, relations = [], entities = [], suppli
                     `    // Relationship: ${entityName} ${rel.relationName} ${targetName} (ONE_TO_ONE)\n` +
                     `    static async ${rel.names.getter}(${rel.names.sourceParam}) {\n` +
                     `        const [rows] = await pool.query(\n` +
-                    `            'SELECT * FROM ${quoteIdentifier(targetName)} WHERE ${quoteIdentifier(sourceFkCol)} = ?',\n` +
+                    `            'SELECT * FROM ${quoteIdentifier(targetEntity.names.table)} WHERE ${quoteIdentifier(sourceFkCol)} = ?',\n` +
                     `            [${rel.names.sourceParam}]\n` +
                     `        );\n` +
                     `        return rows.length > 0 ? normalizeRow(rows[0], ${readArguments(targetReadFields)}) : null;\n` +
@@ -853,22 +853,22 @@ ${pkField.generation === 'runtime_uuid' ? `    if (operation === 'create' && (!O
            `        return queryValidationErrors.get(error);\n` +
            `    }\n\n` +
            `    static get tableName() {\n` +
-           `        return '${entityName}';\n` +
+           `        return '${entity.names.table}';\n` +
            `    }\n\n` +
            `    static get fields() {\n` +
            `        return ${fieldsJson};\n` +
            `    }\n\n` +
            generateCollectionMethods(entity, readFields) +
            `    static async findById(id) {\n` +
-           `        const [rows] = await pool.query('SELECT * FROM ${quoteIdentifier(entityName)} WHERE ${quoteIdentifier(pkField.name)} = ?', [id]);\n` +
+           `        const [rows] = await pool.query('SELECT * FROM ${quoteIdentifier(entity.names.table)} WHERE ${quoteIdentifier(pkField.name)} = ?', [id]);\n` +
            `        return rows.length > 0 ? normalizeRow(rows[0], ${readArguments(readFields)}) : null;\n` +
            `    }\n\n` +
            `    static async create(data) {\n` +
            (uuidWrites ? `        const uuidData = uuidWriteData(data, 'create');\n` : '') +
            (temporalWrites ? `        const databaseData = databaseWriteData(${uuidWrites ? 'uuidData' : 'data'});\n` : '') +
            `        const [result] = Object.keys(${uuidWrites ? 'uuidData' : 'data'}).length === 0\n` +
-           `            ? await pool.query('INSERT INTO ${quoteIdentifier(entityName)} () VALUES ()')\n` +
-           `            : await pool.query('INSERT INTO ${quoteIdentifier(entityName)} SET ?', [${temporalWrites ? 'databaseData' : uuidWrites ? 'uuidData' : 'data'}]);\n` +
+           `            ? await pool.query('INSERT INTO ${quoteIdentifier(entity.names.table)} () VALUES ()')\n` +
+           `            : await pool.query('INSERT INTO ${quoteIdentifier(entity.names.table)} SET ?', [${temporalWrites ? 'databaseData' : uuidWrites ? 'uuidData' : 'data'}]);\n` +
            `        const identity = resolveCreateIdentity(${pkField.dataType === 'UUID' ? 'uuidData' : 'data'}, result);\n` +
            `        const response = { ...data };\n` +
            `        if (identity.resolved) {\n` +
@@ -882,11 +882,11 @@ ${pkField.generation === 'runtime_uuid' ? `    if (operation === 'create' && (!O
            `        if (!data || Object.keys(data).length === 0) {\n` +
            `            return await this.findById(id);\n` +
            `        }\n` +
-           `        await pool.query('UPDATE ${quoteIdentifier(entityName)} SET ? WHERE ${quoteIdentifier(pkField.name)} = ?', [${temporalWrites ? `databaseWriteData(${uuidWrites ? "uuidWriteData(data, 'update')" : 'data'})` : uuidWrites ? "uuidWriteData(data, 'update')" : 'data'}, id]);\n` +
+           `        await pool.query('UPDATE ${quoteIdentifier(entity.names.table)} SET ? WHERE ${quoteIdentifier(pkField.name)} = ?', [${temporalWrites ? `databaseWriteData(${uuidWrites ? "uuidWriteData(data, 'update')" : 'data'})` : uuidWrites ? "uuidWriteData(data, 'update')" : 'data'}, id]);\n` +
            `        return await this.findById(id);\n` +
            `    }\n\n` +
            `    static async delete(id) {\n` +
-           `        const [result] = await pool.query('DELETE FROM ${quoteIdentifier(entityName)} WHERE ${quoteIdentifier(pkField.name)} = ?', [id]);\n` +
+           `        const [result] = await pool.query('DELETE FROM ${quoteIdentifier(entity.names.table)} WHERE ${quoteIdentifier(pkField.name)} = ?', [id]);\n` +
            `        return result.affectedRows > 0;\n` +
            `    }${relMethodsStr}\n` +
            `}\n\n` +

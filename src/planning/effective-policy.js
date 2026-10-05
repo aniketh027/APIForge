@@ -132,7 +132,7 @@ function createPresence(field, key) {
 }
 
 function writeMetadata(entity, fieldSources) {
-    return fieldViews(entity).map(field => ({ name: field.name, dataType: field.dataType,
+    return fieldViews(entity, 'create').map(field => ({ name: field.name, dataType: field.dataType,
         required: !field.roles.http.create.nullable, requiredOnCreate: field.roles.http.create.required,
         validations: fieldSources?.get(field.id)?.validations || field.validations.map(value => ({ ...value })),
         ...(field.dataType === 'ENUM' ? { enumValues: [...field.enumValues] } : {}) }));

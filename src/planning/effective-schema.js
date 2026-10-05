@@ -13,7 +13,7 @@ function finiteCopy(value, issues, nodeId) {
         return null;
     }
     if (value == null || typeof value === 'string' || typeof value === 'boolean' || typeof value === 'number') return value ?? null;
-    if (Array.isArray(value)) return value.map(item => finiteCopy(item, issues, nodeId));
+    if (Array.isArray(value)) return Array.from(value, item => finiteCopy(item, issues, nodeId));
     if (typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, finiteCopy(item, issues, nodeId)]));
     return null;
 }
@@ -54,7 +54,9 @@ function makeField(entityName, source, order, key, origin, relationId, typeSourc
         : policy.stableId('field', entityName, source.name);
     const constraints = [...(source.constraints || [])];
     const field = { id, name: source.name, dataType: source.dataType,
-        enumValues: source.dataType === 'ENUM' ? [...(source.enumValues || [])] : null,
+        // Tolerant semantic preflight can see forged malformed AST metadata;
+        // existing language diagnostics own it before strict post-IR admission.
+        enumValues: source.dataType === 'ENUM' ? (Array.isArray(source.enumValues) ? finiteCopy(source.enumValues, issues, id) : []) : null,
         origin: { kind: origin, relationId: relationId || null },
         declaredOrder: origin === 'declared' ? order : null, effectiveOrder: order,
         typeSourceFieldId: typeSourceFieldId || null, constraints,

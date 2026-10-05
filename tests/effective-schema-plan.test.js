@@ -358,6 +358,18 @@ async function main() {
         assert.throws(() => schema.assertStructural(candidate), /finite/);
     });
 
+    await test('tolerant semantic projection preserves malformed ENUM AST diagnostic behavior', () => {
+        const original = createPinnedCompiler().compiler.Semantic;
+        for (const values of [undefined, null, {}, [], Array(1), [1], ['a', 'a']]) {
+            const ast = Parser.parse(Lexer.tokenize('ENTITY Item key INT PRIMARY KEY status ENUM("a")'));
+            ast.entities[0].fields[1].enumValues = values;
+            assert.deepEqual(JSON.parse(JSON.stringify(Semantic.analyze(ast))), JSON.parse(JSON.stringify(original.analyze(ast))));
+            const candidate = schema.projectDefinitions(ast.entities, ast.relations);
+            assertPlain(candidate.plan);
+            assert.deepEqual(JSON.parse(JSON.stringify(candidate.plan)), candidate.plan);
+        }
+    });
+
     await test('MySQL physical plans and diagnostic contributors match the complete pinned valid corpus', () => {
         const pinned = createPinnedCompiler(), original = pinned.load('src/utils/mysql-target.js');
         const cases = sourceCases(pinned).cases.map(example => pinned.compile(example.source)).filter(result => result.valid);
@@ -382,6 +394,26 @@ async function main() {
         assert.equal(tables[0].node, inputs[0]); assert.equal(tables[0].columns[0].field, inputs[0].fields[0]);
         assert.equal(tables[1].columns.at(-1).node, relations[0]);
         assert.equal(tables[1].columns.at(-1).field, inputs[0].fields[0]);
+    });
+
+    await test('tolerant duplicate declarations preserve earlier MySQL geometry and contributor locations', () => {
+        const pinned = createPinnedCompiler(), original = pinned.load('src/utils/mysql-target.js');
+        for (const source of [
+            'ENTITY Item same STRING MAX_LENGTH 16000 same INT extra STRING MAX_LENGTH 600',
+            'ENTITY Item wide STRING MAX_LENGTH 16000 extra STRING MAX_LENGTH 600 ENTITY Item small INT'
+        ]) {
+            const ast = Parser.parse(Lexer.tokenize(source));
+            assert.deepEqual(mysqlTarget.physicalPlan(ast.entities, ast.relations), original.physicalPlan(ast.entities, ast.relations));
+            assert.deepEqual(mysqlTarget.targetIssues(ast.entities, ast.relations), original.targetIssues(ast.entities, ast.relations));
+            assert.deepEqual(JSON.parse(JSON.stringify(Semantic.analyze(ast))), JSON.parse(JSON.stringify(pinned.compiler.Semantic.analyze(ast))));
+        }
+        const inputs = [{ name: 'One', fields: [{ name: 'key', dataType: 'INT', constraints: ['PRIMARY_KEY'] }] },
+            { name: 'Many', fields: Array.from({ length: 1016 }, (_, index) => ({ name: 'v' + index, dataType: 'INT', constraints: [] })) }];
+        const relations = [1, 2].map(line => ({ sourceEntity: 'One', targetEntity: 'Many', relationName: 'owns', relationType: 'ONE_TO_MANY', line }));
+        assert.deepEqual(mysqlTarget.physicalPlan(inputs, relations), original.physicalPlan(inputs, relations));
+        const issues = mysqlTarget.targetIssues(inputs, relations);
+        assert.deepEqual(issues, original.targetIssues(inputs, relations));
+        assert.equal(issues[0].node, relations[0]);
     });
 
     await test('complete generation constructs one plan and partial renderer exports retain exact legacy bytes', () => {
