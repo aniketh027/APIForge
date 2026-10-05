@@ -11,7 +11,8 @@ const schema = require('../src/planning/effective-schema');
 const policy = require('../src/planning/effective-policy');
 const names = require('../src/utils/target-names');
 const { createPinnedCompiler } = require('./pinned-compiler-loader');
-const { directIRCases, structuralIRCases } = require('./effective-schema-corpus');
+const { directIRCases, structuralIRCases, sourceCases } = require('./effective-schema-corpus');
+const mysqlTarget = require('../src/utils/mysql-target');
 const UUID = '550e8400-e29b-41d4-a716-446655440000';
 let assertions = 0, groups = 0;
 const assert = new Proxy(baseAssert, {
@@ -294,7 +295,9 @@ async function main() {
         const candidate = schema.projectDefinitions(partial, [], { strict: false }), planned = entity(candidate, 'Partial');
         assert.equal(policy.identity(planned).origin, 'implicit'); assert.equal(policy.identity(planned).dataType, 'INT');
         assert.notEqual(field(planned, 'id').id, field(planned, 'id', 'implicit_key').id);
-        assert.equal(field(planned, 'id').roles.http.update.acceptance, 'write');
+        // In tolerant partial helpers the declared spelling still triggers the
+        // emitted model/controller's own-key immutability guard.
+        assert.equal(field(planned, 'id').roles.http.update.acceptance, 'immutable');
         assert.equal(field(planned, 'id').roles.http.read.required, false);
         assert.deepEqual(policy.keyFromPlan(planned), policy.legacyKey(partial[0]));
         assert.equal(candidate.issues[0].code, 'IMPLICIT_KEY_COLLISION');
@@ -353,6 +356,58 @@ async function main() {
         assert.equal(candidate.issues.filter(issue => issue.code === 'NON_FINITE_VALUE').length, 2);
         assertPlain(candidate.plan); assert.deepEqual(JSON.parse(JSON.stringify(candidate.plan)), candidate.plan);
         assert.throws(() => schema.assertStructural(candidate), /finite/);
+    });
+
+    await test('MySQL physical plans and diagnostic contributors match the complete pinned valid corpus', () => {
+        const pinned = createPinnedCompiler(), original = pinned.load('src/utils/mysql-target.js');
+        const cases = sourceCases(pinned).cases.map(example => pinned.compile(example.source)).filter(result => result.valid);
+        for (const result of cases) {
+            const candidate = schema.buildCandidate(result.phases.optimized.ir);
+            const definitions = candidate.definitions;
+            const before = original.physicalPlan(definitions.entities, definitions.relations);
+            const actual = mysqlTarget.physicalPlanFromPlan(candidate);
+            assert.deepEqual(actual, before);
+            assert.deepEqual(mysqlTarget.targetIssuesFromPlan(candidate), original.targetIssues(definitions.entities, definitions.relations));
+            const restored = mysqlTarget.physicalPlanFromPlan(JSON.parse(JSON.stringify(candidate.plan)));
+            const layout = tables => tables.map(table => ({ name: table.name, altered: table.altered,
+                columns: table.columns.map(column => ({ name: column.name, nullable: column.nullable,
+                    type: mysqlTarget.columnType(column.field), origin: column.origin })),
+                indexes: table.indexes.map(index => ({ kind: index.kind, parts: index.parts })), budget: mysqlTarget.rowBudget(table) }));
+            assert.deepEqual(layout(restored), layout(actual), 'Serialized canonical plan retains physical type-source widths and budgets.');
+        }
+        const inputs = [{ name: 'One', fields: [{ name: 'code', dataType: 'STRING', constraints: ['PRIMARY_KEY'], validations: [] }] },
+            { name: 'Many', fields: [{ name: 'value', dataType: 'INT', constraints: [], validations: [] }] }];
+        const relations = [{ sourceEntity: 'One', targetEntity: 'Many', relationName: 'contains', relationType: 'ONE_TO_MANY' }];
+        const tables = mysqlTarget.physicalPlan(inputs, relations);
+        assert.equal(tables[0].node, inputs[0]); assert.equal(tables[0].columns[0].field, inputs[0].fields[0]);
+        assert.equal(tables[1].columns.at(-1).node, relations[0]);
+        assert.equal(tables[1].columns.at(-1).field, inputs[0].fields[0]);
+    });
+
+    await test('complete generation constructs one plan and partial renderer exports retain exact legacy bytes', () => {
+        const pinned = createPinnedCompiler().compiler.Codegen;
+        const partialFields = [{ name: 'id', dataType: 'INT' }];
+        const metadataFields = [{ name: 'key', dataType: 'INT', constraints: ['PRIMARY_KEY'],
+            validations: [{ type: 'MIN', value: 0, note: 'retained' }], defaultValue: { type: 'NUMBER', value: 7, note: 'retained' } }];
+        const relations = [{ sourceEntity: 'Student', targetEntity: 'Course', relationName: 'takes', relationType: 'MANY_TO_MANY' }];
+        for (const [method, args] of [['generateModel', ['Student', partialFields]],
+            ['generateModel', ['Student', metadataFields]], ['generateController', ['Student', metadataFields]],
+            ['generateModel', ['Student', [], relations]], ['generateController', ['Student', relations]],
+            ['generateController', ['Student']], ['generateRoutes', ['Student', relations]],
+            ['generateServer', [[{ name: 'Student' }]]], ['generateSwagger', [[{ name: 'Student', fields: partialFields }]]],
+            ['generateDBConfig', [[], relations]], ['generateReadme', [[]]]]) {
+            assert.equal(Codegen[method](...args), pinned[method](...args), method + ': partial helper byte compatibility');
+        }
+        const ir = compile('ENTITY Item value STRING').optimized;
+        const build = schema.buildCandidate; let count = 0;
+        schema.buildCandidate = input => { count++; return build(input); };
+        try { Codegen.generate(ir, false); assert.equal(count, 1); }
+        finally { schema.buildCandidate = build; }
+        for (const name of ['Id', 'ID', 'iD']) {
+            const ir = { type: 'PROGRAM', instructions: [{ op: 'ADD_FIELD', entity: 'Direct', field: name, dataType: 'STRING', constraints: [] }] };
+            assert(pinned.generate(ir, false).files.length > 0);
+            assert.throws(() => Codegen.generate(ir, false), /collides with the implicit identity/);
+        }
     });
 
     await test('emitted HTTP and direct-model write surfaces preserve the four-category matrix', async () => {

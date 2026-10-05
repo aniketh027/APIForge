@@ -8,6 +8,11 @@ function stableId(kind, ...names) {
     return kind + ':' + names.map(name => encodeURIComponent(String(name))).join('/');
 }
 
+function identityGeneration(field) {
+    return !field || (field.dataType === 'INT' && field.defaultValue == null) ? 'database_integer'
+        : field.dataType === 'UUID' && field.defaultValue == null ? 'runtime_uuid' : 'none';
+}
+
 function identity(entity) {
     if (entity?.key?.fieldId) {
         const field = entity.fields.find(item => item.id === entity.key.fieldId && item.origin.kind === 'implicit_key') ||
@@ -17,8 +22,7 @@ function identity(entity) {
             origin: field.origin.kind === 'implicit_key' ? 'implicit' : 'explicit', generation: entity.key.generation };
     }
     const field = entity?.fields?.find(item => item.constraints?.includes('PRIMARY_KEY')) || null;
-    const generation = !field || (field.dataType === 'INT' && field.defaultValue == null) ? 'database_integer'
-        : field.dataType === 'UUID' && field.defaultValue == null ? 'runtime_uuid' : 'none';
+    const generation = identityGeneration(field);
     return { field, name: field ? field.name : 'id', dataType: field ? field.dataType : 'INT',
         origin: field ? 'explicit' : 'implicit', generation };
 }
@@ -159,6 +163,6 @@ function capabilities(plan, entity = null) {
         uuidController: uuid(entity) || targets.some(target => identity(target).dataType === 'UUID') };
 }
 
-module.exports = { POLICY_VERSION, COLLECTION_RESERVED_PARAMS, stableId, identity, legacyKey, relationshipTopology,
+module.exports = { POLICY_VERSION, COLLECTION_RESERVED_PARAMS, stableId, identityGeneration, identity, legacyKey, relationshipTopology,
     declaredEntitiesFromIR, relationsFromIR, fieldViews, legacyField, keyFromPlan, legacyEntity, legacyRelation,
     readNormalizationFields, readMetadata, createPresence, writeMetadata, modelWriteMetadata, capabilities };

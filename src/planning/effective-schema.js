@@ -38,7 +38,7 @@ function fieldRoles(field, key, origin) {
     const generated = identity && key.generation !== 'none';
     return { http: {
         create: { acceptance: declared ? 'write' : 'unknown', required: declared && policy.createPresence(field, key), nullable },
-        update: { acceptance: declared ? identity ? 'immutable' : 'write' : 'unknown', nullable },
+        update: { acceptance: declared ? field.name === key.name ? 'immutable' : 'write' : 'unknown', nullable },
         read: { exposed: true, required: identity, nullable: identity ? false : nullable,
             readOnly: !declared || generated },
         createResult: { exposed: origin !== 'relationship_fk', required: identity && key.generation === 'runtime_uuid',
@@ -88,16 +88,16 @@ function projectDefinitions(entities = [], relations = [], options = {}) {
         const seen = new Set();
         for (const [fieldOrder, inputField] of declared.entries()) {
             const field = makeField(name, inputField, fieldOrder, key, 'declared', null, null, issues);
-            if (seen.has(field.name)) issues.push({ code: 'DUPLICATE_FIELD', nodeId: field.id,
+            if (seen.has(field.name.toLowerCase())) issues.push({ code: 'DUPLICATE_FIELD', nodeId: field.id,
                 occurrence: fieldOrder, message: `Entity '${name}' has duplicate effective field '${field.name}'.` });
-            seen.add(field.name);
+            seen.add(field.name.toLowerCase());
             entity.fields.push(field);
             if (!provenance[field.id]) provenance[field.id] = location(inputField, [field.id]);
         }
         if (key.origin === 'implicit') {
             const field = makeField(name, { name: key.name, dataType: key.dataType, constraints: ['PRIMARY_KEY'] },
                 entity.fields.length, key, 'implicit_key', null, null, issues);
-            if (seen.has(field.name)) issues.push({ code: 'IMPLICIT_KEY_COLLISION', nodeId: field.id,
+            if (seen.has(field.name.toLowerCase())) issues.push({ code: 'IMPLICIT_KEY_COLLISION', nodeId: field.id,
                 message: `Declared field '${name}.${field.name}' collides with the implicit identity.` });
             entity.fields.push(field);
             if (!provenance[field.id]) provenance[field.id] = location(source, [id]);
@@ -136,7 +136,7 @@ function projectDefinitions(entities = [], relations = [], options = {}) {
                 return { id: fieldId, name, dataType: key.dataType, typeSourceFieldId: entity.key.fieldId,
                     origin: { kind: 'junction_fk', relationId: id, endpoint }, nullable: false, defaultValue: null };
             });
-            if (columns[0].name === columns[1].name) issues.push({ code: 'DUPLICATE_STORAGE_FIELD', nodeId: id,
+            if (columns[0].name.toLowerCase() === columns[1].name.toLowerCase()) issues.push({ code: 'DUPLICATE_STORAGE_FIELD', nodeId: id,
                 message: `Junction '${names.junction}' has duplicate storage field '${columns[0].name}'.` });
             provenance[tableId] = location(source, [id]);
             relation.storage = { kind: 'junction', table: { id: tableId, name: names.junction, columns,
@@ -150,7 +150,7 @@ function projectDefinitions(entities = [], relations = [], options = {}) {
                 ...(key.dataType === 'ENUM' ? { enumValues: key.field.enumValues } : {}) }, receiver.fields.length,
                 policy.identity(receiver), 'relationship_fk', id, referenced.key.fieldId, issues);
             field.storage = { nullable: true, unique: topology.unique };
-            if (receiver.fields.some(item => item.name === name)) issues.push({ code: 'DUPLICATE_STORAGE_FIELD', nodeId: id,
+            if (receiver.fields.some(item => item.name.toLowerCase() === name.toLowerCase())) issues.push({ code: 'DUPLICATE_STORAGE_FIELD', nodeId: id,
                 message: `Entity '${receiver.sourceName}' has duplicate storage field '${name}'.` });
             receiver.fields.push(field);
             provenance[field.id] = location(source, [id, referenced.key.fieldId]);

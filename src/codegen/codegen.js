@@ -41,6 +41,7 @@ const uuid = require('../utils/uuid');
 const effectivePolicy = require('../planning/effective-policy');
 const effectiveSchema = require('../planning/effective-schema');
 const targetNames = require('../utils/target-names');
+const mysqlTarget = require('../utils/mysql-target');
 
 // Full generation supplies this context once. Standalone compatibility helpers
 // project incomplete definitions locally without production admission checks.
@@ -88,8 +89,6 @@ function assertModelPolicy(entity) {
 
 const isTemporalField = field => field.dataType === 'DATE' || field.dataType === 'TIMESTAMP';
 const isUuidField = field => field.dataType === 'UUID';
-const hasTemporalFields = entities => entities.some(entity => entity.fields.some(isTemporalField));
-const temporalFields = fields => fields.filter(isTemporalField).map(field => ({ name: field.name, dataType: field.dataType }));
 const readArguments = fields => {
     const metadata = effectivePolicy.readMetadata(fields);
     return JSON.stringify(metadata.booleanFields) +
@@ -142,14 +141,6 @@ function pluralize(word) { return require('../utils/target-names').pluralize(wor
 function lowerFirst(str) { return require('../utils/target-names').lowerFirst(str); }
 
 /**
- * Capitalizes the first letter of a string.
- */
-function upperFirst(str) {
-    if (!str) return '';
-    return str.charAt(0).toUpperCase() + str.slice(1);
-}
-
-/**
  * Safely formats a literal value as a SQL literal string.
  * - STRING: escapes single quotes by doubling them (' -> '') and encloses in single quotes.
  * - NUMBER: converts to numeric string.
@@ -158,60 +149,7 @@ function upperFirst(str) {
  * @param {Object} defaultValue - { type: 'NUMBER'|'STRING'|'BOOLEAN', value: any }
  * @returns {string} - SQL literal representation
  */
-function formatSQLLiteral(defaultValue, enumLiteral = false) {
-    if (!defaultValue) return '';
-    if (defaultValue.type === 'STRING') {
-        const value = String(defaultValue.value);
-        // DSL backslashes are literal. Preserve them for STRING and ENUM under
-        // the supported MySQL mode (NO_BACKSLASH_ESCAPES disabled).
-        const escaped = value.replace(/\\/g, '\\\\').replace(/'/g, "''");
-        return `'${escaped}'`;
-    }
-    if (defaultValue.type === 'NUMBER') {
-        return String(defaultValue.value);
-    }
-    if (defaultValue.type === 'BOOLEAN') {
-        return defaultValue.value ? 'TRUE' : 'FALSE';
-    }
-    return '';
-}
-
-/**
- * Maps APIForge DSL data types to MySQL column data types.
- */
-const MYSQL_TYPE_MAP = {
-    'INT': 'INT',
-    'STRING': 'VARCHAR(255)',
-    'FLOAT': 'FLOAT',
-    'BOOLEAN': 'BOOLEAN',
-    'DATE': 'DATE',
-    'TIMESTAMP': 'TIMESTAMP',
-    'UUID': 'CHAR(36) CHARACTER SET ascii COLLATE ascii_bin'
-};
-
-/**
- * Resolves a field's MySQL column type. STRING keeps the legacy VARCHAR(255)
- * capacity unless a declared length bound requires a wider column.
- *
- * @param {Object} field - Field definition extracted from IR
- * @returns {string} - MySQL column type
- */
-function getMySQLColumnType(field) {
-    if (field?.dataType === 'ENUM') {
-        return `ENUM(${field.enumValues.map(value => formatSQLLiteral({ type: 'STRING', value }, true)).join(', ')}) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin`;
-    }
-    if (!field || field.dataType !== 'STRING') {
-        return MYSQL_TYPE_MAP[field && field.dataType] || (field && field.dataType);
-    }
-
-    const declaredLengths = Array.isArray(field.validations)
-        ? field.validations
-            .filter(v => (v.type === 'MIN_LENGTH' || v.type === 'MAX_LENGTH') && Number.isInteger(v.value) && v.value >= 0)
-            .map(v => v.value)
-        : [];
-    const capacity = Math.max(255, ...declaredLengths);
-    return `VARCHAR(${capacity})`;
-}
+function formatSQLLiteral(defaultValue, enumLiteral = false) { return mysqlTarget.formatSQLLiteral(defaultValue, enumLiteral); }
 
 /**
  * Maps APIForge DSL data types to OpenAPI / Swagger JSON Schema types.
@@ -227,59 +165,7 @@ const SWAGGER_TYPE_MAP = {
     'UUID': 'string'
 };
 
-/**
- * MySQL reserved words that must be quoted with backticks when used as table or column identifiers.
- */
-const MYSQL_RESERVED_WORDS = new Set([
-    'LATERAL', 'INTERSECT', 'ARRAY', 'MEMBER',
-    'ACCESSIBLE', 'ADD', 'ALL', 'ALTER', 'ANALYZE', 'AND', 'AS', 'ASC', 'ASENSITIVE',
-    'BEFORE', 'BETWEEN', 'BIGINT', 'BINARY', 'BLOB', 'BOTH', 'BY', 'CALL', 'CASCADE',
-    'CASE', 'CHANGE', 'CHAR', 'CHARACTER', 'CHECK', 'COLLATE', 'COLUMN', 'CONDITION',
-    'CONSTRAINT', 'CONTINUE', 'CONVERT', 'CREATE', 'CROSS', 'CUBE', 'CUME_DIST',
-    'CURRENT_DATE', 'CURRENT_TIME', 'CURRENT_TIMESTAMP', 'CURRENT_USER', 'CURSOR',
-    'DATABASE', 'DATABASES', 'DAY_HOUR', 'DAY_MICROSECOND', 'DAY_MINUTE', 'DAY_SECOND',
-    'DEC', 'DECIMAL', 'DECLARE', 'DEFAULT', 'DELAYED', 'DELETE', 'DENSE_RANK', 'DESC',
-    'DESCRIBE', 'DETERMINISTIC', 'DISTINCT', 'DISTINCTROW', 'DIV', 'DOUBLE', 'DROP',
-    'DUAL', 'EACH', 'ELSE', 'ELSEIF', 'EMPTY', 'ENCLOSED', 'ESCAPED', 'EXCEPT',
-    'EXISTS', 'EXIT', 'EXPLAIN', 'FALSE', 'FETCH', 'FIRST_VALUE', 'FLOAT', 'FLOAT4',
-    'FLOAT8', 'FOR', 'FORCE', 'FOREIGN', 'FROM', 'FULLTEXT', 'FUNCTION', 'GENERATED',
-    'GET', 'GRANT', 'GROUP', 'GROUPING', 'GROUPS', 'HAVING', 'HIGH_PRIORITY',
-    'HOUR_MICROSECOND', 'HOUR_MINUTE', 'HOUR_SECOND', 'IF', 'IGNORE', 'IN', 'INDEX',
-    'INFILE', 'INNER', 'INOUT', 'INSENSITIVE', 'INSERT', 'INT', 'INT1', 'INT2', 'INT3',
-    'INT4', 'INT8', 'INTEGER', 'INTERVAL', 'INTO', 'IO_AFTER_GTIDS', 'IO_BEFORE_GTIDS',
-    'IS', 'ITERATE', 'JOIN', 'JSON_TABLE', 'KEY', 'KEYS', 'KILL', 'LAG', 'LAST_VALUE',
-    'LEAD', 'LEADING', 'LEAVE', 'LEFT', 'LIKE', 'LIMIT', 'LINEAR', 'LINES', 'LOAD',
-    'LOCALTIME', 'LOCALTIMESTAMP', 'LOCK', 'LONG', 'LONGBLOB', 'LONGTEXT', 'LOOP',
-    'LOW_PRIORITY', 'MASTER_BIND', 'MASTER_SSL_VERIFY_SERVER_CERT', 'MATCH', 'MAXVALUE',
-    'MEDIUMBLOB', 'MEDIUMINT', 'MEDIUMTEXT', 'MIDDLEINT', 'MINUTE_MICROSECOND',
-    'MINUTE_SECOND', 'MOD', 'MODIFIES', 'NATURAL', 'NOT', 'NO_WRITE_TO_BINLOG', 'NTH_VALUE',
-    'NTILE', 'NULL', 'NUMERIC', 'OF', 'ON', 'OPTIMIZE', 'OPTIMIZER_COSTS', 'OPTION',
-    'OPTIONALLY', 'OR', 'ORDER', 'OUT', 'OUTER', 'OUTFILE', 'OVER', 'PARTITION',
-    'PERCENT_RANK', 'PRECISION', 'PRIMARY', 'PROCEDURE', 'PURGE', 'RANGE', 'RANK',
-    'READ', 'READS', 'READ_WRITE', 'REAL', 'RECURSIVE', 'REF_SYSTEM_ID', 'REFERENCES',
-    'REGEXP', 'RELEASE', 'RENAME', 'REPEAT', 'REPLACE', 'REQUIRE', 'RESIGNAL', 'RESTRICT',
-    'RETURN', 'REVOKE', 'RIGHT', 'RLIKE', 'ROW', 'ROWS', 'ROW_NUMBER', 'SCHEMA',
-    'SCHEMAS', 'SECOND_MICROSECOND', 'SELECT', 'SENSITIVE', 'SEPARATOR', 'SET', 'SHOW',
-    'SIGNAL', 'SMALLINT', 'SPATIAL', 'SPECIFIC', 'SQL', 'SQLEXCEPTION', 'SQLSTATE',
-    'SQLWARNING', 'SQL_BIG_RESULT', 'SQL_CALC_FOUND_ROWS', 'SQL_SMALL_RESULT', 'SSL',
-    'STARTING', 'STORED', 'STRAIGHT_JOIN', 'SYSTEM', 'TABLE', 'TERMINATED', 'THEN',
-    'TINYBLOB', 'TINYINT', 'TINYTEXT', 'TO', 'TRAILING', 'TRIGGER', 'TRUE', 'UNDO',
-    'UNION', 'UNIQUE', 'UNLOCK', 'UNSIGNED', 'UPDATE', 'USAGE', 'USE', 'USING',
-    'UTC_DATE', 'UTC_TIME', 'UTC_TIMESTAMP', 'VALUES', 'VARBINARY', 'VARCHAR',
-    'VARCHARACTER', 'VARYING', 'VIRTUAL', 'WHEN', 'WHERE', 'WHILE', 'WINDOW', 'WITH',
-    'WRITE', 'XOR', 'YEAR_MONTH', 'ZEROFILL'
-]);
-
-/**
- * Quotes an identifier with backticks if it is a MySQL reserved word or contains non-alphanumeric chars.
- */
-function quoteIdentifier(name) {
-    if (!name || typeof name !== 'string') return name;
-    if (MYSQL_RESERVED_WORDS.has(name.toUpperCase()) || /^[^a-zA-Z_]/.test(name) || /[^a-zA-Z0-9_]/.test(name)) {
-        return `\`${name}\``;
-    }
-    return name;
-}
+function quoteIdentifier(name) { return mysqlTarget.quoteIdentifier(name); }
 
 /**
  * Helper to extract entity definitions from IR instructions.
@@ -306,18 +192,6 @@ function extractRelationsFromIR(ir) { return effectivePolicy.relationsFromIR(ir)
  */
 function getEffectiveKey(entity) { return effectivePolicy.legacyKey(entity); }
 
-/**
- * Gets the OpenAPI schema type for an entity identifier.
- * Entities without an explicit primary key use the generated INT id column.
- *
- * @param {Object} entity - Entity definition object
- * @returns {string} - OpenAPI schema type
- */
-function getPrimaryKeySwaggerType(entity) {
-    const primaryKey = getEffectiveKey(entity);
-    return SWAGGER_TYPE_MAP[primaryKey.dataType] || 'string';
-}
-
 // ════════════════════════════════════════════════════════════
 // TARGET ARTIFACT GENERATORS
 // ════════════════════════════════════════════════════════════
@@ -331,168 +205,9 @@ function getPrimaryKeySwaggerType(entity) {
  * @param {Object} ir - The IR object
  * @returns {string} - Complete SQL DDL file content
  */
-function generateSQL(ir) {
-    const entities = extractEntitiesFromIR(ir);
-    const relations = extractRelationsFromIR(ir);
-    const entityMap = new Map(entities.map(e => [e.name, e]));
-
-    // 1. Entity table statements
-    const tableStatements = entities.map(entity => {
-        const effectiveKey = getEffectiveKey(entity);
-        const columnDefs = entity.fields.map(field => {
-            const mysqlType = getMySQLColumnType(field);
-            const isPk = effectiveKey.origin === 'explicit' && field.name === effectiveKey.name;
-            const isRequired = field.constraints.includes('REQUIRED');
-            const isUnique = field.constraints.includes('UNIQUE');
-            const hasDefault = field.defaultValue !== null && field.defaultValue !== undefined;
-
-            const parts = [];
-
-            // Primary Key & Auto Increment handling:
-            // If primary key has an explicit default value, omit AUTO_INCREMENT to prevent MySQL Error 1067.
-            if (isPk) {
-                if (hasDefault) {
-                    parts.push('PRIMARY KEY');
-                } else if (effectiveKey.generation === 'auto_increment') {
-                    parts.push('PRIMARY KEY AUTO_INCREMENT');
-                } else {
-                    parts.push('PRIMARY KEY');
-                }
-            }
-
-            // REQUIRED constraint
-            if (isRequired) {
-                parts.push('NOT NULL');
-            } else if (field.dataType === 'TIMESTAMP') {
-                // Explicit NULL avoids legacy TIMESTAMP's implicit auto attributes.
-                parts.push('NULL');
-            }
-
-            // DEFAULT clause
-            if (hasDefault) {
-                const sqlDefault = field.dataType === 'TIMESTAMP'
-                    ? { ...field.defaultValue, value: field.defaultValue.value.slice(0, 10) + ' ' + field.defaultValue.value.slice(11, 19) }
-                    : field.defaultValue;
-                const sqlVal = formatSQLLiteral(sqlDefault, field.dataType === 'ENUM');
-                parts.push(`DEFAULT ${sqlVal}`);
-            }
-
-            // UNIQUE constraint
-            if (isUnique) {
-                parts.push('UNIQUE');
-            }
-
-            // CHECK constraints for numeric range and string-length validations
-            if (Array.isArray(field.validations) && field.validations.length > 0) {
-                const minV = field.validations.find(v => v.type === 'MIN');
-                const maxV = field.validations.find(v => v.type === 'MAX');
-                const minLengthV = field.validations.find(v => v.type === 'MIN_LENGTH');
-                const maxLengthV = field.validations.find(v => v.type === 'MAX_LENGTH');
-
-                if (minV && maxV) {
-                    parts.push(`CHECK (${quoteIdentifier(field.name)} >= ${minV.value} AND ${quoteIdentifier(field.name)} <= ${maxV.value})`);
-                } else if (minV) {
-                    parts.push(`CHECK (${quoteIdentifier(field.name)} >= ${minV.value})`);
-                } else if (maxV) {
-                    parts.push(`CHECK (${quoteIdentifier(field.name)} <= ${maxV.value})`);
-                }
-
-                if (minLengthV && maxLengthV) {
-                    parts.push(`CHECK (CHAR_LENGTH(${quoteIdentifier(field.name)}) >= ${minLengthV.value} AND CHAR_LENGTH(${quoteIdentifier(field.name)}) <= ${maxLengthV.value})`);
-                } else if (minLengthV) {
-                    parts.push(`CHECK (CHAR_LENGTH(${quoteIdentifier(field.name)}) >= ${minLengthV.value})`);
-                } else if (maxLengthV) {
-                    parts.push(`CHECK (CHAR_LENGTH(${quoteIdentifier(field.name)}) <= ${maxLengthV.value})`);
-                }
-            }
-
-            const constraintsStr = parts.length > 0 ? ' ' + parts.join(' ') : '';
-            return `    ${quoteIdentifier(field.name)} ${mysqlType}${constraintsStr}`;
-        });
-
-        if (effectiveKey.origin === 'implicit') {
-            columnDefs.unshift(`    ${quoteIdentifier(effectiveKey.name)} ${getMySQLColumnType(effectiveKey)} PRIMARY KEY AUTO_INCREMENT`);
-        }
-
-        return `CREATE TABLE ${quoteIdentifier(entity.name)} (\n` + columnDefs.join(',\n') + `\n);`;
-    });
-
-    // 2. Relationship statements (Junction tables or ALTER TABLE statements)
-    const relationStatements = [];
-
-    relations.forEach(rel => {
-        const sourceEntity = entityMap.get(rel.sourceEntity);
-        const targetEntity = entityMap.get(rel.targetEntity);
-
-        if (!sourceEntity || !targetEntity) return;
-
-        const sourcePk = getEffectiveKey(sourceEntity);
-        const targetPk = getEffectiveKey(targetEntity);
-        const sourceFkCol = `${lowerFirst(sourceEntity.name)}_${sourcePk.name}`;
-        const targetFkCol = `${lowerFirst(targetEntity.name)}_${targetPk.name}`;
-        const sourceFkType = getMySQLColumnType(sourcePk) || 'INT';
-        const targetFkType = getMySQLColumnType(targetPk) || 'INT';
-
-        const sourceTable = quoteIdentifier(sourceEntity.name);
-        const targetTable = quoteIdentifier(targetEntity.name);
-        const sourcePkName = quoteIdentifier(sourcePk.name);
-        const targetPkName = quoteIdentifier(targetPk.name);
-        const sourceFkColName = quoteIdentifier(sourceFkCol);
-        const targetFkColName = quoteIdentifier(targetFkCol);
-
-        if (rel.relationType === 'MANY_TO_MANY') {
-            const junctionTableName = `${sourceEntity.name}_${targetEntity.name}`;
-            const junctionTable = quoteIdentifier(junctionTableName);
-            relationStatements.push(
-                `-- Relationship: ${sourceEntity.name} ${rel.relationName} ${targetEntity.name} (MANY_TO_MANY)\n` +
-                `CREATE TABLE ${junctionTable} (\n` +
-                `    ${sourceFkColName} ${sourceFkType} NOT NULL,\n` +
-                `    ${targetFkColName} ${targetFkType} NOT NULL,\n` +
-                `    PRIMARY KEY (${sourceFkColName}, ${targetFkColName}),\n` +
-                `    FOREIGN KEY (${sourceFkColName}) REFERENCES ${sourceTable}(${sourcePkName}) ON DELETE CASCADE,\n` +
-                `    FOREIGN KEY (${targetFkColName}) REFERENCES ${targetTable}(${targetPkName}) ON DELETE CASCADE\n` +
-                `);`
-            );
-        } else if (rel.relationType === 'ONE_TO_MANY') {
-            const fkConstraintName = `fk_${targetEntity.name.toLowerCase()}_${sourceEntity.name.toLowerCase()}`;
-            relationStatements.push(
-                `-- Relationship: ${sourceEntity.name} ${rel.relationName} ${targetEntity.name} (ONE_TO_MANY)\n` +
-                `ALTER TABLE ${targetTable} ADD COLUMN ${sourceFkColName} ${sourceFkType};\n` +
-                `ALTER TABLE ${targetTable} ADD CONSTRAINT ${quoteIdentifier(fkConstraintName)} FOREIGN KEY (${sourceFkColName}) REFERENCES ${sourceTable}(${sourcePkName}) ON DELETE SET NULL;`
-            );
-        } else if (rel.relationType === 'MANY_TO_ONE') {
-            const fkConstraintName = `fk_${sourceEntity.name.toLowerCase()}_${targetEntity.name.toLowerCase()}`;
-            relationStatements.push(
-                `-- Relationship: ${sourceEntity.name} ${rel.relationName} ${targetEntity.name} (MANY_TO_ONE)\n` +
-                `ALTER TABLE ${sourceTable} ADD COLUMN ${targetFkColName} ${targetFkType};\n` +
-                `ALTER TABLE ${sourceTable} ADD CONSTRAINT ${quoteIdentifier(fkConstraintName)} FOREIGN KEY (${targetFkColName}) REFERENCES ${targetTable}(${targetPkName}) ON DELETE SET NULL;`
-            );
-        } else if (rel.relationType === 'ONE_TO_ONE') {
-            const fkConstraintName = `fk_${targetEntity.name.toLowerCase()}_${sourceEntity.name.toLowerCase()}`;
-            relationStatements.push(
-                `-- Relationship: ${sourceEntity.name} ${rel.relationName} ${targetEntity.name} (ONE_TO_ONE)\n` +
-                `ALTER TABLE ${targetTable} ADD COLUMN ${sourceFkColName} ${sourceFkType} UNIQUE;\n` +
-                `ALTER TABLE ${targetTable} ADD CONSTRAINT ${quoteIdentifier(fkConstraintName)} FOREIGN KEY (${sourceFkColName}) REFERENCES ${sourceTable}(${sourcePkName}) ON DELETE CASCADE;`
-            );
-        }
-    });
-
-    let sql = `-- ============================================================\n` +
-              `-- MySQL Database Schema\n` +
-              `-- Generated automatically by APIForge Compiler\n` +
-              `-- ============================================================\n\n` +
-              (entities.some(entity => entity.fields.some(field => field.dataType === 'TIMESTAMP'))
-                  ? "-- Interpret static TIMESTAMP defaults as UTC and disable legacy implicit attributes.\nSET SESSION time_zone = '+00:00';\nSET SESSION explicit_defaults_for_timestamp = ON;\n\n" : '') +
-              tableStatements.join('\n\n') + '\n';
-
-    if (relationStatements.length > 0) {
-        sql += `\n-- ============================================================\n` +
-               `-- Relationship Tables & Foreign Key Constraints\n` +
-               `-- ============================================================\n\n` +
-               relationStatements.join('\n\n') + '\n';
-    }
-
-    return sql;
+function generateSQL(ir, suppliedContext) {
+    const candidate = suppliedContext?.candidate || effectiveSchema.buildCandidate(ir);
+    return mysqlTarget.renderSchema(candidate);
 }
 
 /**
@@ -770,7 +485,7 @@ function ${entity.names.crud.validate}(data, operation = 'update') {
         switch (field.dataType) {
             case 'INT':
                 if (typeof value !== 'number' || !Number.isFinite(value) || !Number.isSafeInteger(value)) return label + ' must be an integer.';
-${key.origin === 'explicit' && key.generation === 'auto_increment' ? `                if (operation === 'create' && field.name === PRIMARY_KEY.name && value < 0) return label + ' must be zero or a positive integer.';
+${effectivePolicy.identity(entity).origin === 'explicit' && entity.key.generation === 'database_integer' ? `                if (operation === 'create' && field.name === PRIMARY_KEY.name && value < 0) return label + ' must be zero or a positive integer.';
 ` : ''}                break;
             case 'FLOAT':
                 if (typeof value !== 'number' || !Number.isFinite(value)) return label + ' must be a finite number.';
@@ -1019,8 +734,8 @@ function generateModel(entityName, fields, relations = [], entities = [], suppli
 
             if (rel.cardinality === 'MANY_TO_MANY') {
                 const junctionTable = rel.storage.table.name;
-                const sourceFkCol = rel.names.sourceFk;
-                const targetFkCol = rel.names.targetFk;
+                const [sourceColumn, targetColumn] = rel.storage.table.columns;
+                const sourceFkCol = sourceColumn.name, targetFkCol = targetColumn.name;
 
                 relMethods.push(
                     `    // Relationship: ${entityName} ${rel.relationName} ${targetName} (MANY_TO_MANY)\n` +
@@ -1047,7 +762,7 @@ function generateModel(entityName, fields, relations = [], entities = [], suppli
                     `    }`
                 );
             } else if (rel.cardinality === 'ONE_TO_MANY') {
-                const sourceFkCol = rel.names.sourceFk;
+                const sourceFkCol = context.byId.get(rel.storage.receiverEntityId).fields.find(field => field.id === rel.storage.fieldId).name;
                 relMethods.push(
                     `    // Relationship: ${entityName} ${rel.relationName} ${targetName} (ONE_TO_MANY)\n` +
                     `    static async ${rel.names.getter}(${rel.names.sourceParam}) {\n` +
@@ -1059,7 +774,7 @@ function generateModel(entityName, fields, relations = [], entities = [], suppli
                     `    }`
                 );
             } else if (rel.cardinality === 'MANY_TO_ONE') {
-                const targetFkCol = rel.names.targetFk;
+                const targetFkCol = entity.fields.find(field => field.id === rel.storage.fieldId).name;
                 relMethods.push(
                     `    // Relationship: ${entityName} ${rel.relationName} ${targetName} (MANY_TO_ONE)\n` +
                     `    static async ${rel.names.getter}(${rel.names.sourceParam}) {\n` +
@@ -1071,7 +786,7 @@ function generateModel(entityName, fields, relations = [], entities = [], suppli
                     `    }`
                 );
             } else if (rel.cardinality === 'ONE_TO_ONE') {
-                const sourceFkCol = rel.names.sourceFk;
+                const sourceFkCol = context.byId.get(rel.storage.receiverEntityId).fields.find(field => field.id === rel.storage.fieldId).name;
                 relMethods.push(
                     `    // Relationship: ${entityName} ${rel.relationName} ${targetName} (ONE_TO_ONE)\n` +
                     `    static async ${rel.names.getter}(${rel.names.sourceParam}) {\n` +
@@ -1607,7 +1322,7 @@ function generateSwagger(entities, relations = [], suppliedContext) {
 
         const schemaObj = { type: "object", properties, additionalProperties: false };
         const requiredFields = effectivePolicy.fieldViews(entity, 'create')
-            .filter(f => postRequiresField(f, effectiveKey))
+            .filter(f => postRequiresField(f))
             .map(f => f.name);
         if (requiredFields.length > 0) {
             schemaObj.required = requiredFields;
@@ -1744,11 +1459,11 @@ function generate(optimizedIR, writeToDisk = true) {
     const entities = candidate.definitions.entities.map(entity => ({ name: entity.name,
         fields: entity.fields.map(({ sourceLocations, ...field }) => field) }));
     const relations = candidate.plan.relations.map(relation => effectivePolicy.legacyRelation(relation, candidate.plan, candidate.provenance));
-    const targetIssues = require('../utils/mysql-target').targetIssues(candidate.definitions.entities, candidate.definitions.relations);
+    const targetIssues = mysqlTarget.targetIssuesFromPlan(candidate);
     const numericIssues = candidate.definitions.entities.flatMap(e => e.fields.flatMap(require('../utils/mysql-target').numericIssues));
     const invalidEnum = candidate.definitions.entities.some(e => e.fields.some(f => f.dataType === 'ENUM' && f.enumValues.some(value => value.endsWith(' '))));
     if (targetIssues.length || numericIssues.length || invalidEnum) throw new Error('Cannot generate target code: MySQL target preflight failed. ' + [...targetIssues, ...numericIssues].map(i => i.message).join(' '));
-    const conflicts = require('../utils/target-names').namingConflicts(entities, relations);
+    const conflicts = targetNames.namingConflictsFromPlan(candidate);
     if (conflicts.length) throw new Error('Cannot generate target code: ' + conflicts.map(c => `${c.namespace} '${c.name}' collision`).join(', '));
     const entityMap = new Map(entities.map(e => [e.name, e]));
 
@@ -1765,7 +1480,7 @@ function generate(optimizedIR, writeToDisk = true) {
     effectiveSchema.assertStructural(candidate);
 
     const files = [
-        { path: 'database/schema.sql', content: generateSQL(optimizedIR) },
+        { path: 'database/schema.sql', content: generateSQL(optimizedIR, context) },
         { path: 'config/db.js', content: generateDBConfig(entities, relations, context) },
         { path: '.env.example', content: generateEnvExample() },
         { path: 'package.json', content: generatePackageJson() },

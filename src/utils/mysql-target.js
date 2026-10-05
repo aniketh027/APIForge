@@ -1,6 +1,8 @@
 // Supported target: MySQL >=8.0.16, utf8mb4, InnoDB DYNAMIC, 16 KiB pages.
 // Schema admission under the documented target; never reads server variables.
-const { lowerFirst } = require('./target-names');
+const names = require('./target-names');
+const policy = require('../planning/effective-policy');
+const { projectDefinitions } = require('../planning/effective-schema');
 const IDENTIFIER_LIMIT = 64, KEY_BYTES = 3072, CHARACTER_BYTES = 4;
 const VARCHAR_CAPACITY = Math.floor((65535 - 2) / CHARACTER_BYTES);
 const COLUMN_LIMIT = 1017, SECONDARY_INDEX_LIMIT = 64, KEY_PART_LIMIT = 16;
@@ -12,53 +14,321 @@ const FLOAT_MAX = (2 - 2 ** -23) * 2 ** 127;
 const INTERNAL_COLUMNS = new Set(['db_row_id', 'db_trx_id', 'db_roll_ptr']);
 const capacity = field => Math.max(255, ...(field.validations || [])
     .filter(v => ['MIN_LENGTH', 'MAX_LENGTH'].includes(v.type)).map(v => v.value));
-const key = entity => entity.fields.find(f => f.constraints?.includes('PRIMARY_KEY')) || { name: 'id', dataType: 'INT' };
+function formatSQLLiteral(defaultValue, enumLiteral = false) {
+    if (!defaultValue) return '';
+    if (defaultValue.type === 'STRING') {
+        const value = String(defaultValue.value);
+        // DSL backslashes are literal. Preserve them for STRING and ENUM under
+        // the supported MySQL mode (NO_BACKSLASH_ESCAPES disabled).
+        const escaped = value.replace(/\\/g, '\\\\').replace(/'/g, "''");
+        return `'${escaped}'`;
+    }
+    if (defaultValue.type === 'NUMBER') {
+        return String(defaultValue.value);
+    }
+    if (defaultValue.type === 'BOOLEAN') {
+        return defaultValue.value ? 'TRUE' : 'FALSE';
+    }
+    return '';
+}
+
+const MYSQL_TYPE_MAP = {
+    'INT': 'INT',
+    'STRING': 'VARCHAR(255)',
+    'FLOAT': 'FLOAT',
+    'BOOLEAN': 'BOOLEAN',
+    'DATE': 'DATE',
+    'TIMESTAMP': 'TIMESTAMP',
+    'UUID': 'CHAR(36) CHARACTER SET ascii COLLATE ascii_bin'
+};
+
+/**
+ * Resolves a field's MySQL column type. STRING keeps the legacy VARCHAR(255)
+ * capacity unless a declared length bound requires a wider column.
+ *
+ * @param {Object} field - Field definition extracted from IR
+ * @returns {string} - MySQL column type
+ */
+function columnType(field) {
+    if (field?.dataType === 'ENUM') {
+        return `ENUM(${field.enumValues.map(value => formatSQLLiteral({ type: 'STRING', value }, true)).join(', ')}) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin`;
+    }
+    if (!field || field.dataType !== 'STRING') {
+        return MYSQL_TYPE_MAP[field && field.dataType] || (field && field.dataType);
+    }
+
+    const declaredLengths = Array.isArray(field.validations)
+        ? field.validations
+            .filter(v => (v.type === 'MIN_LENGTH' || v.type === 'MAX_LENGTH') && Number.isInteger(v.value) && v.value >= 0)
+            .map(v => v.value)
+        : [];
+    const capacity = Math.max(255, ...declaredLengths);
+    return `VARCHAR(${capacity})`;
+}
+
+const MYSQL_RESERVED_WORDS = new Set([
+    'LATERAL', 'INTERSECT', 'ARRAY', 'MEMBER',
+    'ACCESSIBLE', 'ADD', 'ALL', 'ALTER', 'ANALYZE', 'AND', 'AS', 'ASC', 'ASENSITIVE',
+    'BEFORE', 'BETWEEN', 'BIGINT', 'BINARY', 'BLOB', 'BOTH', 'BY', 'CALL', 'CASCADE',
+    'CASE', 'CHANGE', 'CHAR', 'CHARACTER', 'CHECK', 'COLLATE', 'COLUMN', 'CONDITION',
+    'CONSTRAINT', 'CONTINUE', 'CONVERT', 'CREATE', 'CROSS', 'CUBE', 'CUME_DIST',
+    'CURRENT_DATE', 'CURRENT_TIME', 'CURRENT_TIMESTAMP', 'CURRENT_USER', 'CURSOR',
+    'DATABASE', 'DATABASES', 'DAY_HOUR', 'DAY_MICROSECOND', 'DAY_MINUTE', 'DAY_SECOND',
+    'DEC', 'DECIMAL', 'DECLARE', 'DEFAULT', 'DELAYED', 'DELETE', 'DENSE_RANK', 'DESC',
+    'DESCRIBE', 'DETERMINISTIC', 'DISTINCT', 'DISTINCTROW', 'DIV', 'DOUBLE', 'DROP',
+    'DUAL', 'EACH', 'ELSE', 'ELSEIF', 'EMPTY', 'ENCLOSED', 'ESCAPED', 'EXCEPT',
+    'EXISTS', 'EXIT', 'EXPLAIN', 'FALSE', 'FETCH', 'FIRST_VALUE', 'FLOAT', 'FLOAT4',
+    'FLOAT8', 'FOR', 'FORCE', 'FOREIGN', 'FROM', 'FULLTEXT', 'FUNCTION', 'GENERATED',
+    'GET', 'GRANT', 'GROUP', 'GROUPING', 'GROUPS', 'HAVING', 'HIGH_PRIORITY',
+    'HOUR_MICROSECOND', 'HOUR_MINUTE', 'HOUR_SECOND', 'IF', 'IGNORE', 'IN', 'INDEX',
+    'INFILE', 'INNER', 'INOUT', 'INSENSITIVE', 'INSERT', 'INT', 'INT1', 'INT2', 'INT3',
+    'INT4', 'INT8', 'INTEGER', 'INTERVAL', 'INTO', 'IO_AFTER_GTIDS', 'IO_BEFORE_GTIDS',
+    'IS', 'ITERATE', 'JOIN', 'JSON_TABLE', 'KEY', 'KEYS', 'KILL', 'LAG', 'LAST_VALUE',
+    'LEAD', 'LEADING', 'LEAVE', 'LEFT', 'LIKE', 'LIMIT', 'LINEAR', 'LINES', 'LOAD',
+    'LOCALTIME', 'LOCALTIMESTAMP', 'LOCK', 'LONG', 'LONGBLOB', 'LONGTEXT', 'LOOP',
+    'LOW_PRIORITY', 'MASTER_BIND', 'MASTER_SSL_VERIFY_SERVER_CERT', 'MATCH', 'MAXVALUE',
+    'MEDIUMBLOB', 'MEDIUMINT', 'MEDIUMTEXT', 'MIDDLEINT', 'MINUTE_MICROSECOND',
+    'MINUTE_SECOND', 'MOD', 'MODIFIES', 'NATURAL', 'NOT', 'NO_WRITE_TO_BINLOG', 'NTH_VALUE',
+    'NTILE', 'NULL', 'NUMERIC', 'OF', 'ON', 'OPTIMIZE', 'OPTIMIZER_COSTS', 'OPTION',
+    'OPTIONALLY', 'OR', 'ORDER', 'OUT', 'OUTER', 'OUTFILE', 'OVER', 'PARTITION',
+    'PERCENT_RANK', 'PRECISION', 'PRIMARY', 'PROCEDURE', 'PURGE', 'RANGE', 'RANK',
+    'READ', 'READS', 'READ_WRITE', 'REAL', 'RECURSIVE', 'REF_SYSTEM_ID', 'REFERENCES',
+    'REGEXP', 'RELEASE', 'RENAME', 'REPEAT', 'REPLACE', 'REQUIRE', 'RESIGNAL', 'RESTRICT',
+    'RETURN', 'REVOKE', 'RIGHT', 'RLIKE', 'ROW', 'ROWS', 'ROW_NUMBER', 'SCHEMA',
+    'SCHEMAS', 'SECOND_MICROSECOND', 'SELECT', 'SENSITIVE', 'SEPARATOR', 'SET', 'SHOW',
+    'SIGNAL', 'SMALLINT', 'SPATIAL', 'SPECIFIC', 'SQL', 'SQLEXCEPTION', 'SQLSTATE',
+    'SQLWARNING', 'SQL_BIG_RESULT', 'SQL_CALC_FOUND_ROWS', 'SQL_SMALL_RESULT', 'SSL',
+    'STARTING', 'STORED', 'STRAIGHT_JOIN', 'SYSTEM', 'TABLE', 'TERMINATED', 'THEN',
+    'TINYBLOB', 'TINYINT', 'TINYTEXT', 'TO', 'TRAILING', 'TRIGGER', 'TRUE', 'UNDO',
+    'UNION', 'UNIQUE', 'UNLOCK', 'UNSIGNED', 'UPDATE', 'USAGE', 'USE', 'USING',
+    'UTC_DATE', 'UTC_TIME', 'UTC_TIMESTAMP', 'VALUES', 'VARBINARY', 'VARCHAR',
+    'VARCHARACTER', 'VARYING', 'VIRTUAL', 'WHEN', 'WHERE', 'WHILE', 'WINDOW', 'WITH',
+    'WRITE', 'XOR', 'YEAR_MONTH', 'ZEROFILL'
+]);
+
+/**
+ * Quotes an identifier with backticks if it is a MySQL reserved word or contains non-alphanumeric chars.
+ */
+function quoteIdentifier(name) {
+    if (!name || typeof name !== 'string') return name;
+    if (MYSQL_RESERVED_WORDS.has(name.toUpperCase()) || /^[^a-zA-Z_]/.test(name) || /[^a-zA-Z0-9_]/.test(name)) {
+        return `\`${name}\``;
+    }
+    return name;
+}
 function storageBytes(field) {
     if (field.dataType === 'STRING') return capacity(field) * CHARACTER_BYTES;
     if (field.dataType === 'ENUM') return (field.enumValues || []).length <= 255 ? 1 : 2;
     return { INT: 4, FLOAT: 4, BOOLEAN: 1, DATE: 3, TIMESTAMP: 4, UUID: 36 }[field.dataType] || 0;
 }
 
-// MySQL-target-local metadata only. Does not mutate AST/IR or allocate names.
+// Original node identity lives in this adapter-local context, outside plan and
+// provenance. Legacy semantic callers retain their exact contributor objects.
+function sourceContext(candidate, definitions = candidate.definitions) {
+    const entities = new Map(), fields = new Map(), relations = new Map();
+    for (const [index, entity] of candidate.plan.entities.entries()) {
+        const source = definitions?.entities?.[index];
+        entities.set(entity.id, source || policy.legacyEntity(entity, candidate.provenance));
+        for (const field of policy.fieldViews(entity)) fields.set(field.id,
+            source?.fields?.[field.declaredOrder] || policy.legacyField(field, candidate.provenance));
+    }
+    for (const [index, relation] of candidate.plan.relations.entries()) relations.set(relation.id,
+        definitions?.relations?.[index] || policy.legacyRelation(relation, candidate.plan, candidate.provenance));
+    return { entities, fields, relations };
+}
+
 function physicalPlan(entities, relations = []) {
-    const tables = entities.map(entity => {
-        const pk = key(entity), explicit = entity.fields.includes(pk);
-        const columns = entity.fields.map(field => ({ name: field.name, field, node: field,
-            nullable: !field.constraints?.some(c => c === 'PRIMARY_KEY' || c === 'REQUIRED'), origin: 'declared' }));
-        if (!explicit) columns.unshift({ name: pk.name, field: pk, node: entity, nullable: false, origin: 'implicit' });
-        const indexes = [{ kind: 'PRIMARY', parts: [pk.name], node: explicit ? pk : entity }];
-        for (const field of entity.fields) if (field.constraints?.includes('UNIQUE')) {
-            indexes.push({ kind: 'UNIQUE', parts: [field.name], node: field });
+    return physicalPlanFromPlan(projectDefinitions(entities, relations));
+}
+
+function physicalPlanFromPlan(input, suppliedSources) {
+    const candidate = input.plan ? input : { plan: input, provenance: {} };
+    const sources = suppliedSources || sourceContext(candidate);
+    const plan = candidate.plan, byId = new Map(plan.entities.map(entity => [entity.id, entity]));
+    const typeField = fieldId => {
+        const raw = sources.fields.get(fieldId);
+        if (raw) return raw;
+        for (const entity of plan.entities) {
+            const field = entity.fields.find(field => field.id === fieldId);
+            if (field) return field.origin.kind === 'implicit_key'
+                ? { name: field.name, dataType: field.dataType } : field;
         }
-        return { name: entity.name, node: entity, columns, indexes, altered: false };
+    };
+    const tables = plan.entities.map(entity => {
+        const key = policy.identity(entity), node = sources.entities.get(entity.id);
+        const columns = policy.fieldViews(entity, 'base').map(field => ({ name: field.name,
+            field: typeField(field.id), node: sources.fields.get(field.id) || node,
+            nullable: field.storage.nullable, origin: field.origin.kind === 'declared' ? 'declared' : 'implicit' }));
+        const indexes = [{ kind: 'PRIMARY', parts: [key.name], node: sources.fields.get(entity.key.fieldId) || node }];
+        for (const field of policy.fieldViews(entity)) if (field.storage.unique) {
+            indexes.push({ kind: 'UNIQUE', parts: [field.name], node: sources.fields.get(field.id) });
+        }
+        return { name: entity.names.table, node, columns, indexes, altered: false };
     });
-    const byName = new Map(tables.map(t => [t.name, t]));
-    const entityMap = new Map(entities.map(e => [e.name, e]));
+    const tableById = new Map(plan.entities.map((entity, index) => [entity.id, tables[index]]));
     const support = (table, parts, node) => {
         if (!table.indexes.some(index => parts.every((part, i) => index.parts[i] === part))) {
             table.indexes.push({ kind: 'FK', parts, node });
         }
     };
-    for (const rel of relations) {
-        const source = entityMap.get(rel.sourceEntity), target = entityMap.get(rel.targetEntity);
-        if (!source || !target) continue;
-        const a = key(source), b = key(target);
-        const ac = lowerFirst(source.name) + '_' + a.name, bc = lowerFirst(target.name) + '_' + b.name;
-        if (rel.relationType === 'MANY_TO_MANY') {
-            const table = { name: source.name + '_' + target.name, node: rel, altered: false,
-                columns: [ [ac, a], [bc, b] ].map(([name, field]) => ({ name, field, node: rel, nullable: false, origin: 'junction' })),
-                indexes: [{ kind: 'PRIMARY', parts: [ac, bc], node: rel }] };
-            support(table, [ac], rel); support(table, [bc], rel); tables.push(table);
+    for (const relation of plan.relations) {
+        const storage = relation.storage, node = sources.relations.get(relation.id);
+        if (!storage) continue;
+        if (storage.kind === 'junction') {
+            const columns = storage.table.columns.map(column => ({ name: column.name,
+                field: typeField(column.typeSourceFieldId), node, nullable: column.nullable, origin: 'junction' }));
+            const parts = storage.table.primaryKeyFieldIds.map(id => storage.table.columns.find(column => column.id === id).name);
+            const table = { name: storage.table.name, node, altered: false, columns,
+                indexes: [{ kind: 'PRIMARY', parts, node }] };
+            for (const foreignKey of storage.foreignKeys) support(table,
+                [storage.table.columns.find(column => column.id === foreignKey.fieldId).name], node);
+            tables.push(table);
         } else {
-            const receiver = byName.get(rel.relationType === 'MANY_TO_ONE' ? source.name : target.name);
-            const [name, field] = rel.relationType === 'MANY_TO_ONE' ? [bc, b] : [ac, a];
-            receiver.columns.push({ name, field, node: rel, nullable: true, origin: 'relationship' });
-            receiver.altered = true;
-            if (rel.relationType === 'ONE_TO_ONE') receiver.indexes.push({ kind: 'UNIQUE', parts: [name], node: rel });
-            support(receiver, [name], rel);
+            const receiver = byId.get(storage.receiverEntityId), table = tableById.get(receiver.id);
+            const field = receiver.fields.find(field => field.id === storage.fieldId);
+            table.columns.push({ name: field.name, field: typeField(field.typeSourceFieldId), node,
+                nullable: field.storage.nullable, origin: 'relationship' });
+            table.altered = true;
+            if (field.storage.unique) table.indexes.push({ kind: 'UNIQUE', parts: [field.name], node });
+            support(table, [field.name], node);
         }
     }
     return tables;
+}
+
+function relationPhysicalNames(relation, plan) {
+    const byId = new Map(plan.entities.map(entity => [entity.id, entity]));
+    return names.mysqlRelationNames(relation.names, { kind: relation.storage.kind,
+        receiverName: byId.get(relation.storage.receiverEntityId)?.sourceName,
+        referencedName: byId.get(relation.storage.referencedEntityId)?.sourceName });
+}
+
+// SQL presentation consumes canonical identities/columns/topology; all physical
+// details stay in this MySQL adapter alongside the G16 admission calculations.
+function renderSchema(input) {
+    const plan = input.plan || input;
+    const byId = new Map(plan.entities.map(entity => [entity.id, entity]));
+    const fields = new Map(plan.entities.flatMap(entity => entity.fields.map(field => [field.id, field])));
+    const deleteAction = action => ({ cascade: 'CASCADE', set_null: 'SET NULL' })[action];
+    // 1. Entity table statements
+    const tableStatements = plan.entities.map(entity => {
+        const identity = policy.identity(entity);
+        const columnDefs = policy.fieldViews(entity, 'declared').map(field => {
+            const mysqlType = columnType(field);
+            const isPk = field.id === entity.key.fieldId;
+            const isRequired = field.constraints.includes('REQUIRED');
+            const isUnique = field.constraints.includes('UNIQUE');
+            const hasDefault = field.defaultValue !== null && field.defaultValue !== undefined;
+
+            const parts = [];
+
+            // Primary Key & Auto Increment handling:
+            // If primary key has an explicit default value, omit AUTO_INCREMENT to prevent MySQL Error 1067.
+            if (isPk) {
+                if (hasDefault) {
+                    parts.push('PRIMARY KEY');
+                } else if (entity.key.generation === 'database_integer') {
+                    parts.push('PRIMARY KEY AUTO_INCREMENT');
+                } else {
+                    parts.push('PRIMARY KEY');
+                }
+            }
+
+            // REQUIRED constraint
+            if (isRequired) {
+                parts.push('NOT NULL');
+            } else if (field.dataType === 'TIMESTAMP') {
+                // Explicit NULL avoids legacy TIMESTAMP's implicit auto attributes.
+                parts.push('NULL');
+            }
+
+            // DEFAULT clause
+            if (hasDefault) {
+                const sqlDefault = field.dataType === 'TIMESTAMP'
+                    ? { ...field.defaultValue, value: field.defaultValue.value.slice(0, 10) + ' ' + field.defaultValue.value.slice(11, 19) }
+                    : field.defaultValue;
+                const sqlVal = formatSQLLiteral(sqlDefault, field.dataType === 'ENUM');
+                parts.push(`DEFAULT ${sqlVal}`);
+            }
+
+            // UNIQUE constraint
+            if (isUnique) {
+                parts.push('UNIQUE');
+            }
+
+            // CHECK constraints for numeric range and string-length validations
+            if (Array.isArray(field.validations) && field.validations.length > 0) {
+                const minV = field.validations.find(v => v.type === 'MIN');
+                const maxV = field.validations.find(v => v.type === 'MAX');
+                const minLengthV = field.validations.find(v => v.type === 'MIN_LENGTH');
+                const maxLengthV = field.validations.find(v => v.type === 'MAX_LENGTH');
+
+                if (minV && maxV) {
+                    parts.push(`CHECK (${quoteIdentifier(field.name)} >= ${minV.value} AND ${quoteIdentifier(field.name)} <= ${maxV.value})`);
+                } else if (minV) {
+                    parts.push(`CHECK (${quoteIdentifier(field.name)} >= ${minV.value})`);
+                } else if (maxV) {
+                    parts.push(`CHECK (${quoteIdentifier(field.name)} <= ${maxV.value})`);
+                }
+
+                if (minLengthV && maxLengthV) {
+                    parts.push(`CHECK (CHAR_LENGTH(${quoteIdentifier(field.name)}) >= ${minLengthV.value} AND CHAR_LENGTH(${quoteIdentifier(field.name)}) <= ${maxLengthV.value})`);
+                } else if (minLengthV) {
+                    parts.push(`CHECK (CHAR_LENGTH(${quoteIdentifier(field.name)}) >= ${minLengthV.value})`);
+                } else if (maxLengthV) {
+                    parts.push(`CHECK (CHAR_LENGTH(${quoteIdentifier(field.name)}) <= ${maxLengthV.value})`);
+                }
+            }
+
+            const constraintsStr = parts.length > 0 ? ' ' + parts.join(' ') : '';
+            return `    ${quoteIdentifier(field.name)} ${mysqlType}${constraintsStr}`;
+        });
+
+        if (identity.origin === 'implicit') {
+            columnDefs.unshift(`    ${quoteIdentifier(identity.name)} ${columnType(identity)} PRIMARY KEY AUTO_INCREMENT`);
+        }
+
+        return `CREATE TABLE ${quoteIdentifier(entity.names.table)} (\n` + columnDefs.join(',\n') + `\n);`;
+    });
+
+    const relationStatements = [];
+    for (const relation of plan.relations) {
+        const storage = relation.storage;
+        if (!storage) continue; // Legacy unchecked SQL helper skips missing endpoints.
+        const source = byId.get(relation.sourceEntityId), target = byId.get(relation.targetEntityId);
+        const comment = `-- Relationship: ${source.sourceName} ${relation.relationName} ${target.sourceName} (${relation.cardinality})\n`;
+        if (storage.kind === 'junction') {
+            const columns = storage.table.columns;
+            const definitions = columns.map(column => `    ${quoteIdentifier(column.name)} ${columnType(fields.get(column.typeSourceFieldId)) || 'INT'} NOT NULL`);
+            const primary = storage.table.primaryKeyFieldIds.map(id => quoteIdentifier(columns.find(column => column.id === id).name));
+            const foreignKeys = storage.foreignKeys.map(foreignKey => {
+                const column = columns.find(column => column.id === foreignKey.fieldId);
+                const referenced = byId.get(foreignKey.referencedEntityId), key = fields.get(foreignKey.referencedFieldId);
+                return `    FOREIGN KEY (${quoteIdentifier(column.name)}) REFERENCES ${quoteIdentifier(referenced.names.table)}(${quoteIdentifier(key.name)}) ON DELETE ${deleteAction(foreignKey.onDelete)}`;
+            });
+            relationStatements.push(comment + `CREATE TABLE ${quoteIdentifier(storage.table.name)} (\n` +
+                [...definitions, `    PRIMARY KEY (${primary.join(', ')})`, ...foreignKeys].join(',\n') + '\n);');
+        } else {
+            const receiver = byId.get(storage.receiverEntityId), referenced = byId.get(storage.referencedEntityId);
+            const column = fields.get(storage.fieldId), key = fields.get(storage.referencedFieldId);
+            const receiverTable = quoteIdentifier(receiver.names.table), columnName = quoteIdentifier(column.name);
+            const constraint = relationPhysicalNames(relation, plan).foreignKeyConstraints[0];
+            relationStatements.push(comment +
+                `ALTER TABLE ${receiverTable} ADD COLUMN ${columnName} ${columnType(fields.get(column.typeSourceFieldId)) || 'INT'}${column.storage.unique ? ' UNIQUE' : ''};\n` +
+                `ALTER TABLE ${receiverTable} ADD CONSTRAINT ${quoteIdentifier(constraint)} FOREIGN KEY (${columnName}) REFERENCES ${quoteIdentifier(referenced.names.table)}(${quoteIdentifier(key.name)}) ON DELETE ${deleteAction(storage.onDelete)};`);
+        }
+    }
+    let sql = `-- ============================================================\n` +
+              `-- MySQL Database Schema\n` +
+              `-- Generated automatically by APIForge Compiler\n` +
+              `-- ============================================================\n\n` +
+              (plan.entities.some(entity => policy.fieldViews(entity).some(field => field.dataType === 'TIMESTAMP'))
+                  ? "-- Interpret static TIMESTAMP defaults as UTC and disable legacy implicit attributes.\nSET SESSION time_zone = '+00:00';\nSET SESSION explicit_defaults_for_timestamp = ON;\n\n" : '') +
+              tableStatements.join('\n\n') + '\n';
+    if (relationStatements.length) sql += `\n-- ============================================================\n` +
+        `-- Relationship Tables & Foreign Key Constraints\n` +
+        `-- ============================================================\n\n` + relationStatements.join('\n\n') + '\n';
+    return sql;
 }
 
 function rowBudget(table) {
@@ -118,19 +388,26 @@ function planIssues(tables) {
     return issues;
 }
 function targetIssues(entities, relations = []) {
+    return targetIssuesFromPlan(projectDefinitions(entities, relations));
+}
+function targetIssuesFromPlan(input, suppliedSources) {
+    const candidate = input.plan ? input : { plan: input, provenance: {} };
+    const plan = candidate.plan, sources = suppliedSources || sourceContext(candidate);
+    const entities = plan.entities.map(entity => sources.entities.get(entity.id));
     const issues = [];
     const issue = (node, message, locationKey = 'name', hint) => issues.push({ node, message, locationKey, ...(hint ? { hint } : {}) });
     const identifier = (name, node, kind) => {
         if (name.length > IDENTIFIER_LIMIT) issue(node, `Generated MySQL ${kind} '${name}' exceeds ${IDENTIFIER_LIMIT} characters.`);
     };
-    const byName = new Map(entities.map(e => [e.name, e]));
     for (const entity of entities) {
         identifier(entity.name, entity, 'table');
         let checkCount = 0;
         for (const field of entity.fields) {
             identifier(field.name, field, 'column');
             const autoBound = (field.validations || []).find(v => v.type === 'MIN' || v.type === 'MAX');
-            if (field.dataType === 'INT' && field.constraints?.includes('PRIMARY_KEY') && field.defaultValue == null && autoBound) {
+            // Check every declared PK before structural admission, preserving
+            // G16 precedence even for a competing-key direct-IR contradiction.
+            if (field.constraints?.includes('PRIMARY_KEY') && policy.identityGeneration(field) === 'database_integer' && autoBound) {
                 issue(field, `Supported MySQL cannot represent MIN/MAX CHECK constraints on AUTO_INCREMENT column '${entity.name}.${field.name}'.`,
                     autoBound.type, 'Remove MIN/MAX, or declare an explicit INT DEFAULT to use a non-AUTO_INCREMENT key with bounds.');
             }
@@ -139,7 +416,7 @@ function targetIssues(entities, relations = []) {
             // MIN+MAX is one CHECK; MIN_LENGTH+MAX_LENGTH is another.
             for (const family of [['MIN', 'MAX'], ['MIN_LENGTH', 'MAX_LENGTH']]) {
                 if ((field.validations || []).some(v => family.includes(v.type))) {
-                    identifier(entity.name + '_chk_' + (++checkCount), field, 'automatic CHECK constraint');
+                    identifier(names.mysqlCheckName(entity.name, ++checkCount), field, 'automatic CHECK constraint');
                 }
             }
             if (field.dataType === 'STRING') {
@@ -166,25 +443,24 @@ function targetIssues(entities, relations = []) {
             }
         }
     }
-    for (const rel of relations) {
-        const source = byName.get(rel.sourceEntity), target = byName.get(rel.targetEntity);
-        if (!source || !target) continue;
-        const sourceKey = key(source), targetKey = key(target);
-        const sourceFk = lowerFirst(source.name) + '_' + sourceKey.name;
-        const targetFk = lowerFirst(target.name) + '_' + targetKey.name;
-        if (rel.relationType === 'MANY_TO_MANY') {
-            const junction = source.name + '_' + target.name;
-            identifier(junction, rel, 'junction table'); identifier(sourceFk, rel, 'junction column'); identifier(targetFk, rel, 'junction column');
-            for (const suffix of ['_ibfk_1', '_ibfk_2']) identifier(junction + suffix, rel, 'automatic foreign key constraint');
+    for (const relation of plan.relations) {
+        const storage = relation.storage, node = sources.relations.get(relation.id);
+        if (!storage) continue;
+        const physical = relationPhysicalNames(relation, plan);
+        if (storage.kind === 'junction') {
+            identifier(storage.table.name, node, 'junction table');
+            for (const column of storage.table.columns) identifier(column.name, node, 'junction column');
+            for (const name of physical.foreignKeyConstraints) identifier(name, node, 'automatic foreign key constraint');
         } else {
-            const receiver = rel.relationType === 'MANY_TO_ONE' ? source : target;
-            const referenced = receiver === source ? target : source;
-            identifier(receiver === source ? targetFk : sourceFk, rel, 'foreign key column');
-            identifier(`fk_${receiver.name.toLowerCase()}_${referenced.name.toLowerCase()}`, rel, 'foreign key constraint');
+            const receiver = plan.entities.find(entity => entity.id === storage.receiverEntityId);
+            const field = receiver.fields.find(field => field.id === storage.fieldId);
+            identifier(field.name, node, 'foreign key column');
+            identifier(physical.foreignKeyConstraints[0], node, 'foreign key constraint');
         }
     }
-    return issues.concat(planIssues(physicalPlan(entities, relations)));
+    return issues.concat(planIssues(physicalPlanFromPlan(candidate, sources)));
 }
+
 function numericIssues(field) {
     const issues = [];
     for (const value of [...(field.validations || []), ...(field.defaultValues || (field.defaultValue ? [field.defaultValue] : []))]) {
@@ -198,6 +474,7 @@ function numericIssues(field) {
     }
     return issues;
 }
-module.exports = { targetIssues, numericIssues, capacity, IDENTIFIER_LIMIT, KEY_BYTES, VARCHAR_CAPACITY,
+module.exports = { targetIssuesFromPlan, physicalPlanFromPlan, sourceContext, relationPhysicalNames,
+    renderSchema, columnType, quoteIdentifier, formatSQLLiteral, targetIssues, numericIssues, capacity, IDENTIFIER_LIMIT, KEY_BYTES, VARCHAR_CAPACITY,
     physicalPlan, planIssues, rowBudget, storageBytes, COLUMN_LIMIT, SECONDARY_INDEX_LIMIT, KEY_PART_LIMIT,
     LOGICAL_ROW_BYTES, LOCAL_RECORD_BYTES, INDEX_LIMIT };
