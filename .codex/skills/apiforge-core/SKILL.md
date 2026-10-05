@@ -70,3 +70,7 @@ Editing files alone is not evidence of success.
 ## G26 offline migration boundary
 
 Use [the migration contract](../../../docs/schema-migrations.md) for `migrate.js` and `src/migrations/`. Ordinary compilation stays independent of migration state and retains its complete ordered file bytes. Migration workspaces are separate from generated `output/`; do not add migration artifacts or endpoints to ordinary generation. G26 V1 generates offline one-shot SQL for `mysql-8.4-v1`; APPLY, DOWN, drift, rename inference, backfills and cardinality conversions are deferred.
+
+## G27 explicit PostgreSQL target
+
+Read [the PostgreSQL contract](../../../docs/postgres-target.md) and [verification evidence](../../../docs/postgres-target-verification.md) for target work. MySQL is the default; select only exact mysql/postgres options. Keep tokens, AST, symbols, IR and serialized Effective Schema Plan target neutral. PostgreSQL owns physical admission/names/DDL/pg results/error classification; common HTTP policy stays shared. Legacy generateSQL remains unchecked MySQL. Preserve the approved-main G27 byte oracle and older G22/G26 baselines. Certify native PostgreSQL 18 DDL, emitted models and installed HTTP backend separately. G26 remains MySQL-only; do not add PostgreSQL migration claims or browser selection.

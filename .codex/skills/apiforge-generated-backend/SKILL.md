@@ -61,3 +61,7 @@ Codegen-specific tests
 Use [references/backend-verification-checklist.md](references/backend-verification-checklist.md). Keep checks proportional: metadata-only changes do not require expensive runtime or database work.
 
 For G26, keep migration SQL separate from ordinary CREATE output and G19 publication. Reuse MySQL presentation primitives, emit complete MODIFY definitions, model implicit FK-index side effects, and validate every intermediate G16 boundary. Certify `mysql-8.4-v1` with native metadata and seeded preservation evidence. Prerequisite acknowledgement is an operator assertion; production G26 never executes data-check queries. See [the migration contract](../../../docs/schema-migrations.md).
+
+## G27 explicit PostgreSQL target
+
+Read [the PostgreSQL contract](../../../docs/postgres-target.md) and [verification evidence](../../../docs/postgres-target-verification.md) for target work. MySQL is the default; select only exact mysql/postgres options. Keep tokens, AST, symbols, IR and serialized Effective Schema Plan target neutral. PostgreSQL owns physical admission/names/DDL/pg results/error classification; common HTTP policy stays shared. Legacy generateSQL remains unchecked MySQL. Preserve the approved-main G27 byte oracle and older G22/G26 baselines. Certify native PostgreSQL 18 DDL, emitted models and installed HTTP backend separately. G26 remains MySQL-only; do not add PostgreSQL migration claims or browser selection.

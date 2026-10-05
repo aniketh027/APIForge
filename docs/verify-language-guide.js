@@ -70,7 +70,7 @@ async function main() {
     const { IMPLICIT_PRIMARY_KEY_COLLISION, ...originalSemantic } = CODES.semantic;
     assert.equal(IMPLICIT_PRIMARY_KEY_COLLISION, 'SEM033');
     assert.deepEqual(require('../tests/v1-hardening-helpers').retainedCodes(CODES, baselineCodes), baselineCodes);
-    assert.equal(Object.values(CODES).flatMap(Object.values).length, 68);
+    assert.equal(Object.values(CODES).flatMap(Object.values).length, 71);
     assert.equal(CODES.semantic.INVALID_UUID_DEFAULT, 'SEM039');
     assert.equal(CODES.semantic.INVALID_TEMPORAL_DEFAULT, 'SEM038');
     const compiled = new Map();

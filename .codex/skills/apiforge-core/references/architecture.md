@@ -55,3 +55,7 @@ create payloads, trusted update payloads except immutable identity, and declared
 UUID/temporal checks. MySQL owns types/quoting/DDL/indexes/limits; OpenAPI owns
 schema presentation. See `docs/effective-schema-plan.md` for the shape,
 provenance, compatibility and G26/G27 adapter boundaries.
+
+## G27 alternate target
+
+Default MySQL behavior and files remain byte-compatible. Explicit postgres uses the postgresql-18-v1 adapter with pg, qualified quoted public tables, C collation, CHECK-based ENUM, BY DEFAULT identities, local text parsers and awaited session leases. Shared logical policy supplies controllers/routes/OpenAPI. Target selection stays outside the serialized plan. See [the target contract](../../../../docs/postgres-target.md) and [native evidence](../../../../docs/postgres-target-verification.md). PostgreSQL migrations and browser target selection are deferred.

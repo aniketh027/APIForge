@@ -23,6 +23,12 @@ watch each compiler phase run live.
 For the complete syntax, validation rules, and worked examples, read the
 [APIForge Language Guide](docs/APIForge-Language-Guide.md).
 
+G27 adds an explicit PostgreSQL 18 target while MySQL remains the default.
+Use `node index.js source.apiforge --target postgres`, library options
+`{ target: 'postgres' }`, or an HTTP compile body with `target: "postgres"`.
+The browser continues to generate MySQL. See [the PostgreSQL contract](docs/postgres-target.md)
+and [native verification](docs/postgres-target-verification.md).
+
 G26 provides a separate offline `migrate.js` CLI for physical snapshots,
 explicit baselines, schema diffs, and immutable MySQL migration revisions.
 It targets the certified `mysql-8.4-v1` profile and requires exact plan-bound

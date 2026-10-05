@@ -52,3 +52,7 @@ Update samples and documentation only after implementation is verified. Describe
 Use [references/compiler-change-checklist.md](references/compiler-change-checklist.md) during implementation and final review.
 
 For G26 snapshot work, reuse the complete `prepareAdmittedGeneration` admission path and admitted Effective Schema Plan. Preserve failure order/messages and the independent approved-main G26 oracle; do not weaken the G22 oracle. Verify native physical naming before extending diff/planning. Migration behavior does not introduce new DSL syntax or compiler phases; see [the migration contract](../../../docs/schema-migrations.md).
+
+## G27 explicit PostgreSQL target
+
+Read [the PostgreSQL contract](../../../docs/postgres-target.md) and [verification evidence](../../../docs/postgres-target-verification.md) for target work. MySQL is the default; select only exact mysql/postgres options. Keep tokens, AST, symbols, IR and serialized Effective Schema Plan target neutral. PostgreSQL owns physical admission/names/DDL/pg results/error classification; common HTTP policy stays shared. Legacy generateSQL remains unchecked MySQL. Preserve the approved-main G27 byte oracle and older G22/G26 baselines. Certify native PostgreSQL 18 DDL, emitted models and installed HTTP backend separately. G26 remains MySQL-only; do not add PostgreSQL migration claims or browser selection.

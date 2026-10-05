@@ -9,6 +9,25 @@ DATE/TIMESTAMP additions verified on 2026-10-05 from approved main
 UUID additions verified on 2026-10-05 from approved main
 `b5b23024a4938c472b5fa73d0ebfd50e34ef75e8`; see [G25 evidence](uuid-verification.md).
 
+G27 adds explicit `postgres` target selection on 2026-10-06; MySQL remains
+the default. See [PostgreSQL target details](postgres-target.md) and
+[native verification](postgres-target-verification.md). The grammar, six phases
+and source IR are unchanged. `node index.js source.apiforge --target postgres`
+or HTTP `{source, target: "postgres"}` selects PostgreSQL 18. Only exact
+`mysql`/`postgres` values are accepted; invalid targets use INP003.
+The browser and G26 migrations remain MySQL-only defaults.
+
+PostgreSQL quotes original column spelling exactly (63 UTF-8 bytes), uses C
+collation for STRING/ENUM, accepts trailing-space ENUM labels with named
+CHECK membership, and sorts ENUM by declaration order. PostgreSQL generated
+INT keys support MIN/MAX, with supplied keys intersecting nonnegative HTTP
+policy; MySQL retains SEM037. PG generated-key zero stores zero, optional
+null generates, and supplied values do not advance the sequence. A later
+sequence collision returns 409; no reconciliation occurs. UUID contracts
+remain canonical lowercase; DATE/TIMESTAMP public ranges/format remain
+unchanged, with PG TIMESTAMPTZ(0), local text parsers and awaited UTC sessions.
+All other descriptions below retain their default-MySQL context.
+
 ## 1. Overview
 
 APIForge describes entities, fields, constraints, literal defaults, and
@@ -722,7 +741,7 @@ Explicit PK creation/default semantics (G12) and mutation (G13) remain separate.
 ## 11. Diagnostics
 
 Public error codes have a prefix and three digits. The registry contains
-67 errors: LEX001–LEX004, PAR001–PAR022, SEM001–SEM038, INP001–INP002, and INT001.
+71 errors: LEX001–LEX004, PAR001–PAR022, SEM001–SEM040, INP001–INP003, GEN001, and INT001.
 The symbolic identifier is separate: a semantic compatibility error may have
 `code: "DUPLICATE_FIELD"`, while its nested diagnostic has `code: "SEM005"`.
 Do not confuse the legacy symbolic code with the public code.

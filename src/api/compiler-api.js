@@ -193,7 +193,7 @@ router.post('/compile', (req, res) => {
             generatedFiles = codegenResult.files;
             phases.codegen = true;
         } catch (err) {
-            return failure(res, 500, {
+            return failure(res, err.diagnostic?.code === 'GEN001' ? 422 : 500, {
                 success: false,
                 phase: 'codegen',
                 phases,
@@ -204,7 +204,7 @@ router.post('/compile', (req, res) => {
                 optimizedIR,
                 optimizations,
                 warnings,
-                errors: [internalError('codegen')]
+                errors: [err.diagnostic?.code === 'GEN001' ? compilerError(err) : internalError('codegen')]
             });
         }
 

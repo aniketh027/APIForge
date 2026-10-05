@@ -14,7 +14,7 @@ No APPLY, DOWN, database connection or drift detection. Inspect diff before crea
 `;
 
 function run(args) {
-    if (args.includes('--target')) throw new M.MigrationError('MIGRATION_PROFILE_UNSUPPORTED', 'G26 supports only mysql-8.4-v1; target selection is unavailable.');
+    if (args.some((arg,index) => arg === '--target' && args[index+1] === 'postgres')) throw new M.MigrationError('MIGRATION_PROFILE_UNSUPPORTED', 'G26 supports only mysql-8.4-v1; target selection is unavailable.');
     if (!args.length || args[0] === '--help') { process.stdout.write(help); return; }
     const command = args.shift(), options = {}, repeat = new Set(['allow-destructive', 'acknowledge-data-check']);
     const permitted = {
