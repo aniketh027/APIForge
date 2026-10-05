@@ -161,8 +161,9 @@ ${generateCollectionParser(entity)}
         const {rows}=await db.query(sql+${j(' RETURNING '+q(key.name))},s.values);
         const response=Object.fromEntries(Object.entries(data));
         let resolved=false,value;
-        if(Object.prototype.hasOwnProperty.call(payload,PRIMARY_KEY.name)){resolved=true;value=payload[PRIMARY_KEY.name];}
-        else if(PRIMARY_KEY.generation==='database_integer'||PRIMARY_KEY.defaultValue!==null){resolved=true;value=rows[0][PRIMARY_KEY.name];}
+        if(PRIMARY_KEY.generation==='database_integer'){resolved=true;value=rows[0][PRIMARY_KEY.name];}
+        else if(Object.prototype.hasOwnProperty.call(payload,PRIMARY_KEY.name)){resolved=true;value=payload[PRIMARY_KEY.name];}
+        else if(PRIMARY_KEY.defaultValue!==null){resolved=true;value=rows[0][PRIMARY_KEY.name];}
         if(resolved)Object.defineProperty(response,PRIMARY_KEY.name,{value,enumerable:true,writable:true,configurable:true});
         return normalizeRow(response,${j(readFields(entity).filter(f=>policy.fieldViews(entity).some(d=>d.name===f.name)))});
     }

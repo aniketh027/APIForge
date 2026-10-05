@@ -34,7 +34,7 @@ async function nativeSession() {
             const client=new Client({...config,database:'postgres'});
             try {await client.connect();admin=client;break;}catch(error){await client.end().catch(()=>{});if(i===79)throw error;await delay(250);}
         }
-        const {rows:[profile]}=await admin.query("SELECT version() AS version,current_setting('server_version_num') AS major,current_setting('server_encoding') AS encoding,current_setting('block_size') AS block_size,current_setting('standard_conforming_strings') AS standard_conforming_strings");
+        const {rows:[profile]}=await admin.query("SELECT version() AS version,current_setting('server_version_num') AS major,current_setting('server_encoding') AS encoding,current_setting('block_size') AS block_size,current_setting('standard_conforming_strings') AS standard_conforming_strings,current_setting('TimeZone') AS admin_timezone,current_setting('DateStyle') AS admin_datestyle");
         assert.equal(Math.floor(Number(profile.major)/10000),18);assert.equal(profile.encoding,'UTF8');assert.equal(profile.block_size,'8192');assert.equal(profile.standard_conforming_strings,'on');
         if(container)profile.image=execFileSync('docker',['image','inspect','postgres:18','--format','{{index .RepoDigests 0}}'],{encoding:'utf8',windowsHide:true}).trim();
         return {config,admin,profile,container,cleanup,async database(){

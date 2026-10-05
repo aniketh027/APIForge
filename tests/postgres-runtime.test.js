@@ -1,7 +1,7 @@
 'use strict';
 const assert=require('assert/strict'),vm=require('vm');
 const {nativeSession,admit}=require('./postgres-native-helpers');
-const {keys,scalars,relations}=require('./postgres-target-cases');
+const {keys,scalars,relations,uuidRelations}=require('./postgres-target-cases');
 const Codegen=require('../src/codegen/codegen');
 const names=require('../src/targets/postgres/names');
 const taxonomy=require('../src/targets/postgres/errors');
@@ -16,9 +16,10 @@ async function main(){
     const session=await nativeSession();let db,pool;let queries=0;
     try {
         db=await session.database();
-        const source=[scalars,...keys.map(([name,key])=>'ENTITY '+name+' '+key),...relations,
+        const source=[scalars,...keys.map(([name,key])=>'ENTITY '+name+' '+key),...relations,...uuidRelations,
             'ENTITY Bounded keyValue INT PRIMARY KEY MIN 0 MAX 4',
             'ENTITY RequiredUuid keyValue UUID PRIMARY KEY REQUIRED',
+            'ENTITY StaticString keyValue STRING PRIMARY KEY DEFAULT "fixed" value STRING DEFAULT "hidden"',
             'ENTITY TemporalFields value STRING day DATE moment TIMESTAMP',
             'ENTITY TemporalSource keyValue UUID PRIMARY KEY day DATE moment TIMESTAMP ENTITY TemporalTarget keyValue UUID PRIMARY KEY day DATE moment TIMESTAMP RELATION TemporalSource relatedTemporal TemporalTarget ONE_TO_MANY'].join('\n');
         const admission=admit(source),files=Codegen.generate(admission.ir,false,{target:'postgres'}).files;
@@ -41,15 +42,29 @@ async function main(){
             const supplied=['RuntimeUuid','StaticUuid'].includes(name)?'123e4567-e89b-12d3-a456-426614174000':name==='TextKey'?"x'; DROP TABLE public.Scalars;--":0;
             const input={[field]:supplied};const before=structuredClone(input);const result=await m.create(input);assert.equal(result[field],supplied);assert.deepEqual(input,before);await m.delete(supplied);
             if(['Implicit','Generated','RuntimeUuid'].includes(name)) {const input={[field]:null};const result=await m.create(input);assert.notEqual(result[field],null);assert.deepEqual(input,{[field]:null});await m.delete(result[field]);}
+            else await assert.rejects(m.create({[field]:null}),e=>e.code==='23502');
         }
-        const zero=await models.Generated.create({identity:0});assert.equal(zero.identity,0);
-        const supplied=await models.Generated.create({identity:1});assert.equal(supplied.identity,1);
-        // Earlier direct creates consumed sequence values; restart this owned test sequence only.
         const seq=admission.context.physical.tables.find(t=>t.name==='Generated').columns.find(c=>c.identity).sequenceName;
-        await db.client.query('ALTER SEQUENCE '+names.table(seq)+' RESTART WITH 1');
+        const sequenceState=async()=>(await db.client.query('SELECT last_value,is_called FROM '+names.table(seq))).rows[0];
+        const sequenceBefore=await sequenceState();
+        const zero=await models.Generated.create({identity:0});assert.equal(zero.identity,0);
+        assert.equal((await db.client.query('SELECT "identity" FROM "public"."Generated" WHERE "identity"=0')).rows[0].identity,0);
+        const supplied=await models.Generated.create({identity:1});assert.equal(supplied.identity,1);
+        const negative=await models.Generated.create({identity:-1});assert.equal(negative.identity,-1);await models.Generated.delete(-1);
+        assert.deepEqual(await sequenceState(),sequenceBefore,'supplied zero/positive leave sequence untouched');
+        const future=Number(sequenceBefore.last_value)+1;await models.Generated.create({identity:future});
+        assert.deepEqual(await sequenceState(),sequenceBefore);
         await assert.rejects(models.Generated.create({}),e=>e.code==='23505'&&taxonomy.classify(e,'write').status===409);
-        await models.Generated.delete(1);
+        await models.Generated.delete(1);await models.Generated.delete(future);
+        for(const [name,field,value] of [['Generated','identity',15],['Implicit','id',16]]) {
+            const input={[field]:String(value)},before=JSON.stringify(input);
+            const created=await models[name].create(input);
+            assert.equal(created[field],value,'generated DB identity resolves the native INTEGER, including trusted coercions');
+            assert.equal((await db.client.query('SELECT '+names.quoteIdentifier(field)+' FROM '+names.table(name)+' WHERE '+names.quoteIdentifier(field)+'=$1',[value])).rows[0][field],value);
+            assert.equal(JSON.stringify(input),before);await models[name].delete(value);
+        }
         const optional=await models.RuntimeUuid.create({identity:null});assert.match(optional.identity,/^[0-9a-f-]{36}$/);
+        const stringDefault=await models.StaticString.create({});assert.deepEqual(stringDefault,{keyValue:'fixed'});assert.equal((await models.StaticString.findById('fixed')).value,'hidden');
         await assert.rejects(models.RequiredUuid.create({keyValue:null}),/UUID/);
         const empty=await models.Scalars.create({});assert.deepEqual(Object.keys(empty),['identity']);
         const actual=await models.Scalars.findById(empty.identity);assert.equal(actual.choice,'trailing ');assert.equal(actual.day,'2000-02-29');assert.equal(actual.moment,'2000-02-29T12:34:56Z');assert.equal(actual.flag,false);assert.equal(actual.realValue,1.5);assert.equal(actual.token,'ffffffff-ffff-ffff-ffff-ffffffffffff');
@@ -61,6 +76,8 @@ async function main(){
             const count=queries;await assert.rejects(models.Implicit.create({[key]:1}),/identifier/);await assert.rejects(models.Implicit.update(0,{[key]:1}),/identifier/);assert.equal(queries,count);
         }
         await assert.rejects(models.Implicit.create({validUnknown:1}),e=>e.code==='42703'&&taxonomy.classify(e,'write').status===500);
+        await assert.rejects(models.Implicit.create({'value" = 1; DROP TABLE "Scalars"; --':1}),e=>e.code==='42703');
+        assert(await models.Scalars.findById(empty.identity));
         for(const invalid of [{day:'2000-02-30'},{moment:'2000-01-01T00:00:00+00:00'},{token:'FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF'}]) {const count=queries;await assert.rejects(models.Scalars.create(invalid));assert.equal(queries,count);}
         for(const choice of ['z','A','é',"a'",'a\\b','',' leading','trailing '])await models.Scalars.create({textValue:'enum '+choice,choice});
         const options=models.Scalars.parseQuery({sort:'choice',order:'asc',page:'1',limit:'100'});const sorted=await models.Scalars.findAll(options);assert.equal(sorted.at(-1).choice,'trailing ');assert.equal(sorted[0].choice,'z');assert.equal(await models.Scalars.countFiltered(options),sorted.length);
@@ -80,6 +97,16 @@ async function main(){
                 if(i===2){await source.delete(s.sourceKey);assert.equal(await target.findById(t.targetKey),null);}
             }
         }
+        const uuids=['00000000-0000-0000-0000-000000000000','ffffffff-ffff-ffff-ffff-ffffffffffff','123e4567-e89b-12d3-a456-426614174000','123e4567-e89b-72d3-a456-426614174000'];
+        for(let i=0;i<4;i++) {
+            const source=models['U'+i],target=models['V'+i],s=await source.create({}),t=await target.create({targetKey:uuids[i]});
+            const rel=admission.context.plan.relations.find(r=>r.sourceEntityId===admission.context.byName.get('U'+i).id),r=rel.storage;
+            if(r.kind==='junction')await source[rel.names.add](s.sourceKey,t.targetKey);
+            else {const receiver=r.receiverEntityId===rel.sourceEntityId?source:target,field=admission.context.byId.get(r.receiverEntityId).fields.find(f=>f.id===r.fieldId).name;await receiver.update(receiver===source?s.sourceKey:t.targetKey,{[field]:receiver===source?t.targetKey:s.sourceKey});}
+            const related=await source[rel.names.getter](s.sourceKey),value=rel.http.many?related[0]:related;
+            assert.equal(value.targetKey,uuids[i]);assert.equal(value.day,'9999-12-31');assert.equal(value.moment,'2038-01-19T03:14:07Z');
+            assert.equal((await target.findAll(target.parseQuery({day:'9999-12-31',moment:'2038-01-19T03:14:07Z'}))).length,1);
+        }
         // Numeric-offset parsers are exercised with real values under non-UTC sessions.
         const configSource=files.find(f=>f.path==='config/db.js').content;
         let captured;loadModule(configSource,name=>name==='dotenv'?{config(){}}:{types:require('pg').types,Pool:class {constructor(options){captured=options.types;}on(){}}},{env:{}});
@@ -89,9 +116,20 @@ async function main(){
             assert.equal(captured.getTypeParser(1082,'text')(raw.day),'2000-02-29');assert.equal(captured.getTypeParser(1184,'text')(raw.minimum),'1970-01-01T00:00:01Z');assert.equal(captured.getTypeParser(1184,'text')(raw.maximum),'2038-01-19T03:14:07Z');
         }
         for(const value of ['infinity','-infinity','2000-01-01 00:00:00.000+00','9999-01-01 00:00:00+00','2000-01-01 00:00:00 UTC'])assert.throws(()=>captured.getTypeParser(1184,'text')(value));
+        assert.equal(captured.getTypeParser(1114,'text')('2000-01-01 00:00:00'),'2000-01-01T00:00:00Z');
+        for(const value of ['2000-01-01 05:00:00+05','2000-01-01 05:30:00+0530','2000-01-01 05:30:15+05:30:15'])assert.equal(captured.getTypeParser(1184,'text')(value),'2000-01-01T00:00:00Z');
         assert.equal(captured.getTypeParser(20,'text')('9007199254740993'),'9007199254740993');
+        const countModel=loadModule(files.find(f=>f.path==='models/Implicit.js').content,name=>name==='../config/db'?{query:async()=>({rows:[{total:'9007199254740993'}]})}:require(name));
+        await assert.rejects(countModel.countFiltered({}),/Invalid collection count/);
         const dbResult=await pool.query("SELECT current_setting('TimeZone') AS timezone,current_setting('DateStyle') AS style,current_setting('standard_conforming_strings') AS strings,current_setting('search_path') AS path,current_setting('application_name') AS application");
         assert.deepEqual(dbResult.rows[0],{timezone:'UTC',style:'ISO, YMD',strings:'on',path:'pg_catalog, public',application:'apiforge-postgresql-18-v1'});
+        // External expanded/infinite native values fail returned-value normalization.
+        const temporalTable=admission.context.physical.tables.find(t=>t.name==='TemporalFields');
+        for(const c of temporalTable.constraints.filter(c=>c.kind==='ck'))await db.client.query('ALTER TABLE "public"."TemporalFields" DROP CONSTRAINT '+names.quoteIdentifier(c.name));
+        for(const [column,value] of [['day','infinity'],['day','0999-01-01'],['moment','infinity'],['moment','2040-01-01T00:00:00Z']]) {
+            const {rows:[record]}=await db.client.query('INSERT INTO "public"."TemporalFields" ('+names.quoteIdentifier(column)+') VALUES ($1) RETURNING "id"',[value]);
+            await assert.rejects(models.TemporalFields.findById(record.id),/PostgreSQL/);await models.TemporalFields.delete(record.id);
+        }
         console.log(JSON.stringify({gate:'C',profile:session.profile,entities:Object.keys(models).length,files:files.length,queries,result:'PASS'}));
     } finally {if(pool)await pool.end();if(db)await db.close();await session.cleanup();}
 }

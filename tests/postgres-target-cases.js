@@ -18,4 +18,5 @@ __proto__ STRING
 constructor STRING
 prototype STRING`;
 const relations=Object.freeze(['ONE_TO_MANY','MANY_TO_ONE','ONE_TO_ONE','MANY_TO_MANY'].map((kind,i)=>`ENTITY Source${i} sourceKey UUID PRIMARY KEY ENTITY Target${i} targetKey STRING PRIMARY KEY MAX_LENGTH 260 RELATION Source${i} related${i} Target${i} ${kind}`));
-module.exports={keys,scalars,relations};
+const uuidRelations=Object.freeze(['ONE_TO_MANY','MANY_TO_ONE','ONE_TO_ONE','MANY_TO_MANY'].map((kind,i)=>`ENTITY U${i} sourceKey UUID PRIMARY KEY day DATE DEFAULT "1000-01-01" moment TIMESTAMP DEFAULT "1970-01-01T00:00:01Z" ENTITY V${i} targetKey UUID PRIMARY KEY day DATE DEFAULT "9999-12-31" moment TIMESTAMP DEFAULT "2038-01-19T03:14:07Z" RELATION U${i} uuidRelated${i} V${i} ${kind}`));
+module.exports={keys,scalars,relations,uuidRelations};
