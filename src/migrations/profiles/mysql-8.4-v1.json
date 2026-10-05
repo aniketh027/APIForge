@@ -1,0 +1,1 @@
+{"characterSet":"utf8mb4","collation":"utf8mb4_unicode_ci","ddlSyntaxFloor":"8.0.16","engine":"InnoDB","explicitDefaultsForTimestamp":true,"lowerCaseTableNames":0,"name":"mysql-8.4-v1","noBackslashEscapes":false,"pageSize":16384,"rowFormat":"DYNAMIC","serverFamily":"8.4","strictSqlMode":true,"timeZone":"+00:00","version":1}

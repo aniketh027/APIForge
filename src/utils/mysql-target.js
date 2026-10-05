@@ -506,7 +506,7 @@ function numericIssues(field) {
     return issues;
 }
 module.exports = { targetIssuesFromPlan, physicalPlanFromPlan, sourceContext, relationPhysicalNames,
-    describeColumnType, describeCharacter, renderPhysicalType,
+    describeColumnType, describeCharacter, renderPhysicalType, FLOAT_MAX,
     renderSchema, columnType, quoteIdentifier, formatSQLLiteral, targetIssues, numericIssues, capacity, IDENTIFIER_LIMIT, KEY_BYTES, VARCHAR_CAPACITY,
     physicalPlan, planIssues, rowBudget, storageBytes, COLUMN_LIMIT, SECONDARY_INDEX_LIMIT, KEY_PART_LIMIT,
     LOGICAL_ROW_BYTES, LOCAL_RECORD_BYTES, INDEX_LIMIT };
