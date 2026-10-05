@@ -144,3 +144,78 @@ Known limits are explicit: one certified profile, cooperating local lock, offlin
 G26 STATUS: CLOSED
 
 G26 SCHEMA MIGRATIONS — READY FOR EXTERNAL REVIEW
+
+## External-review correction: workspace output isolation (2026-10-05)
+
+External review of `76da0b1f4eb0484c88625b87ae2a1ec66367c208` found one blocking workspace-safety issue. The original closure record above is preserved as historical evidence; this section records the correction and revised readiness decision.
+
+### Reproduce before correction
+
+The following Windows path reproducer was executed and both results were asserted before changing production code:
+
+```js
+const assert = require('assert');
+const path = require('path').win32;
+const dirname = 'C:\\Project\\APIForge\\src\\migrations';
+const incorrect = path.resolve(dirname, '../../..', 'output');
+const expected = path.resolve(dirname, '../..', 'output');
+assert.strictEqual(incorrect, 'C:\\Project\\output');
+assert.strictEqual(expected, 'C:\\Project\\APIForge\\output');
+```
+
+Current incorrect resolved path at the reviewed tip: `C:\Project\output`. Expected repository output path: `C:\Project\APIForge\output`. `workspace.js` lives two directory levels below the repository root; walking three parents omitted the actual repository output from the protected roots. The cwd-derived guard masked that omission when invoked from the repository root, but an unrelated cwd allowed migration history into an ordinary output directory that generation can replace.
+
+Before the production fix, the new regression was added to `tests/migration-publication.test.js` and executed with `node tests/migration-publication.test.js`. It passed the repository-cwd rejection, then failed on the unrelated-cwd/repository-output case with exit 1 and `AssertionError [ERR_ASSERTION]: Missing expected exception.` Publication had accepted the unique repository-output fixture and created its baseline instead of throwing `MIGRATION_HISTORY_CORRUPT`. The test's `finally` restored cwd and removed only its own unique fixture.
+
+### Exact correction and regression coverage
+
+The sole production change is in `src/migrations/workspace.js`:
+
+```diff
+-    const generatedRoots = [path.resolve(__dirname, '../../..', 'output'), path.resolve(process.cwd(), 'output')];
++    const generatedRoots = [path.resolve(__dirname, '../..', 'output'), path.resolve(process.cwd(), 'output')];
+```
+
+The repository-derived root now protects actual repository output independently of cwd, while the invocation-output guard remains. `safePath` rejects before `mkdirSync`, lock acquisition or revision staging. Both publication and history reads use that guard. G19 itself is unchanged.
+
+The publication suite now reports 53 checks, including 20 new behavior checks:
+
+| Required case | Observed result |
+| --- | --- |
+| A: repository cwd, workspace under repository `output/` | `MIGRATION_HISTORY_CORRUPT` for publication and read |
+| B: unrelated temporary cwd, workspace under repository `output/` | Same rejection, independent of cwd |
+| C: unrelated temporary cwd, workspace under invocation `output/` | Same rejection; invocation guard retained |
+| D: external workspace from unrelated cwd | Baseline `000000` and migration `000001` publish successfully |
+| E: rejection before artifacts | Each rejected case records zero mutating filesystem calls and the workspace remains absent; no lock, stage or revision is created |
+| F: history behavior | Prior revision bytes remain identical; validated head matches publication; identical-snapshot no-op preserves the complete workspace bytes; all existing corruption/locking/fault tests still pass |
+
+The test restores `process.cwd()` in `finally`. Its repository-output fixture is a unique child derived from its `mkdtemp` name, verified absent before use; cleanup verifies the exact parent and basename before removing only that fixture. Existing generated output entries are not removed by this fixture cleanup.
+
+The audit command `rg -n '\.\./\.\./\.\.|__dirname|process\.cwd\(\)' src/migrations` returned only the corrected `workspace.js` root-guard line. No second three-parent repository-root assumption exists under `src/migrations/`.
+
+### Rerun evidence and protected state
+
+All required commands completed with exit 0 after the correction:
+
+| Command | Result |
+| --- | --- |
+| `npm test` | PASS: original core 1060/1060 and all existing focused suites; G19 atomic publication 22 groups; original G22 oracle 3002 assertions, zero exact mismatches |
+| `npm run test:migrations` | PASS: all ten offline suites, 1136 reported checks; publication increased from 33 to 53 |
+| `node tests/migration-history.test.js` | PASS: 20 checks |
+| `node tests/migration-publication.test.js` | PASS: 53 checks |
+| `node tests/migration-cli.test.js` | PASS: 14 checks |
+| `node tests/migration-compatibility.test.js` | PASS: 655 checks, 247 valid / 268 invalid sources, 3235 exact generated files against approved main `1caf927b5bcef627575a36c1d29800ce03e6f17c` |
+| `git diff --check` and staged diff check | PASS |
+| `tests/verify-protected-artifacts.ps1` with the original G26 manifest | PASS before and after correction: all 36 paths, sizes, SHA-256, creation and modification timestamps unchanged |
+
+This is a workspace-path correction only. No snapshot, diff, safety, planner, simulator, renderer, SQL or native MySQL semantics changed. As requested, native MySQL suites were not rerun; their original evidence above remains the earlier implementation record.
+
+### Corrective commit and revised closure
+
+New corrective commit: `b684390c8144417fbe9111333ca4d623578460d3` (`fix(g26): isolate repository output across invocation directories`). It directly follows the reviewed tip and contains only the production guard correction and publication regression tests. This appended record is a separate documentation follow-up so it can record the actual corrective SHA without amending any commit.
+
+Final local branch `g26-schema-migrations`, including this report-only follow-up: **12 ahead / 0 behind** both `main` and `origin/main`. Both remain at `1caf927b5bcef627575a36c1d29800ce03e6f17c`. Live remote inspection confirmed the same main SHA and no remote feature branch. Frozen `v1.0.0` remains tag object `2e5368620ca210cfa240b1b62faf82be99b491ea`, peeling to `9d5b223b0af350a237625f4cd8dfbc700e35dd1b`. No push, merge, main/tag change, amend, rebase or force push occurred. Final tracked/index state is clean with only the original four protected roots untracked.
+
+No blocking or correctness issues found in the reviewed correction scope. The external-review blocker is fixed and the required regression and integrity checks pass. Revised closure: the correction is complete locally and ready for external review; integration remains pending.
+
+G26 WORKSPACE OUTPUT ISOLATION FIX — READY FOR EXTERNAL REVIEW
