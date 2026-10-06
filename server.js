@@ -26,6 +26,10 @@ const { COMPILER_PHASES, createDiagnostic, internalDiagnostic } = require('./src
 const app = express();
 const PORT = process.env.DEV_PORT || 3001;
 
+const { createManager } = require('./src/live-runner/manager');
+const liveManager = createManager();
+app.use('/api/live', require('./src/api/live-runner-api').createRouter(liveManager));
+
 // ── Middleware ───────────────────────────────────────────────
 app.use(express.json({ limit: '1mb' }));
 
@@ -56,7 +60,7 @@ app.use((err, req, res, next) => {
 
 // ── Start server ────────────────────────────────────────────
 if (require.main === module) {
-    app.listen(PORT, () => {
+    const server = app.listen(PORT, () => {
         console.log('');
         console.log('╔══════════════════════════════════════════════╗');
         console.log('║       APIForge Dev Server                    ║');
@@ -66,6 +70,14 @@ if (require.main === module) {
         console.log(`║  Health:    http://localhost:${PORT}/api/health  ║`);
         console.log('╚══════════════════════════════════════════════╝');
         console.log('');
+    });
+    let shuttingDown = false;
+    for (const signal of ['SIGINT', 'SIGTERM']) process.once(signal, async () => {
+        if (shuttingDown) return;
+        shuttingDown = true;
+        server.close();
+        try { await liveManager.shutdown(); process.exit(0); }
+        catch { console.error('LIVE_CLEANUP_FAILED'); process.exit(1); }
     });
 }
 

@@ -47,7 +47,9 @@
     "test:postgres-native": "node tests/postgres-review-reproduction.test.js && node tests/postgres-target-native.test.js && node tests/postgres-runtime.test.js && node tests/generated-backend-postgres.test.js",
     "test:g28": "node tests/g28-legacy-compatibility.test.js && node tests/g28-parser.test.js && node tests/g28-resolver.test.js && node tests/g28-cycle-diagnostics.test.js && node tests/g28-compilation.test.js && node tests/g28-equivalence.test.js && node tests/g28-boundaries.test.js && node tests/g28-migrations.test.js",
     "test:g28-native": "node tests/g28-native.test.js",
-    "test:g28-mysql-regressions": "node tests/g28-mysql-regressions.test.js"
+    "test:g28-mysql-regressions": "node tests/g28-mysql-regressions.test.js",
+    "test:live-api-runner": "node tests/live-api-runner.test.js",
+    "test:live-api-runner-native": "node tests/live-api-runner-native.test.js"
   },
   "keywords": [
     "compiler",
