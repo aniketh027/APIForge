@@ -60,7 +60,7 @@ const { internalDiagnostic, sortDiagnostics } = require('./src/utils/diagnostics
 // ── Read the source .apiforge file ──────────────────────────
 
 let selection;
-try { selection = require('./src/targets').cliSelection(process.argv.slice(2)); }
+try { selection = require('./src/modules/cli-selection').fileSelection(process.argv.slice(2)); }
 catch (error) { console.error(formatDiagnostic('', error.diagnostic)); process.exit(1); }
 const filePath = selection.file;
 const targetOptions = {target:selection.target};
@@ -82,7 +82,19 @@ if (!fs.existsSync(filePath)) {
 }
 
 // Read the source code from the file
-const sourceCode = fs.readFileSync(filePath, 'utf-8');
+let preparedEntry;
+let compilationUnit;
+let sourceCode;
+if (selection.root !== undefined) {
+    try {
+        const adapter = new (require('./src/modules/filesystem-resolver').FilesystemResolver)(filePath, {root:selection.root});
+        const read = adapter.read(adapter.entry);
+        preparedEntry = {adapter,read}; sourceCode = read.source;
+    } catch (error) { console.error(formatDiagnostic('',error.diagnostic || internalDiagnostic('input'))); process.exit(1); }
+} else {
+    const capture = require('./src/modules/filesystem-resolver').captureEntry(filePath);
+    preparedEntry = {capture}; sourceCode = capture.source;
+}
 
 console.log('╔══════════════════════════════════════════════╗');
 console.log('║       APIForge Compiler v1.0.0               ║');
@@ -97,7 +109,13 @@ console.log('');
 // Structured locations avoid extracting coordinates from presentation text.
 function reportFatalError(err, phase) {
     console.log('');
-    console.log(formatDiagnostic(sourceCode, err.diagnostic || internalDiagnostic(phase)));
+    const unit = err.compilationUnit || compilationUnit;
+    const diagnostic = err.diagnostic || internalDiagnostic(phase);
+    if (unit) console.log(unit.format(diagnostic));
+    else if (err.recognizedImport) {
+        const display = selection.root === undefined ? path.basename(filePath) : path.relative(preparedEntry.adapter.root,preparedEntry.adapter.entry.canonical).split(path.sep).join('/');
+        console.log(formatDiagnostic(sourceCode,diagnostic).replace(`  --> line ${diagnostic.line}`,`  --> ${display}:${diagnostic.line}`));
+    } else console.log(formatDiagnostic(sourceCode, diagnostic));
     if (err.outputPublication) console.error(`[OUTPUT] ${err.message}`);
     console.log('');
     console.log(`[ABORT] Compilation stopped during ${phase}.`);
@@ -143,9 +161,16 @@ console.log('');
 console.log('─── Phase 2: Syntax Analysis ───');
 let ast;
 try {
-    ast = Parser.parse(tokens);
+    const parsed = Parser.parseModule(tokens);
+    ast = parsed.ast;
+    if (parsed.imports.length) {
+        compilationUnit = require('./src/modules/resolver').resolveFile(filePath,{root:selection.root},{...preparedEntry,tokens,parsed});
+        ast = compilationUnit.ast;
+        console.log(`[INFO] Resolved ${compilationUnit.modules.length} modules`);
+        compilationUnit.modules.forEach(m=>console.log(`[INFO] Module ${m.displayPath}: ${m.tokens.length} tokens`));
+    }
 } catch (err) {
-    reportFatalError(err, 'parser');
+    reportFatalError(err, err.diagnostic?.phase || 'parser');
 }
 const relCount = ast.relations ? ast.relations.length : 0;
 const relStr = relCount > 0 ? `, ${relCount} relation/relations` : '';
@@ -208,8 +233,9 @@ if (semanticResult.valid) {
     console.log('[✓] Semantic analysis passed — no errors found');
 } else {
     console.log(`[✗] Semantic analysis failed — ${semanticResult.errors.length} error(s):`);
-    semanticResult.diagnostics.forEach(diagnostic => {
-        console.log(formatDiagnostic(sourceCode, diagnostic));
+    const diagnostics = compilationUnit ? compilationUnit.sort(semanticResult.diagnostics.map(d=>compilationUnit.diagnostic(d))) : semanticResult.diagnostics;
+    diagnostics.forEach(diagnostic => {
+        console.log(compilationUnit ? compilationUnit.format(diagnostic) : formatDiagnostic(sourceCode, diagnostic));
     });
     console.log('');
     console.log('[ABORT] Compilation stopped due to semantic errors.');
@@ -424,12 +450,13 @@ codegenResult.files.forEach(file => {
 });
 console.log('');
 
-const warnings = sortDiagnostics([...(semanticResult.warnings || []), ...(optResult.warnings || [])]);
+const collectedWarnings = [...(semanticResult.warnings || []), ...(optResult.warnings || [])];
+const warnings = compilationUnit ? compilationUnit.sort(collectedWarnings.map(d=>compilationUnit.diagnostic(d))) : sortDiagnostics(collectedWarnings);
 if (warnings.length > 0) {
     console.log(`[!] ${warnings.length} warning${warnings.length === 1 ? '' : 's'} — compilation succeeded`);
     warnings.forEach(warning => {
         console.log(`[!] ${warning.phase} warning`);
-        console.log(formatDiagnostic(sourceCode, warning));
+        console.log(compilationUnit ? compilationUnit.format(warning) : formatDiagnostic(sourceCode, warning));
         console.log('');
     });
 }

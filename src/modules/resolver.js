@@ -26,7 +26,8 @@ function resolveFile(entryPath, options = {}, preparedEntry) {
             if (!edge) unit.entry = sourceModule;
             current = sourceModule;
             const captured = !edge ? preparedEntry?.capture : undefined;
-            const read = adapter.read(reference, edge?.location, (options.maxSourceBytes ?? Infinity)-bytes, captured);
+            const read = !edge && preparedEntry?.read ? preparedEntry.read
+                : adapter.read(reference, edge?.location, (options.maxSourceBytes ?? Infinity)-bytes, captured);
             bytes += read.byteLength; sourceModule.source = read.source;
             try {
                 sourceModule.tokens = !edge && preparedEntry?.tokens ? preparedEntry.tokens : Lexer.tokenize(read.source);

@@ -100,6 +100,7 @@ router.post('/compile', (req, res) => {
     let optimizations = [];
     let warnings = [];
     let generatedFiles = [];
+    let imports = [];
 
     // ── Phase 1: Lexical Analysis ───────────────────────────
     try {
@@ -116,7 +117,8 @@ router.post('/compile', (req, res) => {
 
     // ── Phase 2: Syntax Analysis ────────────────────────────
     try {
-        ast = Parser.parse(tokens);
+        const parsed = Parser.parseModule(tokens);
+        ast = parsed.ast; imports = parsed.imports;
         phases.parser = true;
     } catch (err) {
         return failure(res, err.diagnostic ? 400 : 500, {
@@ -126,6 +128,12 @@ router.post('/compile', (req, res) => {
             tokens,
             errors: [err.diagnostic ? compilerError(err) : internalError('parser')]
         });
+    }
+
+    if (imports.length) {
+        const error = require('../modules/errors').moduleError('IMPORT_CONTEXT_UNSUPPORTED', imports[0].location);
+        return failure(res,400,{success:false,phase:'input',phases,tokens,ast,
+            errors:[compilerError(error)],warnings:[]});
     }
 
     // ── Phase 3: Semantic Analysis ──────────────────────────
