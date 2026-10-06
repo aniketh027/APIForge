@@ -111,7 +111,7 @@ const PHASE_ORDER = ['lexer', 'parser', 'semantic', 'ir', 'optimizer', 'codegen'
 
 const TAB_IDS = [
     'tokens', 'ast', 'diagram', 'symboltable', 'ir',
-    'optimized-ir', 'sql', 'endpoints', 'api', 'swagger'
+    'optimized-ir', 'sql', 'endpoints', 'live-api', 'api', 'swagger'
 ];
 
 const PHASE_TAB_MAP = {
@@ -155,8 +155,173 @@ let selectedTarget = 'mysql';
 // Changes to the target or loaded source invalidate pending compilation output.
 let targetRevision = 0;
 
+// Live actions have their own revision; compiler response ordering remains independent.
+let lastCompiledSource = null;
+let lastCompiledTarget = null;
+let liveOperations = [];
+let liveSessionId = null;
+let liveRevision = 0;
+let liveState = 'Not running';
+let liveMessage = '';
+let liveExpiryTimer = null;
+let liveSelectedEndpoint = 0;
+
+function liveCurrent() {
+    return lastCompiledSource !== null && editor.value === lastCompiledSource && selectedTarget === lastCompiledTarget;
+}
+
+async function liveCall(action, body, keepalive = false) {
+    const response = await fetch('/api/live/' + action, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body), keepalive
+    });
+    const data = await response.json();
+    if (!response.ok || !data.success) {
+        const error = new Error(data.error || 'Live API request failed.'); error.code = data.code; throw error;
+    }
+    return data;
+}
+
+function invalidateLive(message = '') {
+    const revision = ++liveRevision;
+    clearTimeout(liveExpiryTimer);
+    const sessionId = liveSessionId;
+    liveSessionId = null;
+    liveState = sessionId ? 'Stopping…' : 'Not running';
+    liveMessage = message;
+    renderLiveUI();
+    if (sessionId) liveCall('stop', { sessionId }).catch(() => {}).finally(() => {
+        if (revision !== liveRevision) return;
+        liveState = 'Stopped / expired'; renderLiveUI();
+    });
+}
+
+function captureLiveCompilation(data, source, target) {
+    lastCompiledSource = source; lastCompiledTarget = target;
+    liveSelectedEndpoint = 0;
+    liveOperations = [];
+    try {
+        const spec = JSON.parse(data.generatedFiles.find(file => file.path === 'swagger.json').content);
+        for (const [path, item] of Object.entries(spec.paths || {})) {
+            for (const method of ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD', 'TRACE']) {
+                const operation = item?.[method.toLowerCase()];
+                if (operation && typeof operation === 'object' && !Array.isArray(operation)) liveOperations.push({ method, path, operation });
+            }
+        }
+    } catch { liveMessage = 'Generated OpenAPI is unavailable.'; }
+    renderLiveUI();
+}
+
+function renderLiveUI() {
+    const pane = document.getElementById('output-live-api');
+    if (!pane) return;
+    if (lastCompiledSource === null) {
+        pane.innerHTML = emptyState('Live API', 'Compile successfully to start a live generated API.'); return;
+    }
+    const current = liveCurrent();
+    const running = !!liveSessionId;
+    pane.innerHTML = `<div class="live-card">
+        <div class="live-card-heading"><strong>${escapeHtml(TARGET_LABELS[lastCompiledTarget])} · ${liveOperations.length} generated endpoints</strong>
+            <span id="live-status" role="status" aria-live="polite">${escapeHtml(liveState)}</span></div>
+        <p>Local disposable runtime. One live API; automatically removed after 15 minutes.</p>
+        <p id="live-message" role="status" aria-live="polite">${escapeHtml(current ? liveMessage : 'Source or target changed. Compile again before starting the live API.')}</p>
+        <div class="live-actions"><button id="live-start" class="btn" type="button" ${!current || running || liveState === 'Starting…' || liveState === 'Stopping…' || !liveOperations.length ? 'disabled' : ''}>Start live API</button>
+            ${running ? '<button id="live-stop" class="btn" type="button">Stop live API</button>' : ''}</div>
+        ${running ? `<div class="live-builder">
+            <label for="live-endpoint">Endpoint</label><select id="live-endpoint">${liveOperations.map((entry, index) => `<option value="${index}" ${index === liveSelectedEndpoint ? 'selected' : ''}>${escapeHtml(entry.method + ' ' + entry.path)}</option>`).join('')}</select>
+            <div id="live-parameters"></div>
+            <label for="live-query">Query string (optional)</label><input id="live-query" placeholder="limit=20&page=1">
+            <div id="live-body-control"><label for="live-body">JSON request body</label><textarea id="live-body" rows="7" spellcheck="false">{}</textarea></div>
+            <button id="live-send" class="btn" type="button">Send request</button>
+            <div id="live-response" aria-label="Generated API response"></div>
+        </div>` : ''}
+    </div>`;
+    pane.querySelector('#live-start').addEventListener('click', startLive);
+    if (running) {
+        pane.querySelector('#live-stop').addEventListener('click', () => invalidateLive());
+        pane.querySelector('#live-endpoint').addEventListener('change', event => {
+            liveSelectedEndpoint = Number(event.target.value); renderLiveParameters();
+        });
+        pane.querySelector('#live-send').addEventListener('click', sendLive);
+        renderLiveParameters();
+    }
+}
+
+function renderLiveParameters() {
+    const entry = liveOperations[liveSelectedEndpoint];
+    const parameters = [...entry.path.matchAll(/\{([^}]+)\}/g)].map(match => match[1]);
+    document.getElementById('live-parameters').innerHTML = parameters.map((name, index) =>
+        `<label for="live-param-${index}">Path parameter: ${escapeHtml(name)}</label><input id="live-param-${index}" data-live-param="${escapeHtml(name)}" required>`).join('');
+    document.getElementById('live-body-control').hidden = !entry.operation.requestBody;
+    document.getElementById('live-body').disabled = !entry.operation.requestBody;
+}
+
+async function startLive() {
+    if (!liveCurrent() || liveSessionId || liveState === 'Starting…') return;
+    const revision = ++liveRevision;
+    const source = lastCompiledSource, target = lastCompiledTarget;
+    liveState = 'Starting…'; liveMessage = ''; renderLiveUI();
+    try {
+        const data = await liveCall('start', { source, target });
+        if (revision !== liveRevision || !liveCurrent()) {
+            await liveCall('stop', { sessionId: data.sessionId }).catch(() => {}); return;
+        }
+        liveSessionId = data.sessionId; liveState = 'Running'; renderLiveUI();
+        const remaining = Date.parse(data.expiresAt) - Date.now();
+        liveExpiryTimer = setTimeout(() => invalidateLive('Live session stopped or expired. Start again.'), Math.max(0, remaining));
+    } catch (error) {
+        if (revision !== liveRevision) return;
+        liveState = 'Error'; liveMessage = error.message; renderLiveUI();
+    }
+}
+
+async function sendLive() {
+    if (!liveSessionId || !liveCurrent()) return;
+    const entry = liveOperations[liveSelectedEndpoint];
+    const revision = liveRevision, sessionId = liveSessionId;
+    const message = document.getElementById('live-message');
+    let path = entry.path, body;
+    for (const input of document.querySelectorAll('[data-live-param]')) {
+        if (!input.value.trim()) { message.textContent = 'Enter path parameter: ' + input.dataset.liveParam; input.focus(); return; }
+        path = path.replace('{' + input.dataset.liveParam + '}', encodeURIComponent(input.value));
+    }
+    const query = document.getElementById('live-query').value.replace(/^\?/, '');
+    if (/^[a-z][a-z0-9+.-]*:\/\/|^\/\/|[#\r\n]/i.test(query)) { message.textContent = 'Enter a query component, such as limit=20&page=1.'; return; }
+    if (query) path += '?' + query;
+    if (entry.operation.requestBody) {
+        try { body = JSON.parse(document.getElementById('live-body').value); }
+        catch { message.textContent = 'Enter valid JSON before sending.'; return; }
+    }
+    const send = document.getElementById('live-send'); send.disabled = true;
+    document.getElementById('live-status').textContent = 'Sending…'; message.textContent = '';
+    try {
+        const data = await liveCall('request', { sessionId, method: entry.method, path, ...(body !== undefined ? { body } : {}) });
+        if (revision !== liveRevision || sessionId !== liveSessionId) return;
+        const response = document.getElementById('live-response'); response.replaceChildren();
+        const status = document.createElement('strong');
+        const phrases = { 200: 'OK', 201: 'Created', 204: 'No Content', 400: 'Bad Request', 404: 'Not Found', 409: 'Conflict', 500: 'Internal Server Error', 503: 'Service Unavailable' };
+        status.textContent = 'HTTP ' + data.status + (phrases[data.status] ? ' ' + phrases[data.status] : '') + (typeof data.durationMs === 'number' ? ' · ' + data.durationMs + ' ms' : '');
+        const headers = document.createElement('pre'); headers.className = 'live-response-headers';
+        headers.textContent = Object.entries(data.headers || {}).map(([name, value]) => name + ': ' + value).join('\n');
+        const content = document.createElement('pre'); content.className = 'live-response-body';
+        content.textContent = typeof data.body === 'string' ? data.body : JSON.stringify(data.body, null, 2);
+        response.append(status, headers, content);
+    } catch (error) {
+        if (revision !== liveRevision) return;
+        if (error.code === 'LIVE_SESSION_INVALID') {
+            clearTimeout(liveExpiryTimer); liveSessionId = null; liveState = 'Stopped / expired'; liveMessage = error.message; renderLiveUI();
+        } else { message.textContent = error.message; document.getElementById('live-status').textContent = 'Error'; }
+    } finally {
+        if (revision === liveRevision && liveSessionId === sessionId) {
+            send.disabled = false;
+            if (!message.textContent) document.getElementById('live-status').textContent = 'Running';
+        }
+    }
+}
+
 function selectTarget(target) {
     if (target === selectedTarget) return;
+    invalidateLive();
     selectedTarget = target;
     targetRevision++;
     targetButtons.forEach(button => {
@@ -183,7 +348,8 @@ function emptyState(title = 'No compilation yet', message = 'Write APIForge DSL 
 function resetOutputPanes(title, message) {
     TAB_IDS.forEach(id => {
         const pane = document.getElementById('output-' + id);
-        if (pane) pane.innerHTML = emptyState(title, message);
+        if (id === 'live-api') renderLiveUI();
+        else if (pane) pane.innerHTML = emptyState(title, message);
     });
 }
 
@@ -1019,6 +1185,8 @@ function escapeHtml(str) {
 // ═════════════════════════════════════════════════════════════
 
 function clearAll() {
+    invalidateLive();
+    lastCompiledSource = null; lastCompiledTarget = null; liveOperations = [];
     targetRevision++;
     editor.value = '';
     clearErrorHighlights();
@@ -1039,6 +1207,8 @@ function clearAll() {
 // ═════════════════════════════════════════════════════════════
 
 function loadDemo() {
+    invalidateLive();
+    lastCompiledSource = null; lastCompiledTarget = null; liveOperations = [];
     targetRevision++;
     editor.value = PROFESSOR_DEMO.code;
     if (exampleName) exampleName.textContent = PROFESSOR_DEMO.name;
@@ -1056,6 +1226,8 @@ function loadDemo() {
 }
 
 function loadExample() {
+    invalidateLive();
+    lastCompiledSource = null; lastCompiledTarget = null; liveOperations = [];
     targetRevision++;
     const example = EXAMPLES[currentExampleIndex % EXAMPLES.length];
     currentExampleIndex++;
@@ -1079,6 +1251,9 @@ function loadExample() {
 
 async function compile() {
     if (isCompiling) return;
+    invalidateLive();
+    lastCompiledSource = null; lastCompiledTarget = null; liveOperations = [];
+    const source = editor.value;
     const target = selectedTarget;
     const revision = targetRevision;
 
@@ -1104,7 +1279,7 @@ async function compile() {
         const response = await fetch('/api/compile', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ source: editor.value, target })
+            body: JSON.stringify({ source, target })
         });
 
         const data = await response.json();
@@ -1118,6 +1293,7 @@ async function compile() {
         if (data.success) {
             // ── Render compilation summary & output tabs ──
             lastCompileResult = data;
+            captureLiveCompilation(data, source, target);
             renderSummary(data, target);
 
             document.getElementById('output-tokens').innerHTML = renderTokens(data.tokens);
@@ -1311,6 +1487,7 @@ function downloadProject() {
 document.addEventListener('DOMContentLoaded', () => {
     // Editor event listeners
     editor.addEventListener('input', () => {
+        invalidateLive();
         if (exampleName) exampleName.textContent = 'Modified source';
         if (errorLines.size > 0) {
             clearErrorHighlights();
@@ -1319,6 +1496,10 @@ document.addEventListener('DOMContentLoaded', () => {
             updateLineNumbers();
             updateEditorHighlights();
         }
+    });
+
+    window.addEventListener('pagehide', () => {
+        if (liveSessionId) liveCall('stop', { sessionId: liveSessionId }, true).catch(() => {});
     });
 
     editor.addEventListener('scroll', syncScroll);

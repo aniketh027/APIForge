@@ -49,7 +49,8 @@
     "test:g28-native": "node tests/g28-native.test.js",
     "test:g28-mysql-regressions": "node tests/g28-mysql-regressions.test.js",
     "test:live-api-runner": "node tests/live-api-runner.test.js",
-    "test:live-api-runner-native": "node tests/live-api-runner-native.test.js"
+    "test:live-api-runner-native": "node tests/live-api-runner-native.test.js",
+    "test:frontend-live-api": "node tests/frontend-live-api.test.js"
   },
   "keywords": [
     "compiler",

@@ -7,7 +7,7 @@ const app = require('../server');
 
 // Independent oracle: inspect the actual HTTP response, never frontend state/helpers.
 const METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD', 'TRACE'];
-const TABS = ['tokens', 'ast', 'diagram', 'symboltable', 'ir', 'optimized-ir', 'sql', 'endpoints', 'api', 'swagger'];
+const TABS = ['tokens', 'ast', 'diagram', 'symboltable', 'ir', 'optimized-ir', 'sql', 'endpoints', 'live-api', 'api', 'swagger'];
 const SIMPLE = 'ENTITY User\nid INT PRIMARY KEY\nname STRING REQUIRED';
 function operations(spec) {
     const result = [];
@@ -143,7 +143,7 @@ async function main() {
         assert.equal(await tab.evaluate(element => document.activeElement === element), true);
         assert.equal(await tab.getAttribute('aria-selected'), 'true');
         await page.keyboard.press('ArrowRight');
-        assert.equal(await page.locator('#tab-api').getAttribute('aria-selected'), 'true');
+        assert.equal(await page.locator('#tab-live-api').getAttribute('aria-selected'), 'true');
         await page.keyboard.press('ArrowLeft');
         assert.equal(await tab.getAttribute('aria-selected'), 'true');
         await page.keyboard.press('Home');

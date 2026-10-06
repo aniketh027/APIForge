@@ -7,7 +7,7 @@ const os = require('node:os');
 const { chromium } = require('playwright');
 const app = require('../server');
 
-const TABS = ['tokens', 'ast', 'diagram', 'symboltable', 'ir', 'optimized-ir', 'sql', 'endpoints', 'api', 'swagger'];
+const TABS = ['tokens', 'ast', 'diagram', 'symboltable', 'ir', 'optimized-ir', 'sql', 'endpoints', 'live-api', 'api', 'swagger'];
 const SIMPLE = 'ENTITY Note\nid INT PRIMARY KEY\ntext STRING REQUIRED UNIQUE\nstate ENUM("open", "closed")\nuser_id INT';
 const MULTIPLE = `ENTITY Author
 id INT PRIMARY KEY
