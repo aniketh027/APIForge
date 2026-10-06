@@ -176,3 +176,82 @@ Explicit generated-integer keys do not advance sequences. A later natural genera
 Deferred exactly as approved: PostgreSQL migrations, G26 snapshots/history/ALTER planner, APPLY/DOWN/drift, live target switching, browser selector/redesign, configurable schemas/search paths, arrays/JSONB/custom types or syntax, native ENUM, database-generated UUIDs, pgcrypto/uuid-ossp/other extensions, custom SSL settings, sequence reconciliation and runtime retries. Browser requests continue to omit target and produce the exact MySQL project/ZIP. G26 remains exclusively mysql-8.4-v1.
 
 G27 POSTGRESQL TARGET — READY FOR EXTERNAL REVIEW
+
+## External-review correction: privileges and VARCHAR assignment (2026-10-06)
+
+The original closure record above describes reviewed tip `fdcf9cb4a6242c9cfb61d8a0ebf8c29bf3d2e2c2` and is retained unchanged. External review identified an overbroad privilege check and missing VARCHAR assignment evidence. This section records the corrections and the revised closure decision.
+
+### Reproduction and privilege root cause
+
+Before editing production, `tests/postgres-review-reproduction.test.js` loaded the complete compiler dependency closure pinned to the reviewed tip and generated `ENTITY Witness value STRING`. An administrator imported its schema into an owned disposable UTF8 PostgreSQL 18.6 database. A separate random LOGIN role received database CONNECT, public USAGE/CREATE and SELECT/INSERT/UPDATE/DELETE on the generated Witness table only. The role was independently verified NOSUPERUSER, NOCREATEDB, NOCREATEROLE, NOREPLICATION and NOBYPASSRLS. Sequence USAGE/SELECT/UPDATE were all false. Generated identity INSERT succeeded before the unrelated table was added.
+
+The administrator then created ordinary public table `Private_4af445717107c1094ae04ec8`, with no application grants. The reviewed generated model's next read failed with exactly `Unsupported PostgreSQL deployment profile.` This reproduced the blocker before the production correction. The initial output is retained in `%TEMP%\g27-review-reproduction.log`.
+
+The committed reproduction continues replaying the reviewed tip independently of the fixed code. Its final replay used database `apiforge_g27_c70a221d0a115d3ddb531cfe`, application role `apiforge_g27_app_8d63fdcea8f3b4d13fab21cf` and unrelated table `Private_99e217534cec7efff004feb5`, with the same failure. Every unrelated fixture is checked for different ownership and absence of all four application DML privileges. Passwords are random in-memory values and are never printed or written to project files.
+
+The old NOT EXISTS predicate inspected **every ordinary table in public**, although the contract permits unrelated applications in that schema. An inaccessible unrelated table therefore made every APIForge lease fail. The original native runtime/backend gates used administrator/superuser DB_USER, so has_table_privilege returned true even for unrelated administrator-owned tables; that witness could not reveal the restrictive-role defect.
+
+### Production correction and restricted-role certification
+
+`src/targets/postgres/runtime.js` now consumes the generation context in generateDBConfig and embeds the exact `context.physical.tables` name inventory, including entity and junction tables. The certification query binds that inventory as `$1::text[]`, unnests it and LEFT JOINs the public catalog by exact table name with explicit C collation. Each expected ordinary table must exist and have SELECT/INSERT/UPDATE/DELETE; a missing catalog row or any missing required privilege fails certification. Unrelated public relations never enter the expected inventory. Application values/names are not interpolated into this SQL.
+
+Version 18, UTF8, 8192-byte block, public USAGE/CREATE and all awaited session settings remain enforced. Lease failure still destroys the connection; HTTP errors remain sanitized. Production config creates no roles, grants or schemas and assumes no wildcard privileges. Target-neutral plans, MySQL codegen and shared production modules are unchanged.
+
+Gates C and D now run the generated code with separate owned application roles and keep administrator DDL/catalog/error fixtures on separate connections. Gate C checks current_user through the actual emitted configuration; Gate D independently checks installed-backend pg_stat_activity.usename against its application role. Native role flags are verified false for superuser/createdb/createrole/replication/bypassrls. No sequence grants are issued; native has_sequence_privilege checks confirm no USAGE, SELECT or UPDATE before generated identity writes.
+
+| Restricted-role witness | Final result |
+|---|---|
+| Connect and access generated inventory | PASS under the separate LOGIN role. |
+| Private unrelated public table | PASS: all generated CRUD, collection and relationship operations work with no rights on that table. Final Gate C private table is `Private_2d58f4ffd9bd9cc03aaf91e2`; Gate D is `Private_a45fac35dac07160566cce75`. |
+| Missing generated junction privilege | REVOKE DELETE on `"public"."Source3_Target3"`; an operation on another entity fails certification. Model receives the fixed profile error; HTTP returns 500 `{success:false,error:"Unable to complete request."}`. GRANT DELETE restores operation. |
+| Missing exact generated table | Rename `"Implicit"` to `"implicit"`; certification fails even though a same-spelling/different-case ordinary table with unchanged grants exists. Restore the exact name and native operations resume. |
+| Generated INT identity | PASS for implicit and declared generated keys, omission/null/zero/supplied keys and sequence collision, with no sequence grants. Stored identities are independently selected by the administrator. |
+| CRUD/collections/relationships | All existing Gate C/D matrices pass under restricted roles, including all four cardinalities and junction add/list/remove. |
+| Sanitization | Fixed 400/409/503/500 envelopes pass. No profile diagnostic, role, database, private table, password, SQLSTATE or internal constraint detail appears in error responses. Administrator-only native error fixtures remain separate. |
+
+### Native VARCHAR(255) assignment matrix and retained policy
+
+All rows below use parameterized INSERT assignment into a real PostgreSQL 18.6 VARCHAR(255) column; independently selected stored strings are compared exactly. This matrix was reproduced before the production change and is retained in native model/backend regressions.
+
+| Input | Input characters | Native assignment/storage | Direct-model create | HTTP create, no declared length bound |
+|---|---:|---|---|---|
+| 255 non-space `x` characters | 255 | Stored unchanged, exactly 255 `x` characters | Echo length 255; native stored/read length 255 | 201; echo 255, stored/GET 255 |
+| 256 non-space `x` characters | 256 | Rejects SQLSTATE 22001 | Rejects native 22001 | Sanitized 400, `Request contains a value rejected by the database.` |
+| 255 `x` characters + one space | 256 | Excess space discarded; stores exactly 255 `x` characters | Echo length 256; independently stored/read length 255 | 201; echo 256, stored/GET 255 |
+| 255 `x` characters + four spaces | 259 | Four excess spaces discarded; stores exactly 255 `x` characters | Echo length 259; independently stored/read length 255 | 201; echo 259, stored/GET 255 |
+
+Create echoes can therefore differ from storage for this retained PostgreSQL assignment exception. Native direct-model tests also assert caller payloads remain unmodified.
+
+HTTP and trusted direct models have separate validation contracts. With a declared `MAX_LENGTH 255`, HTTP rejects both excess-space inputs before the model with `Field 'textValue' length must be <= 255.` and unchanged native row counts. The trusted direct model for that same declared-bound entity still sends the value to PostgreSQL: VARCHAR truncates the excess spaces, the stored length CHECK sees 255, and the create echo retains the submitted length. Native tests verify that distinction explicitly.
+
+The frozen VARCHAR(n) representation is retained. No TEXT+CHECK replacement, trigger, normalization or additional direct-model scalar validation was introduced. `docs/postgres-target.md` and the generated PostgreSQL README now explicitly describe the excess-space exception, echo/storage difference and declared HTTP length validation. The generated README also documents exact generated-table privilege scope and identity INSERT without sequence grants.
+
+### Final regression results
+
+The native profile remains PostgreSQL 18.6, UTF8, stock x86_64/64-bit/8192-byte blocks, official `postgres:18` image digest `postgres@sha256:5a5a84b19854a9ffaa54082c166ff4ec27473a361e496e5ea167f298f2da9722`, pg 8.23.1. Generated sessions retain UTC, ISO/YMD, standard strings, pg_catalog/public and the fixed application name.
+
+| Required command | Result |
+|---|---|
+| `npm test` | PASS, all 23 suites; core 1,060/1,060 and existing G22 equivalence zero mismatches. |
+| `npm run test:g27` | PASS: Gate A 269 valid / 278 invalid, 3,479 exact generated files, 1,992 comparisons, 269 exact G26 snapshots / 278 exact failures, 26 pinned closure modules, **zero MySQL mismatch**; target selection/G19/G26 refusal and 262 common Swagger comparisons pass. |
+| `npm run test:migrations` | PASS, all ten suites; existing G26 pinned corpus 247 valid / 268 invalid, 3,235 exact files, 655 checks. |
+| `npm run test:postgres-native` | PASS, including pinned reviewed-tip reproduction and fresh Gates B/C/D under the revised role contract. |
+| Native Gate B | PASS: 38 tables, 89 columns, 131 constraints, 52 indexes, 11 sequences, 33 CHECKs / 180 evaluations. Physical DDL is unchanged. |
+| Native Gate C | PASS: **30 entities, 97 files, 170 application model queries**; restricted role, private-table coexistence, missing privilege/exact table, identity without sequence grants and native VARCHAR/model evidence. |
+| Native Gate D | PASS: **30 entities, 97 files, 165 counted HTTP requests, 13 independent native errors**, plus health/raw malformed JSON; independently observed restricted-role connection and VARCHAR/default/declared-bound HTTP evidence. |
+| `node docs/verify-language-guide.js` | PASS: 20 valid / 79 invalid exact examples and real CLI cases; 133 generated JS files parsed. |
+| `git diff --check` | PASS. |
+
+Raw final logs are `%TEMP%\g27-review-native-final.log`, `g27-review-npm-test.log`, `g27-review-g27.log`, `g27-review-migrations.log` and `g27-review-language.log`. The native final log supersedes intermediate review runs. The only changed production module relative to the reviewed tip is PostgreSQL runtime/config/README generation; no shared MySQL/codegen production change occurred. As authorized by the correction request, a fresh native MySQL rerun was unnecessary. Original native MySQL evidence remains historical; the fresh exact MySQL and G26 offline gates above establish correction compatibility without refreshing any baseline.
+
+### Protected integrity, cleanup, commits and revised closure
+
+All 36 protected paths, sizes, SHA-256 values, creation times and modification times match the established captured manifest. Main/origin/main/live remote main remain `24a6289aabad9f24dcdee34d1854373c6727103a`; local/remote v1.0.0 still peel to `9d5b223b0af350a237625f4cd8dfbc700e35dd1b`. Frontend, MySQL production paths, publisher, historical fixtures and pinned loaders/baselines remain unchanged relative to the reviewed tip. No push, merge, amend, rebase, force push or tag change was performed.
+
+Every native session drops its owned disposable databases, then its tracked uniquely named LOGIN roles, and independently queries catalogs to assert both inventories are empty before closing the administrator connection. Generated pools and child processes are stopped; ports and temporary projects are removed; owned containers are removed. Final host inventory finds no G27 containers, temporary G27 project directories or corresponding generated node processes. Repository output remains unchanged.
+
+The corrective implementation/test/documentation commit is **`c28500a5004e29fc213c333e98b2aa81ece5b38c`**, `fix(g27): scope postgres privileges and document varchar assignment`. This appended certification is in the following `docs(g27): record external-review correction verification` commit; its self-referential SHA is resolved with `git log -1 --format=%H -- docs/postgres-target-verification.md` and is reported with the final result. All ten original G27 commits are retained without amendment or rebasing. Final branch `g27-postgres-target` is **12 ahead / 0 behind** origin/main, with a clean tracked worktree/index and only the four approved protected roots untracked.
+
+No blocking or correctness issues remain in the requested correction scope. **Revised G27 STATUS: CLOSED.** Native restricted-role privilege scope and the frozen VARCHAR assignment exception are verified and documented; readiness is for external review, with no merge or push performed.
+
+G27 POSTGRES PRIVILEGE AND VARCHAR CORRECTION — READY FOR EXTERNAL REVIEW
