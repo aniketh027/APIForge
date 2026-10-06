@@ -20,7 +20,8 @@ class CompilationUnit {
         const diagnostic = setOwner({ ...original }, sourceModule);
         if (sourceModule) diagnostic.source = sourceModule.displayPath;
         const locations = related(original).map(r => this.relatedLocation(r.message, r.location));
-        if (includeChain && sourceModule) {
+        // Cycle diagnostics already carry the preceding active cycle edges.
+        if (includeChain && sourceModule && original.symbol !== 'IMPORT_CYCLE') {
             const chain = []; let current = sourceModule;
             while (current.firstInbound) { chain.push(current.firstInbound); current = current.firstInbound.importer; }
             for (const edge of chain.reverse()) locations.push(this.relatedLocation('Imported here.', edge.location));
