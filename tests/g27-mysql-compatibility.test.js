@@ -16,7 +16,7 @@ const explicit = { ...current,
     Codegen: { generate: (ir, disk) => current.Codegen.generate(ir, disk, { target: 'mysql' }) }
 };
 const plain = value => JSON.parse(JSON.stringify(value));
-let checks = 0, valid = 0, invalid = 0, files = 0;
+let checks = 0, valid = 0, invalid = 0, files = 0, g26Snapshots = 0, g26Failures = 0;
 function same(a, b, label) { checks++; assert.deepEqual(plain(a), plain(b), label); }
 function failure(run) { try { return { result: run() }; } catch (e) { return { name:e.name, message:e.message, ...e }; } }
 for (const entry of sourceCases(pinned).cases) {
@@ -68,9 +68,10 @@ async function zip(files, historical) {
         assert.deepEqual(execFileSync('git',['show','HEAD:'+file]),
             execFileSync('git',['show',BASE+':'+file])); checks++;
     }
-    for (const value of [source, 'ENTITY Key\nid INT PRIMARY_KEY DEFAULT 42', 'ENTITY Bad\nx UNKNOWN']) {
-        same(failure(() => require('../src/migrations/compile-source').compileSourceForSnapshot(value)),
-            failure(() => pinned.load('src/migrations/compile-source.js').compileSourceForSnapshot(value)), 'G26 snapshot');
+    for (const entry of sourceCases(pinned).cases) {
+        const old=failure(() => pinned.load('src/migrations/compile-source.js').compileSourceForSnapshot(entry.source));
+        same(failure(() => require('../src/migrations/compile-source').compileSourceForSnapshot(entry.source)),old,'G26 snapshot '+entry.name);
+        if(Object.hasOwn(old,'result'))g26Snapshots++;else g26Failures++;
     }
     const root = fs.mkdtempSync(path.join(os.tmpdir(),'apiforge-g27-oracle-'));
     try {
@@ -87,8 +88,6 @@ async function zip(files, historical) {
             for (const flags of [[], ['--target','mysql'], null]) {
                 const nextArgs = flags === null ? ['--target','mysql',...args] : [...args,...flags];
                 const next = spawnSync(process.execPath,[path.resolve(__dirname,'../index.js'),...nextArgs],{cwd,encoding:'utf8'});
-                // Before the selection seam lands, the new before-file syntax is not yet supported.
-                if (flags === null && !fs.existsSync(path.resolve(__dirname,'../src/targets/index.js'))) continue;
                 same({status:next.status,stdout:next.stdout,stderr:next.stderr},
                     {status:old.status,stdout:old.stdout,stderr:old.stderr},'CLI exact');
                 if (old.status === 0) for (const file of pinned.compile(value).files) {
@@ -102,5 +101,5 @@ async function zip(files, historical) {
             same({status:next.status,stdout:next.stdout,stderr:next.stderr},{status:old.status,stdout:old.stdout,stderr:old.stderr},'CLI failure');
         }
     } finally { fs.rmSync(root,{recursive:true,force:true}); }
-    console.log(JSON.stringify({base:BASE,valid,invalid,files,checks,closure:pinned.loadedPaths().length,result:'PASS'}));
+    console.log(JSON.stringify({base:BASE,valid,invalid,files,checks,g26Snapshots,g26Failures,closure:pinned.loadedPaths().length,result:'PASS'}));
 })().catch(e => { console.error(e); process.exitCode=1; });

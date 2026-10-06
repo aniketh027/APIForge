@@ -38,10 +38,13 @@ function check(diagnostic, code, phase, line, column) {
     await test('registry has unique, phase-specific codes', () => {
         const all = Object.values(CODES).flatMap(Object.values);
         assert.equal(new Set(all).size, all.length);
-        assert.equal(all.length, 68);
+        assert.equal(all.length, 71);
         assert.equal(CODES.semantic.INVALID_UUID_DEFAULT, 'SEM039');
+        assert.equal(CODES.semantic.POSTGRES_TARGET_LIMIT, 'SEM040');
+        assert.equal(CODES.input.INVALID_TARGET, 'INP003');
+        assert.equal(CODES.codegen.POSTGRES_ADMISSION_FAILURE, 'GEN001');
         assert.equal(CODES.semantic.INVALID_TEMPORAL_DEFAULT, 'SEM038');
-        for (const [phase, prefix] of Object.entries({ lexer: 'LEX', parser: 'PAR', semantic: 'SEM', input: 'INP', internal: 'INT' })) {
+        for (const [phase, prefix] of Object.entries({ lexer: 'LEX', parser: 'PAR', semantic: 'SEM', input: 'INP', internal: 'INT', codegen: 'GEN' })) {
             assert(Object.values(CODES[phase]).every(code => new RegExp(`^${prefix}\\d{3}$`).test(code)));
         }
     });

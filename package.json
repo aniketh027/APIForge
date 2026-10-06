@@ -36,7 +36,9 @@
     "test:g22-plan": "node tests/effective-schema-plan.test.js",
     "test:g22-equivalence": "node tests/effective-schema-equivalence.test.js",
     "test:migrations": "node tests/migration-snapshot.test.js && node tests/migration-diff.test.js && node tests/migration-safety.test.js && node tests/migration-plan.test.js && node tests/migration-simulator.test.js && node tests/migration-renderer.test.js && node tests/migration-history.test.js && node tests/migration-publication.test.js && node tests/migration-cli.test.js && node tests/migration-compatibility.test.js",
-    "test:migrations-mysql": "node tests/migration-mysql.test.js"
+    "test:migrations-mysql": "node tests/migration-mysql.test.js",
+    "test:g27": "node tests/g27-mysql-compatibility.test.js && node tests/target-selection.test.js && node tests/postgres-target.test.js",
+    "test:postgres-native": "node tests/postgres-target-native.test.js && node tests/postgres-runtime.test.js && node tests/generated-backend-postgres.test.js"
   },
   "keywords": [
     "compiler",

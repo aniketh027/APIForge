@@ -17,6 +17,8 @@ assert.equal(semantic('ENTITY Exact value INT Value INT Id INT').valid,true);
 assert.equal(semantic('ENTITY Exact value INT Value INT Id INT','mysql').valid,false);
 for(const name of names.SYSTEM_COLUMNS)assert(semantic('ENTITY System '+name+' INT').diagnostics.some(d=>d.code==='SEM040'));
 for(const kind of names.KINDS)assert.match(names.generatedName(kind,'owner',['f'],'purpose'),/^af_(pk|uq|ck|fk|ix|seq|nn)_[0-9a-f]{40}$/);
+assert.deepEqual(names.KINDS,['pk','uq','ck','fk','ix','seq','nn']);
+assert.equal(names.generatedName('pk','owner',['f'],'purpose'),'af_pk_'+require('crypto').createHash('sha256').update(JSON.stringify(['postgresql-18-v1','pk','owner',['f'],'purpose'])).digest('hex').slice(0,40));
 assert.throws(()=>names.generatedName('foreign_key_constraint','owner'));
 for(const name of ['bad\0name','\ud800','\udc00','a'.repeat(64),'é'.repeat(32)])assert.throws(()=>names.quoteIdentifier(name));
 assert.equal(names.quoteIdentifier('a"b'),'"a""b"');
