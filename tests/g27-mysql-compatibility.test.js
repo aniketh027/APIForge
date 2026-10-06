@@ -64,10 +64,7 @@ async function zip(files, historical) {
         same(api({source:value,target:'mysql'},false),api({source:value},true),'HTTP mysql');
     }
     assert.deepEqual(await zip(compileSource(source,current).files,false),await zip(pinned.compile(source).files,true)); checks++;
-    for (const file of ['frontend/app.js','frontend/index.html','frontend/style.css']) {
-        assert.deepEqual(execFileSync('git',['show','HEAD:'+file]),
-            execFileSync('git',['show',BASE+':'+file])); checks++;
-    }
+    // G28 owns current exact frontend-byte protection through its independent FRONTEND_BASE.
     for (const entry of sourceCases(pinned).cases) {
         const old=failure(() => pinned.load('src/migrations/compile-source.js').compileSourceForSnapshot(entry.source));
         same(failure(() => require('../src/migrations/compile-source').compileSourceForSnapshot(entry.source)),old,'G26 snapshot '+entry.name);

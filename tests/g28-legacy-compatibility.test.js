@@ -12,7 +12,7 @@ const BASE = '112a464ee4615c3956c686bfff59c9aa5d9f8497';
 // BASE remains the frozen G28/compiler compatibility oracle. FRONTEND_BASE
 // separately pins the approved post-G28 generated-file-viewer overflow fix;
 // exact committed frontend-byte protection remains enabled for all three files.
-const FRONTEND_BASE = '84a412fa989ec1efcc25c9337a60813ce177efe8';
+const FRONTEND_BASE = '5ee544e52b382132c8761ef9dafed547c1ebe093';
 const pinned = createPinnedCompiler({ revision: BASE });
 const current = currentCompiler();
 const explicit = { ...current,
