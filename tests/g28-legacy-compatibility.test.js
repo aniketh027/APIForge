@@ -9,6 +9,10 @@ const { spawnSync, execFileSync } = require('child_process');
 const { createPinnedCompiler, currentCompiler, compileSource } = require('./pinned-compiler-loader');
 const { sourceCases, directIRCases, rawSQLCases, structuralIRCases } = require('./effective-schema-corpus');
 const BASE = '112a464ee4615c3956c686bfff59c9aa5d9f8497';
+// BASE remains the frozen G28/compiler compatibility oracle. FRONTEND_BASE
+// separately pins the approved post-G28 generated-file-viewer overflow fix;
+// exact committed frontend-byte protection remains enabled for all three files.
+const FRONTEND_BASE = '84a412fa989ec1efcc25c9337a60813ce177efe8';
 const pinned = createPinnedCompiler({ revision: BASE });
 const current = currentCompiler();
 const explicit = { ...current,
@@ -72,7 +76,7 @@ async function zip(files, historical) {
     assert.deepEqual(await zip(compileSource(source,current).files,false),await zip(pinned.compile(source).files,true)); checks++;
     for (const file of ['frontend/app.js','frontend/index.html','frontend/style.css']) {
         assert.deepEqual(execFileSync('git',['show','HEAD:'+file]),
-            execFileSync('git',['show',BASE+':'+file])); checks++;
+            execFileSync('git',['show',FRONTEND_BASE+':'+file])); checks++;
     }
     for (const entry of sourceCases(pinned).cases) {
         const old=failure(() => pinned.load('src/migrations/compile-source.js').compileSourceForSnapshot(entry.source));
