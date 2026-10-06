@@ -29,6 +29,15 @@ Use `node index.js source.apiforge --target postgres`, library options
 The browser continues to generate MySQL. See [the PostgreSQL contract](docs/postgres-target.md)
 and [native verification](docs/postgres-target-verification.md).
 
+G28 adds local filesystem imports with one global entity/relation namespace.
+Put `IMPORT "./models/item.apiforge"` declarations before entities and relations,
+then compile the entry with `node index.js project/main.apiforge` and optional
+`--root project` / `--target postgres`. Nested and duplicate imports resolve once
+per physical file before whole-program semantics. The browser remains single
+source and reports INP010 for imports. G26 `--to` operations also accept imported
+entry files. See [the module contract](docs/modules.md) and
+[G28 verification](docs/modules-verification.md).
+
 G26 provides a separate offline `migrate.js` CLI for physical snapshots,
 explicit baselines, schema diffs, and immutable MySQL migration revisions.
 It targets the certified `mysql-8.4-v1` profile and requires exact plan-bound
@@ -589,6 +598,7 @@ The MySQL harness creates a uniquely named `apiforge_e2e_*` database, imports th
 - [x] Frontend web playground
 - [x] Entity relationships support (all 4 cardinalities)
 - [x] Position-aware errors + "did you mean?" suggestions
+- [x] Local filesystem imports and whole-program module compilation
 - [ ] Advanced IR optimizations
 - [ ] Additional database targets (PostgreSQL, SQLite)
 - [ ] Authentication scaffolding in generated APIs

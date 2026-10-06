@@ -28,6 +28,17 @@ remain canonical lowercase; DATE/TIMESTAMP public ranges/format remain
 unchanged, with PG TIMESTAMPTZ(0), local text parsers and awaited UTC sessions.
 All other descriptions below retain their default-MySQL context.
 
+G28 filesystem imports were verified on 2026-10-06 against approved main
+`112a464ee4615c3956c686bfff59c9aa5d9f8497`. Put contextual
+`IMPORT "./models/item.apiforge"` declarations in each file's preamble. The CLI
+and file-aware library resolve nested dependencies within a canonical root,
+deduplicate physical files and analyze one global entity/relation namespace.
+`IMPORT` remains an identifier in `ENTITY IMPORT` and `IMPORT STRING` fields.
+Effective declaration order is observable. The browser/HTTP remains single
+source and returns INP010 for parsed imports. G26 `--to` compiles entry files;
+G26 remains MySQL-only. See [the full path, identity and API contract](modules.md)
+and [G28 verification](modules-verification.md).
+
 ## 1. Overview
 
 APIForge describes entities, fields, constraints, literal defaults, and
@@ -741,7 +752,10 @@ Explicit PK creation/default semantics (G12) and mutation (G13) remain separate.
 ## 11. Diagnostics
 
 Public error codes have a prefix and three digits. The registry contains
-71 errors: LEX001–LEX004, PAR001–PAR022, SEM001–SEM040, INP001–INP003, GEN001, and INT001.
+83 errors: LEX001–LEX004, PAR001–PAR023, SEM001–SEM040, INP001–INP014, GEN001, and INT001.
+G28 appends PAR023 for imports after declarations and INP004–INP014 for the
+filesystem/context boundary; existing assignments remain unchanged. File-aware
+diagnostics add portable root-relative `source` and optional `related` locations.
 The symbolic identifier is separate: a semantic compatibility error may have
 `code: "DUPLICATE_FIELD"`, while its nested diagnostic has `code: "SEM005"`.
 Do not confuse the legacy symbolic code with the public code.
@@ -1154,7 +1168,7 @@ in the generated-output section. Node.js >=18 is required by generated Express d
 ## 15. Current Language Boundaries
 
 The current source language has no block scopes/braces, semicolon terminators,
-imports, namespaces, entity extension, inheritance, reusable named enums,
+remote/package imports, namespaces, entity extension, inheritance, reusable named enums,
 arrays/objects, expressions/functions, loops, conditional statements, migrations,
 custom endpoints, authentication declarations, or alternate database targets.
 
