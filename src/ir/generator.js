@@ -259,6 +259,7 @@ function generate(ast, semanticResult = null) {
             entity: entity.name,
             line: entity.line
         });
+        require('../modules/provenance').inheritOwner(instructions[instructions.length - 1], entity);
 
         // Traverse entity fields
         for (const field of entity.fields) {
@@ -289,6 +290,7 @@ function generate(ast, semanticResult = null) {
                 Object.defineProperty(instructions[instructions.length - 1], 'sourceLocations',
                     { value: field.sourceLocations });
             }
+            require('../modules/provenance').inheritOwner(instructions[instructions.length - 1], field);
         }
     }
 
@@ -314,6 +316,7 @@ function generate(ast, semanticResult = null) {
             relationType: rel.relationType,
             line: rel.line
         });
+        require('../modules/provenance').inheritOwner(instructions[instructions.length - 1], rel);
     }
 
     const ir = {

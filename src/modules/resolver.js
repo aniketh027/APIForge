@@ -34,7 +34,10 @@ function resolveFile(entryPath, options = {}, preparedEntry) {
                 const parsed = !edge && preparedEntry?.parsed ? preparedEntry.parsed : Parser.parseModule(sourceModule.tokens);
                 sourceModule.ast = parsed.ast; sourceModule.imports = parsed.imports;
                 bindTree(parsed, sourceModule);
-            } catch (error) { throw unit.error(error, sourceModule); }
+            } catch (error) {
+                if (error.recognizedImport) unit.hasImports = true;
+                throw unit.error(error, sourceModule);
+            }
             if (sourceModule.imports.length) unit.hasImports = true;
             return sourceModule;
         }

@@ -62,7 +62,7 @@ function normalizedInstruction(inst, updates) {
     const result = { ...inst, ...updates };
     const sourceLocations = Object.getOwnPropertyDescriptor(inst, 'sourceLocations');
     if (sourceLocations) Object.defineProperty(result, 'sourceLocations', sourceLocations);
-    return result;
+    return require('../modules/provenance').inheritOwner(result, inst);
 }
 
 /**

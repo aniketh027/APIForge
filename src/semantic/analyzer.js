@@ -79,6 +79,7 @@
 // Entity names, field names, and relation names must NOT use any of these.
 
 const { createDiagnostic, createWarningDiagnostic, sortDiagnostics, locate } = require('../utils/diagnostics');
+const { owner, inheritOwner, setRelated } = require('../modules/provenance');
 const { didYouMeanSuffix } = require('../utils/errors');
 const { SUPPORTED_DATA_TYPES } = require('../utils/data-types');
 const { isUuid } = require('../utils/uuid');
@@ -154,8 +155,11 @@ class SemanticAnalyzer {
      * Locations come from parser metadata when available, otherwise declarations.
      * Legacy error entries retain their message and expose the shared diagnostic.
      */
-    addError(message, location, symbol, hint) {
+    addError(message, location, symbol, hint, previous) {
         const diagnostic = createDiagnostic('semantic', symbol, message, location, hint);
+        if (previous && owner(previous) && owner(previous) !== owner(location)) {
+            setRelated(diagnostic, [{ message: 'Previous declaration.', location: previous }]);
+        }
         const error = { message, line: diagnostic.line, column: diagnostic.column,
             code: symbol, diagnostic };
         if (symbol === 'MISSING_ENTITY_DECLARATION') error.userMessage = message;
@@ -190,7 +194,7 @@ class SemanticAnalyzer {
         if (!ast.entities || !Array.isArray(ast.entities) || ast.entities.length === 0) {
             this.addError(
                 'APIForge programs must contain at least one ENTITY.',
-                { line: 1, column: 1 },
+                inheritOwner({ line: 1, column: 1 }, ast),
                 'MISSING_ENTITY_DECLARATION'
             );
         }
@@ -265,17 +269,17 @@ class SemanticAnalyzer {
      * We use a Set to track names we've already seen.
      */
     checkDuplicateEntities(entities) {
-        const seen = new Set();
+        const seen = new Map();
 
         for (const entity of entities) {
             if (seen.has(entity.name)) {
                 this.addError(
                     `Duplicate entity '${entity.name}'. Entity names must be unique.`,
                     locate(entity, 'name', entity.nameColumn),
-                    'DUPLICATE_ENTITY'
+                    'DUPLICATE_ENTITY', undefined, locate(seen.get(entity.name), 'name', seen.get(entity.name).nameColumn)
                 );
             } else {
-                seen.add(entity.name);
+                seen.set(entity.name, entity);
             }
         }
     }
@@ -786,7 +790,7 @@ class SemanticAnalyzer {
     checkRelations(relations, entities) {
         const declaredEntityNames = new Set(entities.map(e => e.name));
         const entityNameList = Array.from(declaredEntityNames); // for "did you mean?" suggestions
-        const seenRelNames = new Set();
+        const seenRelNames = new Map();
 
         for (const rel of relations) {
 
@@ -795,10 +799,10 @@ class SemanticAnalyzer {
                 this.addError(
                     `Duplicate relationship '${rel.name}'. Relationship names must be unique.`,
                     locate(rel, 'name', rel.nameColumn),
-                    'DUPLICATE_RELATION'
+                    'DUPLICATE_RELATION', undefined, locate(seenRelNames.get(rel.name), 'name', seenRelNames.get(rel.name).nameColumn)
                 );
             } else {
-                seenRelNames.add(rel.name);
+                seenRelNames.set(rel.name, rel);
                 // Register in the relations table (first declaration only)
                 this.relationsTable[rel.name] = {
                     sourceEntity: rel.sourceEntity,
