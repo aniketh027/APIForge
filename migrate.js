@@ -18,9 +18,9 @@ function run(args) {
     if (!args.length || args[0] === '--help') { process.stdout.write(help); return; }
     const command = args.shift(), options = {}, repeat = new Set(['allow-destructive', 'acknowledge-data-check']);
     const permitted = {
-        snapshot: ['to', 'out', 'profile'], baseline: ['snapshot', 'empty', 'profile', 'workspace'],
-        diff: ['from', 'workspace', 'to', 'to-snapshot'],
-        create: ['workspace', 'to', 'to-snapshot', 'expect-head', 'expect-plan', ...repeat], verify: ['workspace']
+        snapshot: ['to', 'out', 'profile', 'root'], baseline: ['snapshot', 'empty', 'profile', 'workspace'],
+        diff: ['from', 'workspace', 'to', 'to-snapshot', 'root'],
+        create: ['workspace', 'to', 'to-snapshot', 'root', 'expect-head', 'expect-plan', ...repeat], verify: ['workspace']
     };
     if (!permitted[command]) throw new M.MigrationError('MIGRATION_UNSUPPORTED_TRANSITION', 'Unknown offline migration command.');
     while (args.length) {
@@ -37,7 +37,7 @@ function run(args) {
     const readSnapshot = file => M.validateSnapshot(M.parseCanonical(fs.readFileSync(file)));
     const target = () => {
         if (Boolean(options.to) === Boolean(options['to-snapshot'])) throw new M.MigrationError('MIGRATION_HISTORY_CORRUPT', 'Choose exactly one of --to and --to-snapshot.');
-        return options.to ? M.compileSourceForSnapshot(fs.readFileSync(options.to, 'utf8'), options.profile) : readSnapshot(options['to-snapshot']);
+        return options.to ? M.compileFileForSnapshot(options.to, options.profile, {root:options.root}) : readSnapshot(options['to-snapshot']);
     };
     let result;
     if (command === 'snapshot') {
@@ -71,7 +71,10 @@ function run(args) {
 if (require.main === module) {
     try { run(process.argv.slice(2)); }
     catch (error) {
-        const diagnostic = error.diagnostics || (error.diagnostic ? [error.diagnostic] : undefined);
+        let diagnostic = error.diagnostics || (error.diagnostic ? [error.diagnostic] : undefined);
+        if (diagnostic && error.compilationUnit && !error.compilationUnit.hasImports) {
+            diagnostic = diagnostic.map(d=>{const {source,related,...legacy}=d;return legacy;});
+        }
         process.stderr.write(JSON.stringify({ error: error.message, ...(error.code ? { code: error.code } : {}), ...(diagnostic ? { diagnostics: diagnostic } : {}), ...(error.details ? { details: error.details } : {}) }) + '\n');
         process.exitCode = 1;
     }

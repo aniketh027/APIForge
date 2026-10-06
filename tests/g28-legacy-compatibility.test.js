@@ -82,13 +82,17 @@ async function zip(files, historical) {
     const root = fs.mkdtempSync(path.join(os.tmpdir(),'apiforge-g28-oracle-'));
     try {
         const historical = path.join(root,'pinned'); fs.mkdirSync(historical);
-        for (const file of pinned.paths.filter(f => f.startsWith('src/') || ['package.json','index.js'].includes(f))) {
+        for (const file of pinned.paths.filter(f => f.startsWith('src/') || ['package.json','index.js','migrate.js'].includes(f))) {
             const output = path.join(historical,file); fs.mkdirSync(path.dirname(output),{recursive:true}); fs.writeFileSync(output,pinned.readFile(file));
         }
         const cwd = path.join(root,'work'); fs.mkdirSync(cwd);
         const sourceFile = path.join(cwd,'source.apiforge');
         for (const value of [source, 'ENTITY Bad\nx UNKNOWN', 'ENTITY Broken\nx']) {
             fs.writeFileSync(sourceFile,value);
+            const migrationArgs=['snapshot','--to',sourceFile];
+            const oldMigration=spawnSync(process.execPath,[path.join(historical,'migrate.js'),...migrationArgs],{cwd,encoding:'utf8'});
+            const nextMigration=spawnSync(process.execPath,[path.resolve(__dirname,'../migrate.js'),...migrationArgs],{cwd,encoding:'utf8'});
+            same({status:nextMigration.status,stdout:nextMigration.stdout,stderr:nextMigration.stderr},{status:oldMigration.status,stdout:oldMigration.stdout,stderr:oldMigration.stderr},'migration CLI exact');
             const args = [sourceFile];
             const pgArgs=[sourceFile,'--target','postgres'];
             const oldPg=spawnSync(process.execPath,[path.join(historical,'index.js'),...pgArgs],{cwd,encoding:'utf8'});
