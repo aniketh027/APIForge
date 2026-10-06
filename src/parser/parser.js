@@ -71,9 +71,12 @@ class Parser {
      * 
      * @param {Array} tokens - Token array from the lexer
      */
-    constructor(tokens) {
+    constructor(tokens, moduleMode = false) {
         this.tokens = tokens;  // The token array from Phase 1
         this.pos = 0;          // Cursor: index of the current token
+        this.moduleMode = moduleMode;
+        this.imports = [];
+        this.seenDeclaration = false;
     }
 
     // ════════════════════════════════════════════════════════
@@ -188,9 +191,24 @@ class Parser {
 
         // Keep parsing entities and relations until we hit EOF
         while (this.current().type !== 'EOF') {
-            if (this.current().type === 'KEYWORD' && this.current().value === 'ENTITY') {
+            if (this.isImportStart()) {
+                const keyword = this.advance();
+                if (this.seenDeclaration) {
+                    const message = 'IMPORT declarations must precede ENTITY and RELATION declarations.';
+                    const error = new Error(message);
+                    error.code = 'IMPORT_AFTER_DECLARATION';
+                    error.userMessage = message; error.line = keyword.line; error.column = keyword.column;
+                    Object.defineProperty(error, 'recognizedImport', { value: true });
+                    throw attachDiagnostic(error, 'parser', keyword, error.code,
+                        "Move this IMPORT into the module's import preamble.");
+                }
+                const literal = this.advance();
+                this.imports.push({ path: literal.value, location: literal });
+            } else if (this.current().type === 'KEYWORD' && this.current().value === 'ENTITY') {
+                this.seenDeclaration = true;
                 program.entities.push(this.parseEntity());
             } else if (this.current().type === 'KEYWORD' && this.current().value === 'RELATION') {
+                this.seenDeclaration = true;
                 program.relations.push(this.parseRelation());
             } else {
                 const token = this.current();
@@ -209,6 +227,11 @@ class Parser {
         return program;
     }
 
+    isImportStart() {
+        return this.moduleMode && this.current().type === 'IDENTIFIER' &&
+            this.current().value === 'IMPORT' && this.peek().type === 'STRING_LITERAL';
+    }
+
     // ════════════════════════════════════════════════════════
     // GRAMMAR RULE: EntityDecl → 'ENTITY' IDENTIFIER FieldDecl+
     // ════════════════════════════════════════════════════════
@@ -224,6 +247,7 @@ class Parser {
      * @returns {boolean}
      */
     isAtEntityEnd() {
+        if (this.isImportStart()) return true;
         const token = this.current();
         if (token.type === 'EOF') {
             return true;
@@ -709,6 +733,9 @@ function parse(tokens) {
     return parser.parseProgram();
 }
 
-module.exports = {
-    parse
-};
+function parseModule(tokens) {
+    const parser = new Parser(tokens, true);
+    return { ast: parser.parseProgram(), imports: parser.imports };
+}
+
+module.exports = { parse, parseModule };

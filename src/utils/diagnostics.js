@@ -1,4 +1,5 @@
 const COMPILER_PHASES = Object.freeze(['lexer', 'parser', 'semantic', 'ir', 'optimizer', 'codegen']);
+const { inheritOwner } = require('../modules/provenance');
 
 // Stable public codes. Append new entries; never renumber or reuse a code.
 const CODES = Object.freeze({
@@ -17,7 +18,8 @@ const CODES = Object.freeze({
         STANDALONE_KEY: 'PAR015', MISSING_MIN_VALUE: 'PAR016',
         MISSING_MAX_VALUE: 'PAR017', MISSING_MIN_LENGTH_VALUE: 'PAR018',
         MISSING_MAX_LENGTH_VALUE: 'PAR019', MISSING_DEFAULT_VALUE: 'PAR020',
-        UNKNOWN_MODIFIER: 'PAR021', EXPECTED_ENUM_DELIMITER: 'PAR022'
+        UNKNOWN_MODIFIER: 'PAR021', EXPECTED_ENUM_DELIMITER: 'PAR022',
+        IMPORT_AFTER_DECLARATION: 'PAR023'
     }),
     semantic: Object.freeze({
         MISSING_ENTITY_DECLARATION: 'SEM001', DUPLICATE_ENTITY: 'SEM002',
@@ -39,7 +41,12 @@ const CODES = Object.freeze({
         UNSAFE_NUMERIC_LITERAL: 'SEM035', ENUM_TRAILING_SPACE: 'SEM036', MYSQL_TARGET_LIMIT: 'SEM037',
         INVALID_TEMPORAL_DEFAULT: 'SEM038', INVALID_UUID_DEFAULT: 'SEM039', POSTGRES_TARGET_LIMIT: 'SEM040'
     }),
-    input: Object.freeze({ INVALID_SOURCE: 'INP001', MALFORMED_JSON: 'INP002', INVALID_TARGET: 'INP003' }),
+    input: Object.freeze({ INVALID_SOURCE: 'INP001', MALFORMED_JSON: 'INP002', INVALID_TARGET: 'INP003',
+        INVALID_IMPORT_PATH: 'INP004', IMPORT_NOT_FOUND: 'INP005', IMPORT_OUTSIDE_ROOT: 'INP006',
+        IMPORT_NOT_FILE: 'INP007', IMPORT_READ_FAILED: 'INP008', IMPORT_CYCLE: 'INP009',
+        IMPORT_CONTEXT_UNSUPPORTED: 'INP010', IMPORT_RESOURCE_LIMIT: 'INP011',
+        IMPORT_SOURCE_CHANGED: 'INP012', INVALID_COMPILATION_ROOT: 'INP013',
+        IMPORT_IDENTITY_AMBIGUOUS: 'INP014' }),
     codegen: Object.freeze({ POSTGRES_ADMISSION_FAILURE: 'GEN001' }),
     internal: Object.freeze({ FAILURE: 'INT001' })
 });
@@ -70,7 +77,7 @@ function createDiagnostic(phase, symbol, message, location = {}, hint, { severit
         diagnostic.endColumn = location.endColumn;
     }
     if (hint) diagnostic.hint = hint;
-    return diagnostic;
+    return inheritOwner(diagnostic, location);
 }
 
 function createWarningDiagnostic(phase, symbol, message, location = {}, hint) {
@@ -102,7 +109,7 @@ function internalDiagnostic(phase) {
 
 // Parsed AST metadata stays out of language values and generated artifacts.
 function locate(node, key, fallbackColumn, occurrence = 0) {
-    return node.sourceLocations?.[key]?.[occurrence] || { line: node.line, column: fallbackColumn };
+    return node.sourceLocations?.[key]?.[occurrence] || inheritOwner({ line: node.line, column: fallbackColumn }, node);
 }
 
 module.exports = { COMPILER_PHASES, CODES, WARNING_CODES, createDiagnostic, createWarningDiagnostic,
