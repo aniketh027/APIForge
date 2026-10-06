@@ -12,7 +12,7 @@ const { containedPath, materialize } = require('../src/live-runner/materialize')
 const { operations, validatePath } = require('../src/live-runner/operations');
 const { request, serializeBody } = require('../src/live-runner/transport');
 const { publicError } = require('../src/live-runner/errors');
-const { createRouter, isLoopback } = require('../src/api/live-runner-api');
+const { createRouter, isLoopback, isLocalHostHeader } = require('../src/api/live-runner-api');
 const source = 'ENTITY User\nid UUID PRIMARY KEY\nname STRING REQUIRED';
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 let checks = 0;
@@ -75,6 +75,64 @@ async function routes() {
             }
         } finally { await new Promise(resolve => server.close(resolve)); }
     }
+}
+async function hostAdmission() {
+    const accepted = ['localhost', 'localhost:3001', 'LOCALHOST:80', 'localhost:65535',
+        '127.0.0.1', '127.0.0.1:3001', '127.22.3.4:8080', '127.255.255.255:1',
+        '[::1]', '[::1]:3001', '[0:0:0:0:0:0:0:1]:3001',
+        '[::ffff:127.0.0.1]:3001', '[::ffff:7f02:3]:3001'];
+    const rejected = ['attacker.example', 'attacker.example:3001', 'localhost.attacker.example',
+        '127.0.0.1.attacker.example', 'attacker@localhost', 'attacker@localhost:3001',
+        'localhost@attacker.example', 'http://localhost:3001', '//localhost',
+        'localhost/path', 'localhost?query', 'localhost#fragment', 'localhost\\attacker',
+        'localhost.', ' localhost', 'localhost ', 'localhost\n', 'localhost\r\n',
+        'localhost:0', 'localhost:65536', 'localhost:-1', 'localhost:abc', 'localhost:',
+        'localhost:80:90', 'localhost:000001', 'localhost,attacker.example',
+        '192.168.1.1:3001', '0.0.0.0:3001', '128.0.0.1', '127.0.0.256:3001',
+        '127.000.0.1', '127.1', '2130706433', '0x7f000001',
+        '::1', '::1:3001', '[127.0.0.1]:3001', '[::2]:3001', '[::ffff:192.168.1.1]:3001',
+        '[::1', '::1]', '[::1]extra', '[::1%25lo]:3001', '%6cocalhost', '', undefined, null, ['localhost']];
+    for (const host of accepted) { assert.equal(isLocalHostHeader(host), true, String(host)); checks++; }
+    for (const host of rejected) { assert.equal(isLocalHostHeader(host), false, String(host)); checks++; }
+    const app = express();
+    // Even when Express trusts proxies, raw Host/socket validation must win.
+    app.set('trust proxy', true);
+    app.use('/api/live', createRouter(fake().manager));
+    const server = app.listen(0, '127.0.0.1'); await new Promise(resolve => server.once('listening', resolve));
+    const port = server.address().port;
+    async function get(headers) {
+        return new Promise((resolve, reject) => {
+            const req = http.request({ hostname: '127.0.0.1', port, path: '/api/live/status', headers }, res => {
+                let text = ''; res.on('data', chunk => { text += chunk; });
+                res.on('end', () => resolve({ status: res.statusCode, body: JSON.parse(text) }));
+            });
+            req.on('error', reject); req.end();
+        });
+    }
+    try {
+        const hostile = 'attacker.example:' + port;
+        for (const [label, headers] of [
+            ['DNS rebinding, matching Origin', { host: hostile, origin: 'http://' + hostile }],
+            ['hostile Host, no Origin', { host: hostile }],
+            ['proxy headers cannot authorize hostile Host', { host: hostile, origin: 'http://' + hostile,
+                'x-forwarded-host': 'localhost:' + port, 'x-forwarded-for': '127.0.0.1',
+                forwarded: 'for=127.0.0.1;host=localhost:' + port }],
+            ['proxy headers cannot authorize hostile Host without Origin', { host: hostile,
+                'x-forwarded-host': 'localhost:' + port, 'x-forwarded-for': '127.0.0.1',
+                forwarded: 'for=127.0.0.1;host=localhost:' + port }]
+        ]) {
+            const response = await get(headers);
+            assert.equal(response.status, 403, label); assert.equal(response.body.code, 'LIVE_NOT_LOCAL', label); checks++;
+            console.log('PASS Host admission: ' + label + ' -> 403 LIVE_NOT_LOCAL');
+        }
+        for (const host of accepted) for (const origin of [undefined, 'http://' + host]) {
+            const response = await get({ host, ...(origin ? { origin } : {}) });
+            assert.equal(response.status, 200, host); assert.equal(response.body.success, true); checks++;
+        }
+        const wrongOrigin = await get({ host: 'localhost:' + port, origin: 'http://attacker.example:' + port });
+        assert.equal(wrongOrigin.status, 403); assert.equal(wrongOrigin.body.code, 'LIVE_NOT_LOCAL'); checks++;
+        console.log('PASS Host admission: all supported local authorities with/without matching Origin; mismatched Origin rejected');
+    } finally { await new Promise(resolve => server.close(resolve)); }
 }
 async function lifecycle() {
     const f = fake();
@@ -167,6 +225,6 @@ async function pathsAndTransport() {
     } finally { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
 }
 (async () => {
-    await apiEquivalence(); await routes(); await lifecycle(); await pathsAndTransport();
+    await apiEquivalence(); await routes(); await hostAdmission(); await lifecycle(); await pathsAndTransport();
     console.log('PASS Live API offline: ' + checks + ' evidence checks, exact complete generated arrays on both targets; lifecycle/security/bounds.');
 })().catch(error => { console.error(error); process.exitCode = 1; });
