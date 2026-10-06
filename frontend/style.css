@@ -395,6 +395,7 @@ textarea:focus-visible,
 
 .editor-toolbar {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: var(--space-2);
     min-height: 56px;
@@ -404,6 +405,53 @@ textarea:focus-visible,
 }
 
 /* Buttons */
+
+.target-control {
+    display: flex;
+    align-items: center;
+    flex-basis: 100%;
+    gap: var(--space-3);
+    min-width: 0;
+}
+
+.target-label {
+    color: var(--text-muted);
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.target-segments {
+    display: inline-flex;
+    gap: 3px;
+    padding: 3px;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-md);
+    background: var(--surface-1);
+}
+
+.target-option {
+    min-height: 30px;
+    padding: 0 12px;
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 600;
+    transition: color var(--transition), background var(--transition), border-color var(--transition);
+}
+
+.target-option:hover {
+    background: var(--surface-hover);
+    color: var(--text);
+}
+
+.target-option[aria-pressed="true"] {
+    border-color: var(--success-border);
+    background: var(--accent-muted);
+    color: var(--accent);
+}
 
 .btn {
     display: inline-flex;
@@ -1331,7 +1379,7 @@ textarea:focus-visible,
     }
 
     .editor-toolbar {
-        overflow-x: auto;
+        overflow-x: visible;
     }
 
     .pipeline-track {

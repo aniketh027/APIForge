@@ -111,6 +111,8 @@ const exampleName      = document.getElementById('example-name');
 const pipelineState    = document.getElementById('pipeline-state');
 const headerStatus     = document.getElementById('header-status');
 const headerStatusText = document.getElementById('header-status-text');
+const targetButtons    = document.querySelectorAll('.target-option');
+const TARGET_LABELS    = { mysql: 'MySQL', postgres: 'PostgreSQL' };
 
 // Set of line numbers with compiler errors (1-indexed)
 const errorLines = new Set();
@@ -118,6 +120,24 @@ const errorLines = new Set();
 // Store last successful compilation for download
 let lastCompileResult = null;
 let isCompiling = false;
+let selectedTarget = 'mysql';
+let targetRevision = 0;
+
+function selectTarget(target) {
+    if (target === selectedTarget) return;
+    selectedTarget = target;
+    targetRevision++;
+    targetButtons.forEach(button => {
+        button.setAttribute('aria-pressed', String(button.dataset.target === target));
+    });
+    clearErrorHighlights();
+    hideError();
+    hideSummary();
+    lastCompileResult = null;
+    downloadSection.classList.remove('visible');
+    resetAllStatus();
+    resetOutputPanes('Target changed', `Compile again to generate ${TARGET_LABELS[target]} output.`);
+}
 
 function emptyState(title = 'No compilation yet', message = 'Write APIForge DSL and press Compile, or load an example.') {
     return `<div class="output-placeholder">
@@ -292,8 +312,9 @@ function setupPhaseClickHandlers() {
 // COMPILATION SUMMARY (TASK 3)
 // ═════════════════════════════════════════════════════════════
 
-function renderSummary(data) {
+function renderSummary(data, target = 'mysql') {
     if (!summaryPanel || !summaryContent) return;
+    const targetLabel = target === 'postgres' ? 'PostgreSQL' : 'MySQL';
 
     const entitiesCount = (data.ast && Array.isArray(data.ast.entities))
         ? data.ast.entities.length
@@ -329,6 +350,7 @@ function renderSummary(data) {
                 <span class="summary-item"><span class="summary-value">${fieldsCount}</span>${fieldsCount === 1 ? 'field' : 'fields'}</span>
                 <span class="summary-item"><span class="summary-value">${optimizationsCount}</span>${optimizationsCount === 1 ? 'optimization' : 'optimizations'}</span>
                 <span class="summary-item"><span class="summary-value">${filesCount}</span>${filesCount === 1 ? 'file' : 'files'}</span>
+                <span class="summary-item"><span class="summary-value">${targetLabel}</span>target</span>
                 ${warningsCount ? `<span class="summary-item summary-warning"><span class="summary-value">${warningsCount}</span>${warningsCount === 1 ? 'warning' : 'warnings'}</span>` : ''}
             </div>
             ${renderWarnings(data.warnings || [])}
@@ -879,6 +901,8 @@ function loadExample() {
 
 async function compile() {
     if (isCompiling) return;
+    const target = selectedTarget;
+    const revision = targetRevision;
 
     // Reset previous UI state
     hideError();
@@ -902,10 +926,12 @@ async function compile() {
         const response = await fetch('/api/compile', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ source: editor.value })
+            body: JSON.stringify({ source: editor.value, target })
         });
 
         const data = await response.json();
+        // A target change invalidates this request even if the user switches back.
+        if (revision !== targetRevision) return;
         setCompilerAvailability(true);
 
         // Update phase statuses
@@ -914,7 +940,7 @@ async function compile() {
         if (data.success) {
             // ── Render compilation summary & output tabs ──
             lastCompileResult = data;
-            renderSummary(data);
+            renderSummary(data, target);
 
             document.getElementById('output-tokens').innerHTML = renderTokens(data.tokens);
             document.getElementById('output-ast').innerHTML = renderAST(data.ast);
@@ -954,6 +980,7 @@ async function compile() {
             }
         }
     } catch (err) {
+        if (revision !== targetRevision) return;
         setCompilerAvailability(false);
         hideSummary();
         showError('network', [{ message: 'Failed to connect to the compiler server. Make sure it is running.' }]);
@@ -1121,6 +1148,9 @@ document.addEventListener('DOMContentLoaded', () => {
     clearBtn.addEventListener('click', clearAll);
     exampleBtn.addEventListener('click', loadExample);
     downloadBtn.addEventListener('click', downloadProject);
+    targetButtons.forEach(button => {
+        button.addEventListener('click', () => selectTarget(button.dataset.target));
+    });
 
     // Tab switching
     document.querySelectorAll('.tab-btn').forEach(btn => {

@@ -45,6 +45,13 @@
                 </div>
 
                 <div class="editor-toolbar" aria-label="Editor actions">
+                    <div class="target-control">
+                        <span id="target-label" class="target-label">Target</span>
+                        <div class="target-segments" role="group" aria-labelledby="target-label">
+                            <button class="target-option" type="button" data-target="mysql" aria-pressed="true">MySQL</button>
+                            <button class="target-option" type="button" data-target="postgres" aria-pressed="false">PostgreSQL</button>
+                        </div>
+                    </div>
                     <button id="compile-btn" class="btn btn-primary" type="button">
                         <span class="button-icon" aria-hidden="true">▶</span>
                         <span class="button-label">Compile</span>
