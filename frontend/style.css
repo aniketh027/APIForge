@@ -502,6 +502,12 @@ textarea:focus-visible,
     animation: rotate 800ms linear infinite;
 }
 
+.btn-demo {
+    border-color: var(--success-border);
+    background: var(--accent-muted);
+    color: var(--accent);
+}
+
 .btn-quiet {
     border-color: transparent;
     background: transparent;

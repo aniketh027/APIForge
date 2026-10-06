@@ -74,6 +74,36 @@ label STRING
 RELATION User JOINS Group MANY_TO_MANY` }
 ];
 
+const PROFESSOR_DEMO = {
+    name: 'Professor Demo — Project Workspace',
+    code: `ENTITY User
+
+id UUID PRIMARY KEY
+name STRING REQUIRED MIN_LENGTH 2 MAX_LENGTH 80
+email STRING REQUIRED UNIQUE
+role ENUM("student", "faculty", "admin") DEFAULT "student"
+active BOOLEAN DEFAULT TRUE
+joinedAt DATE REQUIRED
+
+ENTITY Project
+
+id INT PRIMARY KEY
+title STRING REQUIRED MIN_LENGTH 3 MAX_LENGTH 120
+status ENUM("planned", "active", "completed") DEFAULT "planned"
+progress INT MIN 0 MAX 100 DEFAULT 0
+createdAt TIMESTAMP
+
+ENTITY Task
+
+id INT PRIMARY KEY
+title STRING REQUIRED MIN_LENGTH 2 MAX_LENGTH 120
+priority INT MIN 1 MAX 5 DEFAULT 3
+done BOOLEAN DEFAULT FALSE
+
+RELATION User OWNS Project ONE_TO_MANY
+RELATION Project HAS Task ONE_TO_MANY`
+};
+
 let currentExampleIndex = 0;
 const EXAMPLE_DSL = EXAMPLES[0].code;
 
@@ -102,6 +132,7 @@ const editorHighlights = document.getElementById('editor-highlights');
 const compileBtn       = document.getElementById('compile-btn');
 const clearBtn         = document.getElementById('clear-btn');
 const exampleBtn       = document.getElementById('example-btn');
+const demoBtn          = document.getElementById('demo-btn');
 const downloadBtn      = document.getElementById('download-btn');
 const downloadSection  = document.getElementById('download-section');
 const errorPanel       = document.getElementById('error-panel');
@@ -121,6 +152,7 @@ const errorLines = new Set();
 let lastCompileResult = null;
 let isCompiling = false;
 let selectedTarget = 'mysql';
+// Changes to the target or demo source invalidate pending compilation output.
 let targetRevision = 0;
 
 function selectTarget(target) {
@@ -878,6 +910,23 @@ function clearAll() {
 // LOAD EXAMPLE (TASK 6)
 // ═════════════════════════════════════════════════════════════
 
+function loadDemo() {
+    targetRevision++;
+    editor.value = PROFESSOR_DEMO.code;
+    if (exampleName) exampleName.textContent = PROFESSOR_DEMO.name;
+    clearErrorHighlights();
+    hideError();
+    hideSummary();
+    lastCompileResult = null;
+    downloadSection.classList.remove('visible');
+    resetAllStatus();
+    resetOutputPanes('Demo ready', `${PROFESSOR_DEMO.name} is loaded. Press Compile to generate ${TARGET_LABELS[selectedTarget]} output.`);
+    switchTab('tokens');
+    editor.scrollTop = 0;
+    editor.scrollLeft = 0;
+    syncScroll();
+}
+
 function loadExample() {
     const example = EXAMPLES[currentExampleIndex % EXAMPLES.length];
     currentExampleIndex++;
@@ -930,7 +979,7 @@ async function compile() {
         });
 
         const data = await response.json();
-        // A target change invalidates this request even if the user switches back.
+        // Target changes and demo loads invalidate output from an earlier request.
         if (revision !== targetRevision) return;
         setCompilerAvailability(true);
 
@@ -1147,6 +1196,7 @@ document.addEventListener('DOMContentLoaded', () => {
     compileBtn.addEventListener('click', compile);
     clearBtn.addEventListener('click', clearAll);
     exampleBtn.addEventListener('click', loadExample);
+    demoBtn.addEventListener('click', loadDemo);
     downloadBtn.addEventListener('click', downloadProject);
     targetButtons.forEach(button => {
         button.addEventListener('click', () => selectTarget(button.dataset.target));
