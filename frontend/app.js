@@ -111,7 +111,7 @@ const PHASE_ORDER = ['lexer', 'parser', 'semantic', 'ir', 'optimizer', 'codegen'
 
 const TAB_IDS = [
     'tokens', 'ast', 'symboltable', 'ir',
-    'optimized-ir', 'sql', 'api', 'swagger'
+    'optimized-ir', 'sql', 'endpoints', 'api', 'swagger'
 ];
 
 const PHASE_TAB_MAP = {
@@ -152,7 +152,7 @@ const errorLines = new Set();
 let lastCompileResult = null;
 let isCompiling = false;
 let selectedTarget = 'mysql';
-// Changes to the target or demo source invalidate pending compilation output.
+// Changes to the target or loaded source invalidate pending compilation output.
 let targetRevision = 0;
 
 function selectTarget(target) {
@@ -844,6 +844,50 @@ function toggleApiFile(headerEl) {
 window.toggleApiFile = toggleApiFile;
 
 // ═════════════════════════════════════════════════════════════
+// RENDER: ENDPOINTS
+// ═════════════════════════════════════════════════════════════
+
+// OpenAPI owns the endpoint surface; preserve path order and use REST method order.
+function renderEndpoints(files) {
+    const swaggerFile = Array.isArray(files)
+        ? files.find(file => file.path === 'swagger.json') : null;
+    if (!swaggerFile) return '<p class="output-placeholder">No endpoints generated.</p>';
+
+    const isObject = value => value !== null && typeof value === 'object' && !Array.isArray(value);
+    let spec;
+    try {
+        spec = JSON.parse(swaggerFile.content);
+        if (!isObject(spec) || (spec.paths !== undefined && !isObject(spec.paths))) {
+            return '<p class="output-placeholder">Unable to read generated endpoints.</p>';
+        }
+    } catch (error) {
+        return '<p class="output-placeholder">Unable to read generated endpoints.</p>';
+    }
+
+    const methods = ['get', 'post', 'put', 'patch', 'delete', 'options', 'head', 'trace'];
+    const endpoints = [];
+    Object.entries(spec.paths || {}).forEach(([path, item]) => {
+        if (!path.startsWith('/') || !isObject(item)) return;
+        methods.forEach(method => {
+            if (Object.prototype.hasOwnProperty.call(item, method) && isObject(item[method])) {
+                endpoints.push({ method: method.toUpperCase(), path });
+            }
+        });
+    });
+    if (!endpoints.length) return '<p class="output-placeholder">No endpoints generated.</p>';
+
+    return `<div class="endpoint-view">
+        <p class="endpoint-count">${endpoints.length} generated ${endpoints.length === 1 ? 'endpoint' : 'endpoints'}</p>
+        <ul class="endpoint-list" aria-label="Generated endpoints">${endpoints.map(endpoint => `
+            <li class="endpoint-row">
+                <span class="endpoint-method">${endpoint.method}</span>
+                <code class="endpoint-path">${escapeHtml(endpoint.path)}</code>
+            </li>`).join('')}
+        </ul>
+    </div>`;
+}
+
+// ═════════════════════════════════════════════════════════════
 // RENDER: SWAGGER
 // ═════════════════════════════════════════════════════════════
 
@@ -892,6 +936,7 @@ function escapeHtml(str) {
 // ═════════════════════════════════════════════════════════════
 
 function clearAll() {
+    targetRevision++;
     editor.value = '';
     clearErrorHighlights();
     hideError();
@@ -928,6 +973,7 @@ function loadDemo() {
 }
 
 function loadExample() {
+    targetRevision++;
     const example = EXAMPLES[currentExampleIndex % EXAMPLES.length];
     currentExampleIndex++;
     editor.value = example.code;
@@ -979,7 +1025,7 @@ async function compile() {
         });
 
         const data = await response.json();
-        // Target changes and demo loads invalidate output from an earlier request.
+        // Target changes and source resets invalidate output from an earlier request.
         if (revision !== targetRevision) return;
         setCompilerAvailability(true);
 
@@ -997,6 +1043,7 @@ async function compile() {
             document.getElementById('output-ir').innerHTML = renderIR(data.ir, 'IR');
             document.getElementById('output-optimized-ir').innerHTML = renderOptimizedIR(data);
             document.getElementById('output-sql').innerHTML = renderSQL(data.generatedFiles);
+            document.getElementById('output-endpoints').innerHTML = renderEndpoints(data.generatedFiles);
             document.getElementById('output-api').innerHTML = renderAPIFiles(data.generatedFiles);
             document.getElementById('output-swagger').innerHTML = renderSwagger(data.generatedFiles);
 
