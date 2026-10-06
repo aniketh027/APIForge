@@ -293,3 +293,178 @@ Windows file-symlink coverage is unavailable on this host and is covered by the
 real Linux run. No deferred namespace/package/remote feature is claimed.
 
 **G28 STATUS: CLOSED — ready for external review, local branch only.**
+
+## External-review correction: cycle diagnostics and C2 canary matrix
+
+Correction verified on 2026-10-06 against reviewed tip
+`56997f73baf0a029fe976b3fecd757d6d0312a8e` (`56997f7`). The original closure
+evidence above is retained. This section supersedes its related-location
+completeness, negative-canary total and branch-ahead count.
+
+### Cycle duplication reproduced before the production change
+
+Added `tests/g28-cycle-diagnostics.test.js` first and ran it against the unchanged
+reviewed production code. It evaluated the self-, two- and three-module cases
+before failing the complete diagnostic comparisons for both longer cycles.
+For the fixture literals, every related edge has line 1, column 8, endLine 1,
+endColumn 20. The observed complete arrays were:
+
+| Cycle | Pre-fix `related` result, in actual order |
+| --- | --- |
+| A -> A | Property absent |
+| A -> B -> A | A span with `Cycle edge.`, followed by the same A span with `Imported here.` |
+| A -> B -> C -> A | A and B spans with `Cycle edge.`, followed by those same A and B spans with `Imported here.` |
+
+The failure therefore demonstrated two copies of each preceding cycle edge,
+with different messages. The same new test also exposed ordinary-chain expansion
+for a self-cycle below a non-cycle entry prefix. Production was changed only
+after this reproduction; the failing run was expected reproduction evidence,
+not a passed gate.
+
+### Exact cycle diagnostic correction
+
+`CompilationUnit.diagnostic()` now excludes `original.symbol === 'IMPORT_CYCLE'`
+from ordinary firstInbound-chain expansion. The existing explicit active-cycle
+edge list remains untouched. This is the only correction to production behavior.
+Resolver traversal, cycle construction, primary ownership and formatting remain
+unchanged. Self-cycle `related` remains omitted, including below an entry prefix.
+
+For `a.apiforge -> b.apiforge -> a.apiforge`, the complete corrected array is:
+
+```json
+[
+  {
+    "message": "Cycle edge.",
+    "source": "a.apiforge",
+    "line": 1,
+    "column": 8,
+    "endLine": 1,
+    "endColumn": 20
+  }
+]
+```
+
+For `a.apiforge -> b.apiforge -> c.apiforge -> a.apiforge`, it is:
+
+```json
+[
+  {
+    "message": "Cycle edge.",
+    "source": "a.apiforge",
+    "line": 1,
+    "column": 8,
+    "endLine": 1,
+    "endColumn": 20
+  },
+  {
+    "message": "Cycle edge.",
+    "source": "b.apiforge",
+    "line": 1,
+    "column": 8,
+    "endLine": 1,
+    "endColumn": 20
+  }
+]
+```
+
+The complete primary diagnostic is asserted, including input phase, error
+severity, INP009/IMPORT_CYCLE, exact message and hint. Messages remain
+`Import cycle: a.apiforge -> a.apiforge.`,
+`Import cycle: a.apiforge -> b.apiforge -> a.apiforge.` and
+`Import cycle: a.apiforge -> b.apiforge -> c.apiforge -> a.apiforge.`
+The hint remains `Remove an import edge from this cycle.` Primary source is the
+closing importer (A, B or C respectively), at the closing literal's unchanged
+range `(1, 8)` through exclusive `(1, 20)`. Paths remain portable; absolute
+temporary paths and backslashes are rejected by the assertions.
+
+All **9 focused checks pass**: exact self/two/three-module diagnostics; imported
+self-cycle; a three-module active cycle below a non-cycle prefix; ordinary
+imported LEX001, PAR012 and SEM004 complete root-to-leaf related arrays; and
+SEM002's complete previous-declaration plus import-chain array. The correction
+does not suppress ordinary imported errors or duplicate-declaration provenance.
+The new suite is included in `npm run test:g28`.
+
+### Complete C2 negative canary categories
+
+The nine existing fixtures were reused. C1 remains **18** exact target/fixture
+comparisons over **222** ordered files; C2 remains **18** moved-source comparisons
+with **64** model payload reconstructions. The canary total increases from
+**129 to 186**, adding **57** explicit rejected mutations. Both source
+organizations are tested on both targets for each applicable feature; all four
+relationship cardinalities are covered. Declaration ordering is now checked on
+both targets.
+
+| Canary category | MySQL | PostgreSQL | Confirmed mutation |
+| --- | ---: | ---: | --- |
+| Datatype metadata | 32 | 32 | Existing `dataType` property changed |
+| DEFAULT metadata/value | 2 | 2 | Scalar.v typed NUMBER default 0 -> 1 |
+| Constraint metadata | 2 | 2 | Scalar.k PRIMARY_KEY -> UNIQUE |
+| Numeric validation metadata | 4 | 4 | Existing MAX 2 -> 3 in model fields and controller WRITE_FIELDS |
+| String validation metadata | 4 | 4 | Existing MAX_LENGTH 300 -> 301 in model fields and controller WRITE_FIELDS |
+| ENUM metadata/order | 2 | 2 | Existing draft/active array reversed |
+| Executable SQL | 32 | 32 | Existing SELECT expression changed |
+| Identity metadata | 2 | 2 | Existing PRIMARY_KEY runtime_uuid generation -> none |
+| Runtime identity logic | 2 | 2 | Existing crypto.randomUUID() call replaced with a constant UUID |
+| Write/runtime validator logic | 2 | 2 | Existing Number.isSafeInteger(value) -> Number.isInteger(value) |
+| Relationship helper logic | 8 | 8 | Throw inserted into the confirmed generated getter body |
+| Declaration ordering | 1 | 1 | Existing A/B entity order reversed |
+| **Total** | **93** | **93** | **186 rejected canaries** |
+
+Every artifact canary first asserts the selected artifact/operand exists and
+the change alters both its content and compared file array. Structured metadata
+mutations additionally assert existing field/default/constraint/bound/ENUM values
+before changing them. Complete known model metadata payloads are located uniquely;
+controller JSON formatting is confirmed before changing its validation payload.
+Ordering canaries assert that the compared plan entity sequence actually changed.
+Each then asserts that `assertModuleGenerationEquivalent` throws.
+
+The helper itself is **unchanged**: its Git blob is
+`da1ac77357c2d47e5257ab8c6f9d49dc662cd8f4` at both the reviewed tip and corrected
+tip. No projection fields were removed, no JavaScript regex masking was added,
+and the exception remains only existing `Model.fields[*]` own `line` values.
+Positive C1/C2 comparisons and snapshot bytes/hash invariance continue to pass.
+
+### Rerun commands and scope review
+
+| Command | Correction result |
+| --- | --- |
+| `node tests/g28-cycle-diagnostics.test.js` | PASS 9 focused checks after the expected pre-fix failure |
+| `node tests/g28-resolver.test.js` | PASS 84 Windows checks; original capability skips retained |
+| `node tests/g28-compilation.test.js` | PASS 40 checks |
+| `node tests/g28-equivalence.test.js` | PASS C1/C2 and all 186 category-counted canaries |
+| `npm test` | PASS all 23 suites; core 1,060/1,060, G22 pinned equivalence zero mismatches |
+| `npm run test:g28` | PASS all gates; Gate A 2,693 checks, 289 valid/291 invalid, 3,691 exact MySQL files, zero mismatches |
+| `npm run test:migrations` | PASS all 10 suites and 655-check pinned oracle |
+| `npm run test:g27` | PASS 1,992-check oracle, target selection and PostgreSQL target checks |
+| `node docs/verify-language-guide.js` | PASS 20 valid/79 invalid, 133 generated JS files, 99 real CLI cases |
+| `git diff --check`, correction and full branch diff checks | PASS |
+| `./tests/verify-protected-artifacts.ps1` in PowerShell 7 | PASS all 36 files and five manifest properties, pre/post correction |
+
+Review confirmed no correction diff in target adapters, codegen, planning,
+generated runtime templates, G26 physical production code, IR/optimizer,
+frontend, frozen fixtures or the equivalence helper. Native database reruns were
+not required under the external-review correction contract and were not claimed.
+The previous native evidence above remains the original implementation evidence.
+The only package change adds the focused cycle suite to `test:g28`; generated
+dependencies and package bytes retain Gate A compatibility.
+
+### Corrective commits, postflight and revised closure
+
+| Commit | Correction |
+| --- | --- |
+| `8d6e3f81f6685173a02256bae3f83979bbc88ae0` | Cycle-specific chain suppression, exact cycle/control tests and suite command |
+| `72ad2ce9f01ff1281f4af35eb126fd8e848678be` | Complete C2 canary matrix, confirmed mutations and exact category totals |
+| `docs(g28): append external-review correction evidence` | This appended section; the documentation commit is named to avoid embedding its own SHA |
+
+Postflight: `g28-imports-modules` is **14 ahead / 0 behind** both main and
+origin/main, including the documentation correction commit. The original 11
+commits are retained without rewriting. Local main, origin/main and remote main
+remain `112a464ee4615c3956c686bfff59c9aa5d9f8497`; local and remote v1.0.0 peel
+remain `9d5b223b0af350a237625f4cd8dfbc700e35dd1b`. Tracked worktree/index are clean;
+only the original four protected roots are untracked. All 36 protected files
+retain exact path, size, SHA-256, creation and modification timestamps. No
+protected roots were staged or modified. No push, merge, amend, rebase, squash,
+force push or tag change occurred. Test fixtures were temporary and cleaned.
+
+**Revised G28 STATUS: CLOSED — both external-review corrections verified;
+ready for external review, local branch only.**
