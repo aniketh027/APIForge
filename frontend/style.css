@@ -537,7 +537,8 @@ textarea:focus-visible,
 
 .output-pane {
     display: none;
-    min-width: max-content;
+    min-width: 0;
+    width: 100%;
     max-width: 100%;
 }
 
@@ -1085,6 +1086,8 @@ textarea:focus-visible,
 }
 
 .api-file {
+    min-width: 0;
+    max-width: 100%;
     margin-bottom: var(--space-2);
     overflow: hidden;
     border: 1px solid var(--border);
@@ -1126,6 +1129,8 @@ textarea:focus-visible,
 
 .api-file-content {
     display: none;
+    min-width: 0;
+    max-width: 100%;
 }
 
 .api-file-content.expanded {
@@ -1141,10 +1146,17 @@ textarea:focus-visible,
 }
 
 .api-file-content pre {
+    min-width: 0;
+    max-width: 100%;
     margin: 0;
     border: 0;
     border-top: 1px solid var(--border);
     border-radius: 0;
+}
+
+.api-file-content pre.api-file-markdown {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
 }
 
 /* Compiler pipeline */

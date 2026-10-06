@@ -768,7 +768,7 @@ function renderAPIFiles(files) {
                     <span class="code-file-meta">Generated file</span>
                     ${renderCopyControl(file.path)}
                 </div>
-                <pre data-copy-source>${escapeHtml(file.content)}</pre>
+                <pre${/\.md$/i.test(file.path) ? ' class="api-file-markdown"' : ''} data-copy-source>${escapeHtml(file.content)}</pre>
             </div>
         </div>`;
     }).join('');
