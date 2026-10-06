@@ -10,9 +10,9 @@ const { createPinnedCompiler, currentCompiler, compileSource } = require('./pinn
 const { sourceCases, directIRCases, rawSQLCases, structuralIRCases } = require('./effective-schema-corpus');
 const BASE = '112a464ee4615c3956c686bfff59c9aa5d9f8497';
 // BASE remains the frozen G28/compiler compatibility oracle. FRONTEND_BASE
-// separately pins the approved post-G28 generated-file-viewer overflow fix;
+// separately pins the current approved frontend baseline;
 // exact committed frontend-byte protection remains enabled for all three files.
-const FRONTEND_BASE = '5ee544e52b382132c8761ef9dafed547c1ebe093';
+const FRONTEND_BASE = 'd7cfe57c7111489f325cdb31f0bca93060f893b2';
 const pinned = createPinnedCompiler({ revision: BASE });
 const current = currentCompiler();
 const explicit = { ...current,
