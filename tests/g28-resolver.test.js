@@ -71,7 +71,15 @@ try {
         }
         if(link('internal.apiforge',shared)){write('links.apiforge','IMPORT "internal.apiforge" IMPORT "shared.apiforge"');same(resolveFile(path.join(root,'links.apiforge')).modules.length,2);}
         if(link('escape.apiforge',path.join(sibling,'out.apiforge'))){write('links.apiforge','IMPORT "escape.apiforge"');fails(()=>resolveFile(path.join(root,'links.apiforge')),'INP006');}
-        if(link('junction',sibling,process.platform==='win32'?'junction':'dir')){write('links.apiforge','IMPORT "junction/out.apiforge"');fails(()=>resolveFile(path.join(root,'links.apiforge')),'INP006');}
+        if(link('junction',sibling,process.platform==='win32'?'junction':'dir')){
+            write('links.apiforge','IMPORT "junction/out.apiforge"');fails(()=>resolveFile(path.join(root,'links.apiforge')),'INP006');
+            fs.linkSync(shared,path.join(sibling,'cached.apiforge'));
+            write('links.apiforge','IMPORT "shared.apiforge" IMPORT "junction/cached.apiforge"');
+            fails(()=>resolveFile(path.join(root,'links.apiforge')),'INP006');
+        }
+        if(link('internal-dir',path.join(root,'sub'),process.platform==='win32'?'junction':'dir')){
+            write('links.apiforge','IMPORT "internal-dir/b.apiforge"');same(resolveFile(path.join(root,'links.apiforge')).modules.length,4);
+        }
     } finally {fs.rmSync(sibling,{recursive:true,force:true});}
     try {
         fs.linkSync(shared,path.join(root,'hard.apiforge'));
@@ -86,8 +94,27 @@ try {
     fails(()=>new FilesystemResolver(entry,{},unavailable),'INP014');
     const changing={...fs,fstatSync(...args){const stat=fs.fstatSync(...args);Object.defineProperty(stat,'mtimeNs',{value:stat.mtimeNs+1n});return stat;}};
     const adapter=new FilesystemResolver(entry,{},changing);fails(()=>adapter.read(adapter.entry),'INP012');
+    let closed=0,fstats=0;
+    const duringRead={...fs,fstatSync(...args){const stat=fs.fstatSync(...args);if(++fstats===2)Object.defineProperty(stat,'ctimeNs',{value:stat.ctimeNs+1n});return stat;},closeSync(fd){closed++;return fs.closeSync(fd);}};
+    const unstable=new FilesystemResolver(entry,{},duringRead);fails(()=>unstable.read(unstable.entry),'INP012');same(closed,1);
+    const failedRead={...fs,readFileSync(){const e=new Error('PRIVATE '+root);e.code='EIO';throw e;},closeSync(fd){closed++;return fs.closeSync(fd);}};
+    const failedAdapter=new FilesystemResolver(entry,{},failedRead);fails(()=>failedAdapter.read(failedAdapter.entry),'INP008');same(closed,2);
+    for(const [errno,code]of [['EINVAL','INP004'],['ENAMETOOLONG','INP004'],['ENOENT','INP005'],['ENOTDIR','INP007'],['ELOOP','INP008']]){
+        fails(()=>require('../src/modules/errors').filesystemError(Object.assign(new Error('PRIVATE '+root),{code:errno})),code);
+    }
     const denied={...fs,openSync(){const e=new Error('PRIVATE '+root);e.code='EACCES';throw e;}};
     const deniedAdapter=new FilesystemResolver(entry,{},denied);fails(()=>deniedAdapter.read(deniedAdapter.entry),'INP008');
+    if(process.platform!=='win32'){
+        const unreadable=write('unreadable.apiforge','');fs.chmodSync(unreadable,0);
+        try{
+            let genuinelyDenied=false;
+            try{const fd=fs.openSync(unreadable,'r');fs.closeSync(fd);}catch(e){genuinelyDenied=e.code==='EACCES';}
+            if(genuinelyDenied){write('unreadable-entry.apiforge','IMPORT "unreadable.apiforge"');fails(()=>resolveFile(path.join(root,'unreadable-entry.apiforge')),'INP008','unreadable-entry.apiforge');}
+            else skips.push('genuine unreadable file: process can bypass permissions');
+        }finally{fs.chmodSync(unreadable,0o600);}
+        const fifo=path.join(root,'pipe.apiforge');require('child_process').execFileSync('mkfifo',[fifo]);
+        write('fifo-entry.apiforge','IMPORT "pipe.apiforge"');fails(()=>resolveFile(path.join(root,'fifo-entry.apiforge')),'INP007');
+    }else skips.push('genuine unreadable/FIFO: POSIX mode/FIFO unavailable on Windows; EACCES adapter mapping tested');
     write('deep/main.apiforge','IMPORT "n0.apiforge"');
     for(let i=0;i<1100;i++)write('deep/n'+i+'.apiforge',i===1099?'':`IMPORT "n${i+1}.apiforge"`);
     same(resolveFile(path.join(root,'deep/main.apiforge')).modules.length,1101);

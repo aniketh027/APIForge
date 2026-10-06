@@ -7,6 +7,9 @@ const fixtures=[
     'ENTITY Item\nk INT PRIMARY KEY\nline STRING DEFAULT "line" MAX_LENGTH 300',
     'ENTITY Scalar\nk UUID PRIMARY KEY\nv INT DEFAULT 0 MIN 0 MAX 2\nf FLOAT DEFAULT 0\nb BOOLEAN DEFAULT FALSE\ns STRING DEFAULT ""\ne ENUM("draft","active") DEFAULT "draft"\nd DATE DEFAULT "2000-02-29"\nt TIMESTAMP DEFAULT "2000-02-29T12:34:56Z"\nu UUID DEFAULT "550e8400-e29b-41d4-a716-446655440000"',
     ...['ONE_TO_ONE','ONE_TO_MANY','MANY_TO_ONE','MANY_TO_MANY'].map(card=>'ENTITY Parent\nk STRING PRIMARY KEY\nENTITY Child\nk INT PRIMARY KEY\nv STRING\nRELATION Parent LINKS Child '+card)
+    ,'ENTITY Implicit\nline STRING DEFAULT "line"\nENTITY Value\nkey INT PRIMARY KEY DEFAULT -1\nvalue FLOAT DEFAULT 1.25'
+    ,'ENTITY StaticUuid\nkey UUID PRIMARY KEY DEFAULT "550e8400-e29b-41d4-a716-446655440000"\nENTITY StaticInt\nkey INT PRIMARY KEY DEFAULT 0\nENTITY StaticText\nkey STRING PRIMARY KEY DEFAULT "fixed"'
+    ,'ENTITY IMPORT\nkey INT PRIMARY KEY\nIMPORT STRING\n__proto__ STRING\nconstructor STRING\nprototype STRING'
 ];
 let c1=0,c2=0,files=0,modelReconstructions=0,canaries=0;
 function materialize(base,source,shifted){
