@@ -344,7 +344,8 @@ function setupPhaseClickHandlers() {
 // COMPILATION SUMMARY (TASK 3)
 // ═════════════════════════════════════════════════════════════
 
-function renderSummary(data, target = 'mysql') {
+function renderSummary(data = {}, target = 'mysql') {
+    data = data || {};
     if (!summaryPanel || !summaryContent) return;
     const targetLabel = target === 'postgres' ? 'PostgreSQL' : 'MySQL';
 
@@ -354,10 +355,10 @@ function renderSummary(data, target = 'mysql') {
 
     let fieldsCount = 0;
     if (data.ast && Array.isArray(data.ast.entities)) {
-        fieldsCount = data.ast.entities.reduce((sum, e) => sum + (e.fields ? e.fields.length : 0), 0);
+        fieldsCount = data.ast.entities.reduce((sum, e) => sum + (e && Array.isArray(e.fields) ? e.fields.length : 0), 0);
     } else if (data.symbolTable) {
         Object.keys(data.symbolTable).forEach(eName => {
-            if (data.symbolTable[eName].fields) {
+            if (data.symbolTable[eName] && data.symbolTable[eName].fields) {
                 fieldsCount += Object.keys(data.symbolTable[eName].fields).length;
             }
         });
@@ -371,6 +372,10 @@ function renderSummary(data, target = 'mysql') {
         ? data.generatedFiles.length
         : 0;
     const warningsCount = (data.warnings || []).length;
+    const relationshipsCount = Array.isArray(data.ast && data.ast.relations) ? data.ast.relations.length : 0;
+    const endpointInfo = getGeneratedEndpointInfo(data.generatedFiles);
+    const endpointsValue = endpointInfo.status === 'available' ? endpointInfo.endpoints.length : 'Unavailable';
+    const endpointLabel = endpointInfo.status === 'available' && endpointsValue === 1 ? 'endpoint' : 'endpoints';
 
     summaryPanel.classList.add('visible');
     summaryContent.innerHTML = `
@@ -378,16 +383,50 @@ function renderSummary(data, target = 'mysql') {
         <div class="summary-body">
             <div class="summary-title">Compiled successfully</div>
             <div class="summary-grid">
-                <span class="summary-item"><span class="summary-value">${entitiesCount}</span>${entitiesCount === 1 ? 'entity' : 'entities'}</span>
-                <span class="summary-item"><span class="summary-value">${fieldsCount}</span>${fieldsCount === 1 ? 'field' : 'fields'}</span>
-                <span class="summary-item"><span class="summary-value">${optimizationsCount}</span>${optimizationsCount === 1 ? 'optimization' : 'optimizations'}</span>
-                <span class="summary-item"><span class="summary-value">${filesCount}</span>${filesCount === 1 ? 'file' : 'files'}</span>
-                <span class="summary-item"><span class="summary-value">${targetLabel}</span>target</span>
-                ${warningsCount ? `<span class="summary-item summary-warning"><span class="summary-value">${warningsCount}</span>${warningsCount === 1 ? 'warning' : 'warnings'}</span>` : ''}
+                <span class="summary-item" data-summary-metric="entities"><span class="summary-value">${entitiesCount}</span> <span class="summary-label">${entitiesCount === 1 ? 'entity' : 'entities'}</span></span>
+                <span class="summary-item" data-summary-metric="fields"><span class="summary-value">${fieldsCount}</span> <span class="summary-label">${fieldsCount === 1 ? 'field' : 'fields'}</span></span>
+                <span class="summary-item" data-summary-metric="relationships"><span class="summary-value">${relationshipsCount}</span> <span class="summary-label">${relationshipsCount === 1 ? 'relationship' : 'relationships'}</span></span>
+                <span class="summary-item" data-summary-metric="endpoints"><span class="summary-value">${endpointsValue}</span> <span class="summary-label">${endpointLabel}</span></span>
+                <span class="summary-item" data-summary-metric="files"><span class="summary-value">${filesCount}</span> <span class="summary-label">${filesCount === 1 ? 'generated file' : 'generated files'}</span></span>
+                <span class="summary-item summary-target" data-summary-metric="target"><span class="summary-value">${targetLabel}</span> <span class="summary-label">target</span></span>
+            </div>
+            <div class="summary-details">
+                <span data-summary-metric="optimizations"><span class="summary-detail-value">${optimizationsCount}</span> ${optimizationsCount === 1 ? 'optimization' : 'optimizations'}</span>
+                ${warningsCount ? `<span class="summary-warning" data-summary-metric="warnings"><span class="summary-detail-value">${warningsCount}</span> ${warningsCount === 1 ? 'warning' : 'warnings'}</span>` : ''}
             </div>
             ${renderWarnings(data.warnings || [])}
         </div>
     `;
+}
+
+// Shared pure OpenAPI extraction; no source parsing or route-generation assumptions.
+function getGeneratedEndpointInfo(files) {
+    const swaggerFile = Array.isArray(files)
+        ? files.find(file => file && file.path === 'swagger.json') : null;
+    if (!swaggerFile) return { status: 'missing', endpoints: [] };
+
+    const isObject = value => value !== null && typeof value === 'object' && !Array.isArray(value);
+    let spec;
+    try {
+        spec = JSON.parse(swaggerFile.content);
+        if (!isObject(spec) || (spec.paths !== undefined && !isObject(spec.paths))) {
+            return { status: 'unreadable', endpoints: [] };
+        }
+    } catch (error) {
+        return { status: 'unreadable', endpoints: [] };
+    }
+
+    const methods = ['get', 'post', 'put', 'patch', 'delete', 'options', 'head', 'trace'];
+    const endpoints = [];
+    Object.entries(spec.paths || {}).forEach(([path, item]) => {
+        if (!path.startsWith('/') || !isObject(item)) return;
+        methods.forEach(method => {
+            if (Object.prototype.hasOwnProperty.call(item, method) && isObject(item[method])) {
+                endpoints.push({ method: method.toUpperCase(), path });
+            }
+        });
+    });
+    return { status: 'available', endpoints };
 }
 
 function renderWarnings(warnings) {
@@ -916,31 +955,8 @@ window.toggleApiFile = toggleApiFile;
 
 // OpenAPI owns the endpoint surface; preserve path order and use REST method order.
 function renderEndpoints(files) {
-    const swaggerFile = Array.isArray(files)
-        ? files.find(file => file.path === 'swagger.json') : null;
-    if (!swaggerFile) return '<p class="output-placeholder">No endpoints generated.</p>';
-
-    const isObject = value => value !== null && typeof value === 'object' && !Array.isArray(value);
-    let spec;
-    try {
-        spec = JSON.parse(swaggerFile.content);
-        if (!isObject(spec) || (spec.paths !== undefined && !isObject(spec.paths))) {
-            return '<p class="output-placeholder">Unable to read generated endpoints.</p>';
-        }
-    } catch (error) {
-        return '<p class="output-placeholder">Unable to read generated endpoints.</p>';
-    }
-
-    const methods = ['get', 'post', 'put', 'patch', 'delete', 'options', 'head', 'trace'];
-    const endpoints = [];
-    Object.entries(spec.paths || {}).forEach(([path, item]) => {
-        if (!path.startsWith('/') || !isObject(item)) return;
-        methods.forEach(method => {
-            if (Object.prototype.hasOwnProperty.call(item, method) && isObject(item[method])) {
-                endpoints.push({ method: method.toUpperCase(), path });
-            }
-        });
-    });
+    const { status, endpoints } = getGeneratedEndpointInfo(files);
+    if (status === 'unreadable') return '<p class="output-placeholder">Unable to read generated endpoints.</p>';
     if (!endpoints.length) return '<p class="output-placeholder">No endpoints generated.</p>';
 
     return `<div class="endpoint-view">
