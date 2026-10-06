@@ -1,6 +1,6 @@
 'use strict';
 const assert=require('assert/strict'),vm=require('vm');
-const {nativeSession,admit}=require('./postgres-native-helpers');
+const {nativeSession,admit,privatePublicTable}=require('./postgres-native-helpers');
 const {keys,scalars,relations,uuidRelations}=require('./postgres-target-cases');
 const Codegen=require('../src/codegen/codegen');
 const names=require('../src/targets/postgres/names');
@@ -20,14 +20,26 @@ async function main(){
             'ENTITY Bounded keyValue INT PRIMARY KEY MIN 0 MAX 4',
             'ENTITY RequiredUuid keyValue UUID PRIMARY KEY REQUIRED',
             'ENTITY StaticString keyValue STRING PRIMARY KEY DEFAULT "fixed" value STRING DEFAULT "hidden"',
+            'ENTITY Limited textValue STRING MAX_LENGTH 255',
             'ENTITY TemporalFields value STRING day DATE moment TIMESTAMP',
             'ENTITY TemporalSource keyValue UUID PRIMARY KEY day DATE moment TIMESTAMP ENTITY TemporalTarget keyValue UUID PRIMARY KEY day DATE moment TIMESTAMP RELATION TemporalSource relatedTemporal TemporalTarget ONE_TO_MANY'].join('\n');
         const admission=admit(source),files=Codegen.generate(admission.ir,false,{target:'postgres'}).files;
         for(const f of files.filter(f=>f.path.endsWith('.js')))new vm.Script(f.content,{filename:f.path});
         await db.client.query(files.find(f=>f.path==='database/schema.sql').content);
-        pool=loadConfig(files.find(f=>f.path==='config/db.js').content,db.config);
+        const application=await session.restrictedApplication(db,admission.context.physical);
+        const unrelated=await privatePublicTable(db,application);
+        pool=loadConfig(files.find(f=>f.path==='config/db.js').content,application);
         const trackedDb={query:(...args)=>{queries++;return pool.query(...args);}};
         const models=Object.fromEntries(files.filter(f=>f.path.startsWith('models/')).map(f=>[f.path.slice(7,-3),loadModule(f.content,name=>name==='../config/db'?trackedDb:require(name))]));
+        assert.equal((await pool.query('SELECT current_user AS role')).rows[0].role,application.user);
+        // Revoke on a junction, then query another entity: the full inventory is checked.
+        await db.client.query('REVOKE DELETE ON TABLE "public"."Source3_Target3" FROM '+names.quoteIdentifier(application.user));
+        await assert.rejects(models.Implicit.findById(0),e=>e.message==='Unsupported PostgreSQL deployment profile.');
+        await db.client.query('GRANT DELETE ON TABLE "public"."Source3_Target3" TO '+names.quoteIdentifier(application.user));
+        assert.equal(await models.Implicit.findById(0),null);
+        await db.client.query('ALTER TABLE "public"."Implicit" RENAME TO "implicit"');
+        await assert.rejects(pool.query('SELECT 1'),e=>e.message==='Unsupported PostgreSQL deployment profile.');
+        await db.client.query('ALTER TABLE "public"."implicit" RENAME TO "Implicit"');
         for(const [name] of keys) {
             const m=models[name];let created;
             if(name==='TextKey')await assert.rejects(m.create({}),e=>e.code==='23502');
@@ -64,7 +76,29 @@ async function main(){
             assert.equal(JSON.stringify(input),before);await models[name].delete(value);
         }
         const optional=await models.RuntimeUuid.create({identity:null});assert.match(optional.identity,/^[0-9a-f-]{36}$/);
+        const varchar=[];
+        for(const [label,value] of [['255 non-space','x'.repeat(255)],['256 non-space','x'.repeat(256)],['255 + 1 space','x'.repeat(255)+' '],['255 + 4 spaces','x'.repeat(255)+'    ']]) {
+            const input={value},before=structuredClone(input);
+            if(label==='256 non-space') {
+                await assert.rejects(models.Implicit.create(input),e=>e.code==='22001');
+                varchar.push({case:label,inputLength:value.length,sqlstate:'22001'});
+            } else {
+                const created=await models.Implicit.create(input);
+                assert.equal(created.value,value,'create echoes the submitted STRING');
+                const stored=(await db.client.query('SELECT "value" FROM "public"."Implicit" WHERE "id"=$1',[created.id])).rows[0].value;
+                assert.equal(stored,'x'.repeat(255));assert.equal((await models.Implicit.findById(created.id)).value,stored);
+                varchar.push({case:label,inputLength:value.length,echoLength:created.value.length,storedLength:stored.length});
+                await models.Implicit.delete(created.id);
+            }
+            assert.deepEqual(input,before);
+        }
         const stringDefault=await models.StaticString.create({});assert.deepEqual(stringDefault,{keyValue:'fixed'});assert.equal((await models.StaticString.findById('fixed')).value,'hidden');
+        for(const excess of [1,4]) {
+            const textValue='x'.repeat(255)+' '.repeat(excess),created=await models.Limited.create({textValue});
+            assert.equal(created.textValue,textValue,'trusted model leaves declared scalar length to PG');
+            assert.equal((await db.client.query('SELECT "textValue" FROM "public"."Limited" WHERE "id"=$1',[created.id])).rows[0].textValue,'x'.repeat(255));
+            await models.Limited.delete(created.id);
+        }
         await assert.rejects(models.RequiredUuid.create({keyValue:null}),/UUID/);
         const empty=await models.Scalars.create({});assert.deepEqual(Object.keys(empty),['identity']);
         const actual=await models.Scalars.findById(empty.identity);assert.equal(actual.choice,'trailing ');assert.equal(actual.day,'2000-02-29');assert.equal(actual.moment,'2000-02-29T12:34:56Z');assert.equal(actual.flag,false);assert.equal(actual.realValue,1.5);assert.equal(actual.token,'ffffffff-ffff-ffff-ffff-ffffffffffff');
@@ -130,7 +164,7 @@ async function main(){
             const {rows:[record]}=await db.client.query('INSERT INTO "public"."TemporalFields" ('+names.quoteIdentifier(column)+') VALUES ($1) RETURNING "id"',[value]);
             await assert.rejects(models.TemporalFields.findById(record.id),/PostgreSQL/);await models.TemporalFields.delete(record.id);
         }
-        console.log(JSON.stringify({gate:'C',profile:session.profile,entities:Object.keys(models).length,files:files.length,queries,result:'PASS'}));
-    } finally {if(pool)await pool.end();if(db)await db.close();await session.cleanup();}
+        console.log(JSON.stringify({gate:'C',profile:session.profile,entities:Object.keys(models).length,files:files.length,queries,restrictedRole:true,unrelatedTable:unrelated,missingPrivilege:'rejected',missingExactTable:'rejected',identityWithoutSequenceGrants:true,varchar,result:'PASS'}));
+    } finally {try{if(pool)await pool.end();}finally{try{if(db)await db.close();}finally{await session.cleanup();}}}
 }
 if(require.main===module)main().catch(error=>{console.error(error);process.exitCode=1;});

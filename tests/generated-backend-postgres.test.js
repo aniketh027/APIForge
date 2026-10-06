@@ -1,7 +1,7 @@
 'use strict';
 const assert=require('assert/strict'),fs=require('fs'),os=require('os'),path=require('path'),http=require('http');
 const {Client}=require('pg');
-const {nativeSession,admit,delay}=require('./postgres-native-helpers');
+const {nativeSession,admit,delay,privatePublicTable}=require('./postgres-native-helpers');
 const {keys,scalars,relations,uuidRelations}=require('./postgres-target-cases');
 const h=require('./generated-backend-test-helpers'),Codegen=require('../src/codegen/codegen');
 const names=require('../src/targets/postgres/names'),taxonomy=require('../src/targets/postgres/errors');
@@ -30,6 +30,7 @@ async function temporaryErrors(config) {
         db=await session.database();
         const source=[scalars,...keys.map(([name,key])=>'ENTITY '+name+' '+key),...relations,...uuidRelations,
             'ENTITY Ordinary textValue STRING realValue FLOAT',
+            'ENTITY Limited textValue STRING MAX_LENGTH 255',
             'ENTITY Bound keyValue INT PRIMARY KEY MIN 0 MAX 2',
             'ENTITY RequiredIdentity keyValue INT PRIMARY KEY REQUIRED',
             'ENTITY StaticString keyValue STRING PRIMARY KEY DEFAULT "fixed" value STRING DEFAULT "hidden"',
@@ -41,15 +42,25 @@ async function temporaryErrors(config) {
         const pgVersion=require(path.join(project,'node_modules/pg/package.json')).version;
         assert.equal(files.length,7+3*admission.context.plan.entities.length);
         await db.client.query(files.find(f=>f.path==='database/schema.sql').content);
+        const application=await session.restrictedApplication(db,admission.context.physical);
+        const unrelated=await privatePublicTable(db,application);
         port=await h.acquireFreePort();const start=h.npmInvocation(['start']);
-        state=h.startCommand(start.command,start.args,{cwd:project,env:{...process.env,PORT:String(port),DB_HOST:db.config.host,DB_PORT:String(db.config.port),DB_USER:db.config.user,DB_PASSWORD:db.config.password,DB_NAME:db.name,TZ:'Pacific/Honolulu',npm_config_update_notifier:'false'}});
+        state=h.startCommand(start.command,start.args,{cwd:project,env:{...process.env,PORT:String(port),DB_HOST:application.host,DB_PORT:String(application.port),DB_USER:application.user,DB_PASSWORD:application.password,DB_NAME:db.name,TZ:'Pacific/Honolulu',npm_config_update_notifier:'false'}});
         await h.waitForHealth(port,state,15000);
         async function request(method,url,body,status=200) {
             requests++;const response=await h.requestHttp(port,method,url,body);assert.equal(response.statusCode,status,method+' '+url+' '+response.body);
-            if(status>=400){assert.deepEqual(Object.keys(response.json).sort(),['error','success']);assert.equal(response.json.success,false);assert(!/SQLSTATE|constraint|password|INSERT INTO|SELECT \*|af_(pk|fk|ck)_/i.test(response.body));}
+            if(status>=400){assert.deepEqual(Object.keys(response.json).sort(),['error','success']);assert.equal(response.json.success,false);assert(!/SQLSTATE|constraint|password|INSERT INTO|SELECT \*|af_(pk|fk|ck)_|Unsupported PostgreSQL deployment profile/i.test(response.body));for(const privateValue of [application.user,application.password,unrelated,db.name])assert(!response.body.includes(privateValue),'private connection/fixture detail leaked');}
             return response;
         }
         const pathFor=name=>admission.context.byName.get(name).names.resourcePath;
+        await request('GET',pathFor('Ordinary'));
+        const actors=(await session.admin.query("SELECT usename FROM pg_stat_activity WHERE datname=$1 AND application_name='apiforge-postgresql-18-v1'",[db.name])).rows;
+        assert(actors.length>0,'installed backend has a real application-role connection');
+        for(const actor of actors)assert.equal(actor.usename,application.user);
+        await db.client.query('REVOKE DELETE ON TABLE "public"."Source3_Target3" FROM '+names.quoteIdentifier(application.user));
+        assert.equal((await request('GET',pathFor('Ordinary'),undefined,500)).json.error,'Unable to complete request.');
+        await db.client.query('GRANT DELETE ON TABLE "public"."Source3_Target3" TO '+names.quoteIdentifier(application.user));
+        await request('GET',pathFor('Ordinary'));
         for(const [name] of keys) {
             const root=pathFor(name),field=name==='Implicit'?'id':'identity';
             if(name==='TextKey')await request('POST',root,{},400);
@@ -68,6 +79,26 @@ async function temporaryErrors(config) {
         await request('POST',pathFor('RequiredIdentity'),{keyValue:null},400);
         const stringDefault=(await request('POST',pathFor('StaticString'),{},201)).json.data;assert.deepEqual(stringDefault,{keyValue:'fixed'});assert.equal((await request('GET',pathFor('StaticString')+'/fixed')).json.data.value,'hidden');
         const scalarPath=pathFor('Scalars');
+        const varchar=[];
+        for(const [label,textValue] of [['255 non-space','x'.repeat(255)],['256 non-space','x'.repeat(256)],['255 + 1 space','x'.repeat(255)+' '],['255 + 4 spaces','x'.repeat(255)+'    ']]) {
+            if(label==='256 non-space') {
+                assert.equal((await request('POST',pathFor('Ordinary'),{textValue},400)).json.error,'Request contains a value rejected by the database.');
+                varchar.push({case:label,inputLength:textValue.length,status:400});
+            } else {
+                const created=(await request('POST',pathFor('Ordinary'),{textValue},201)).json.data;
+                assert.equal(created.textValue,textValue,'HTTP create echoes the submitted STRING');
+                const stored=(await db.client.query('SELECT "textValue" FROM "public"."Ordinary" WHERE "id"=$1',[created.id])).rows[0].textValue;
+                assert.equal(stored,'x'.repeat(255));assert.equal((await request('GET',pathFor('Ordinary')+'/'+created.id)).json.data.textValue,stored);
+                varchar.push({case:label,inputLength:textValue.length,status:201,echoLength:created.textValue.length,storedLength:stored.length});
+                await request('DELETE',pathFor('Ordinary')+'/'+created.id);
+            }
+        }
+        for(const excess of [1,4]) {
+            const before=(await db.client.query('SELECT count(*) FROM "public"."Limited"')).rows[0].count;
+            const response=await request('POST',pathFor('Limited'),{textValue:'x'.repeat(255)+' '.repeat(excess)},400);
+            assert.equal(response.json.error,"Field 'textValue' length must be <= 255.");
+            assert.equal((await db.client.query('SELECT count(*) FROM "public"."Limited"')).rows[0].count,before);
+        }
         const initial=(await request('POST',scalarPath,{},201)).json.data;const read=(await request('GET',scalarPath+'/'+initial.identity)).json.data;
         assert.equal(read.day,'2000-02-29');assert.equal(read.moment,'2000-02-29T12:34:56Z');assert.equal(read.choice,'trailing ');assert.equal(read.flag,false);
         const values={textValue:"HTTP ' \\ Unicode é",integerValue:8,realValue:3.25,flag:true,choice:'é',day:'1000-01-01',moment:'1970-01-01T00:00:01Z',token:'ffffffff-ffff-ffff-ffff-ffffffffffff',...JSON.parse('{"__proto__":"own","constructor":"own","prototype":"own"}')};
@@ -143,7 +174,7 @@ async function temporaryErrors(config) {
         const swagger=JSON.parse(files.find(f=>f.path==='swagger.json').content);for(const e of admission.context.plan.entities)assert(swagger.paths[e.names.resourcePath]);
         assert.deepEqual(Object.keys(JSON.parse(files.find(f=>f.path==='package.json').content).dependencies),['dotenv','express','pg']);
         assert(!fs.existsSync(path.join(project,'.env')),'credentials never written');
-        console.log(JSON.stringify({gate:'D',profile:session.profile,pgVersion,files:files.length,entities:admission.context.plan.entities.length,requests,nativeErrors,result:'PASS'}));
+        console.log(JSON.stringify({gate:'D',profile:session.profile,pgVersion,files:files.length,entities:admission.context.plan.entities.length,requests,nativeErrors,restrictedRole:true,unrelatedTable:unrelated,missingPrivilege:'sanitized 500',identityWithoutSequenceGrants:true,varchar,declaredMaxLength:'pre-DB 400',result:'PASS'}));
     } finally {
         try{if(state)await h.stopProcessTree(state);if(port)await h.assertPortReleased(port);}finally{
             try{if(db)await db.close();}finally{await session.cleanup();if(project)h.removeTemporaryDirectory(project);assert.deepEqual(h.snapshotDirectory(path.resolve(__dirname,'../output')),outputBefore);}
