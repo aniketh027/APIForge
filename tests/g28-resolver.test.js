@@ -69,7 +69,11 @@ try {
             try {fs.symlinkSync(target,path.join(root,name),type);return true;}
             catch(e){if(['EPERM','EACCES','ENOSYS'].includes(e.code)){skips.push(name+': '+e.code);return false;}throw e;}
         }
-        if(link('internal.apiforge',shared)){write('links.apiforge','IMPORT "internal.apiforge" IMPORT "shared.apiforge"');same(resolveFile(path.join(root,'links.apiforge')).modules.length,2);}
+        if(link('internal.apiforge',shared)){
+            write('links.apiforge','IMPORT "internal.apiforge" IMPORT "shared.apiforge"');same(resolveFile(path.join(root,'links.apiforge')).modules.length,2);
+            fs.symlinkSync('loop.apiforge',path.join(root,'loop.apiforge'));
+            write('links.apiforge','IMPORT "loop.apiforge"');fails(()=>resolveFile(path.join(root,'links.apiforge')),'INP008');
+        }
         if(link('escape.apiforge',path.join(sibling,'out.apiforge'))){write('links.apiforge','IMPORT "escape.apiforge"');fails(()=>resolveFile(path.join(root,'links.apiforge')),'INP006');}
         if(link('junction',sibling,process.platform==='win32'?'junction':'dir')){
             write('links.apiforge','IMPORT "junction/out.apiforge"');fails(()=>resolveFile(path.join(root,'links.apiforge')),'INP006');
