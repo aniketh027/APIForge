@@ -1,5 +1,10 @@
-// Run with Playwright and its Chromium browser installed (or set
-// APIFORGE_BROWSER_EXECUTABLE to a local Chromium/Chrome executable).
+// Clean checkout setup (Node.js 20+, development dependencies required):
+//   npm ci
+//   npx playwright install chromium
+//   npm run test:frontend-api-files
+// On Linux, use `npx playwright install --with-deps chromium` for OS libraries.
+// Alternatively, skip the browser download and set APIFORGE_BROWSER_EXECUTABLE
+// to an absolute local Chromium/Chrome executable path before running the test.
 const assert = require('node:assert/strict');
 const { chromium } = require('playwright');
 const app = require('../server');
