@@ -38,7 +38,9 @@ function check(diagnostic, code, phase, line, column) {
     await test('registry has unique, phase-specific codes', () => {
         const all = Object.values(CODES).flatMap(Object.values);
         assert.equal(new Set(all).size, all.length);
-        assert.equal(all.length, 71);
+        assert.equal(all.length, 83); // 71 legacy codes + PAR023 and INP004-INP014.
+        assert.equal(CODES.parser.IMPORT_AFTER_DECLARATION, 'PAR023');
+        assert.equal(CODES.input.IMPORT_IDENTITY_AMBIGUOUS, 'INP014');
         assert.equal(CODES.semantic.INVALID_UUID_DEFAULT, 'SEM039');
         assert.equal(CODES.semantic.POSTGRES_TARGET_LIMIT, 'SEM040');
         assert.equal(CODES.input.INVALID_TARGET, 'INP003');
@@ -267,7 +269,7 @@ function check(diagnostic, code, phase, line, column) {
                 assert(!JSON.stringify(result.data).includes('SyntaxError'));
             } finally { console.error = original; }
         });
-        for (const [phase, module, method] of [['lexer', Lexer, 'tokenize'], ['parser', Parser, 'parse'], ['semantic', Semantic, 'analyze'], ['ir', IR, 'generate'], ['optimizer', Optimizer, 'optimize'], ['codegen', Codegen, 'generate']]) {
+        for (const [phase, module, method] of [['lexer', Lexer, 'tokenize'], ['parser', Parser, 'parseModule'], ['semantic', Semantic, 'analyze'], ['ir', IR, 'generate'], ['optimizer', Optimizer, 'optimize'], ['codegen', Codegen, 'generate']]) {
             await test(`unexpected ${phase} exception returns a safe 500 diagnostic`, async () => {
                 const original = module[method];
                 module[method] = () => { throw new Error('PRIVATE_INTERNAL_DETAIL'); };

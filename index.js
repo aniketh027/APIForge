@@ -76,7 +76,7 @@ if (!filePath) {
 }
 
 // Check if the file exists
-if (!fs.existsSync(filePath)) {
+if (selection.root === undefined && !fs.existsSync(filePath)) {
     console.error(`[ERROR] File not found: ${filePath}`);
     process.exit(1);
 }

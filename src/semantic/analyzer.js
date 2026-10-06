@@ -266,7 +266,7 @@ class SemanticAnalyzer {
      * checkDuplicateEntities(entities)
      * 
      * Scans the entity list for duplicate names.
-     * We use a Set to track names we've already seen.
+     * Keep the first declaration for cross-file duplicate diagnostics.
      */
     checkDuplicateEntities(entities) {
         const seen = new Map();

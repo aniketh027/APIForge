@@ -735,7 +735,11 @@ function parse(tokens) {
 
 function parseModule(tokens) {
     const parser = new Parser(tokens, true);
-    return { ast: parser.parseProgram(), imports: parser.imports };
+    try { return { ast: parser.parseProgram(), imports: parser.imports }; }
+    catch (error) {
+        if (parser.imports.length && !error.recognizedImport) Object.defineProperty(error, 'recognizedImport', { value: true });
+        throw error;
+    }
 }
 
 module.exports = { parse, parseModule };
