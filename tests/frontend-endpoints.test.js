@@ -7,7 +7,7 @@ const app = require('../server');
 
 // Independent oracle: inspect the actual HTTP response, never frontend state/helpers.
 const METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD', 'TRACE'];
-const TABS = ['tokens', 'ast', 'symboltable', 'ir', 'optimized-ir', 'sql', 'endpoints', 'api', 'swagger'];
+const TABS = ['tokens', 'ast', 'diagram', 'symboltable', 'ir', 'optimized-ir', 'sql', 'endpoints', 'api', 'swagger'];
 const SIMPLE = 'ENTITY User\nid INT PRIMARY KEY\nname STRING REQUIRED';
 function operations(spec) {
     const result = [];

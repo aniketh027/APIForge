@@ -110,7 +110,7 @@ const EXAMPLE_DSL = EXAMPLES[0].code;
 const PHASE_ORDER = ['lexer', 'parser', 'semantic', 'ir', 'optimizer', 'codegen'];
 
 const TAB_IDS = [
-    'tokens', 'ast', 'symboltable', 'ir',
+    'tokens', 'ast', 'diagram', 'symboltable', 'ir',
     'optimized-ir', 'sql', 'endpoints', 'api', 'swagger'
 ];
 
@@ -589,6 +589,73 @@ function displayDataType(field) {
         : field.dataType;
 }
 
+// Logical model only: declaration order and relationships come directly from AST.
+// Geometry is local to this render; no separate compilation-result cache is used.
+function renderSchemaDiagram(ast) {
+    const entities = Array.isArray(ast?.entities)
+        ? ast.entities.filter(entity => entity && typeof entity.name === 'string') : [];
+    if (!entities.length) return emptyState('No schema diagram available.', 'Compile a program containing entities.');
+
+    const relations = Array.isArray(ast?.relations)
+        ? ast.relations.filter(relation => relation &&
+            ['name', 'sourceEntity', 'targetEntity', 'relationType'].every(key => typeof relation[key] === 'string')) : [];
+    const cardWidth = 220, gap = 32;
+    const width = entities.length * (cardWidth + gap) - gap;
+    const markers = { PRIMARY_KEY: 'PRIMARY KEY', REQUIRED: 'REQUIRED', UNIQUE: 'UNIQUE' };
+    let laneTop = 0;
+    const lanes = relations.map(relation => {
+        // Allow long legal identifiers to wrap without colliding with another lane.
+        const height = 12 + 18 * (Math.ceil(relation.name.length / 18) + Math.ceil(relation.relationType.length / 18));
+        const lane = { relation, labelTop: laneTop, y: laneTop + height };
+        laneTop += height + 16;
+        return lane;
+    });
+    const cardTop = relations.length ? laneTop + 12 : 0;
+    const cards = entities.map((entity, index) => {
+        const fields = Array.isArray(entity.fields) ? entity.fields.filter(field => field && typeof field.name === 'string') : [];
+        return `<article class="schema-entity" aria-labelledby="schema-entity-${index}">
+            <h3 id="schema-entity-${index}" class="schema-entity-name">${escapeHtml(entity.name)}</h3>
+            <ul class="schema-fields" aria-label="Declared fields of ${escapeHtml(entity.name)}">${fields.map(field => {
+                // Keep displayDataType's ENUM formatting while tolerating incomplete input.
+                const type = typeof field.dataType === 'string' ? displayDataType({ ...field,
+                    enumValues: Array.isArray(field.enumValues) ? field.enumValues.filter(value => typeof value === 'string') : [] }) : 'Unknown type';
+                const constraints = Array.isArray(field.constraints) ? field.constraints : [];
+                return `<li class="schema-field"><span class="schema-field-name">${escapeHtml(field.name)}</span>
+                    <span class="schema-field-type">${escapeHtml(type)}</span>
+                    <span class="schema-constraints">${Object.entries(markers).filter(([key]) => constraints.includes(key))
+                        .map(([, label]) => `<span class="schema-constraint">${label}</span>`).join('')}</span></li>`;
+            }).join('')}</ul></article>`;
+    }).join('');
+    let paths = '';
+    const labels = lanes.map(({ relation, labelTop, y }, index) => {
+        const source = entities.findIndex(entity => entity.name === relation.sourceEntity);
+        const target = entities.findIndex(entity => entity.name === relation.targetEntity);
+        // Separate attachment points also make self and reciprocal relations visible.
+        const sourceX = source * (cardWidth + gap) + cardWidth * (2 * index + 1) / (2 * relations.length + 1);
+        const targetX = target * (cardWidth + gap) + cardWidth * (2 * index + 2) / (2 * relations.length + 1);
+        if (source >= 0 && target >= 0) {
+            paths += `<path class="schema-connector" data-relation-index="${index}" d="M ${sourceX} ${cardTop} V ${y} H ${targetX} V ${cardTop}" marker-end="url(#schema-arrow)"/>`;
+        }
+        // Unknown endpoints in incomplete input stay textual; never fabricate a card.
+        const center = source >= 0 && target >= 0 ? (sourceX + targetX) / 2 : width / 2;
+        return `<li class="schema-relation" style="left:${Math.max(0, Math.min(width - 200, center - 100))}px;top:${labelTop}px"
+            data-source="${escapeHtml(relation.sourceEntity)}" data-target="${escapeHtml(relation.targetEntity)}">
+            <span class="sr-only">From ${escapeHtml(relation.sourceEntity)} to ${escapeHtml(relation.targetEntity)}: </span>
+            <span class="schema-relation-name">${escapeHtml(relation.name)}</span>
+            <span class="schema-cardinality">${escapeHtml(relation.relationType)}</span>
+            ${source < 0 || target < 0 ? '<span class="schema-cardinality">Endpoint unavailable</span>' : ''}</li>`;
+    }).join('');
+    return `<p class="schema-caption">Logical DSL model · declared fields${relations.length ? ' · arrows point to the target entity' : ' · no declared relationships'}</p>
+        <div class="schema-scroll" role="region" aria-label="Entity relationship diagram" tabindex="0">
+            <div class="schema-board" style="width:${width}px">
+                <svg class="schema-connectors" width="${width}" height="${cardTop + 2}" aria-hidden="true" focusable="false">
+                    <defs><marker id="schema-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor"/></marker></defs>${paths}</svg>
+                <ul class="schema-relations" aria-label="Declared relationships">${labels}</ul>
+                <div class="schema-entities" style="grid-template-columns:repeat(${entities.length},${cardWidth}px);padding-top:${cardTop}px">${cards}</div>
+            </div>
+        </div>`;
+}
+
 function renderSymbolTable(symbolTable) {
     if (!symbolTable || Object.keys(symbolTable).length === 0) {
         return '<p class="output-placeholder">No symbol table to display.</p>';
@@ -1039,6 +1106,7 @@ async function compile() {
 
             document.getElementById('output-tokens').innerHTML = renderTokens(data.tokens);
             document.getElementById('output-ast').innerHTML = renderAST(data.ast);
+            document.getElementById('output-diagram').innerHTML = renderSchemaDiagram(data.ast);
             document.getElementById('output-symboltable').innerHTML = renderSymbolTable(data.symbolTable);
             document.getElementById('output-ir').innerHTML = renderIR(data.ir, 'IR');
             document.getElementById('output-optimized-ir').innerHTML = renderOptimizedIR(data);

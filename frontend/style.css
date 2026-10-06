@@ -615,6 +615,71 @@ textarea:focus-visible,
     tab-size: 4;
 }
 
+/* The cards and SVG share deterministic coordinates inside a local scroll region. */
+.schema-caption {
+    margin: 0 0 12px;
+    color: var(--text-muted);
+    font-size: 12px;
+}
+
+.schema-scroll {
+    max-width: 100%;
+    overflow: auto;
+    padding: 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--bg);
+}
+
+.schema-board { position: relative; }
+.schema-connectors { position: absolute; top: 0; left: 0; color: var(--accent); }
+.schema-connector { fill: none; stroke: currentColor; stroke-width: 2; }
+.schema-entities { display: grid; gap: 32px; align-items: start; }
+.schema-entity {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--surface-1);
+}
+.schema-entity-name {
+    margin: 0;
+    padding: 12px;
+    border-bottom: 1px solid var(--border);
+    background: var(--accent-muted);
+    color: var(--text);
+    font-size: 16px;
+    border-radius: var(--radius-md) var(--radius-md) 0 0;
+}
+.schema-fields, .schema-relations { list-style: none; margin: 0; padding: 0; }
+.schema-field { padding: 10px 12px; font-family: var(--font-mono); font-size: 12px; }
+.schema-field + .schema-field { border-top: 1px solid var(--border); }
+.schema-field-name, .schema-field-type { display: block; }
+.schema-field-name { color: var(--text); font-weight: 650; }
+.schema-field-type { margin-top: 3px; color: var(--text-muted); }
+.schema-constraints { display: flex; flex-wrap: wrap; gap: 4px; }
+.schema-constraint {
+    margin-top: 6px;
+    padding: 2px 4px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--accent);
+    font-family: var(--font-ui);
+    font-size: 10px;
+}
+.schema-relation {
+    position: absolute;
+    width: 200px;
+    padding: 6px;
+    overflow-wrap: anywhere;
+    text-align: center;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+}
+.schema-relation-name { display: block; color: var(--text); font-weight: 650; font-size: 12px; }
+.schema-cardinality { display: block; color: var(--text-muted); font-family: var(--font-mono); font-size: 11px; }
+
 .endpoint-count {
     margin: 0 0 var(--space-3);
     color: var(--text-muted);

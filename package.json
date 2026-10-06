@@ -11,6 +11,7 @@
     "test:frontend-target-selector": "node tests/frontend-target-selector.test.js",
     "test:frontend-demo-preset": "node tests/frontend-demo-preset.test.js",
     "test:frontend-endpoints": "node tests/frontend-endpoints.test.js",
+    "test:frontend-schema-diagram": "node tests/frontend-schema-diagram.test.js",
     "test": "node tests/test.js && node tests/string-length-validation.test.js && node tests/disk-generation.test.js && node tests/atomic-output-publication.test.js && node tests/generated-backend-mysql-safety.test.js && node tests/diagnostics.test.js && node tests/warnings.test.js && node tests/enum.test.js && node tests/collection-query.test.js && node tests/implicit-pk.test.js && node tests/request-validation.test.js && node tests/db-error-taxonomy.test.js && node tests/primary-key-contract.test.js && node tests/generated-naming.test.js && node tests/relationship-safety.test.js && node tests/openapi-fidelity.test.js && node tests/mysql-target.test.js && node tests/mysql-target-capacity.test.js && node tests/v1-final-audit.test.js && node tests/date-timestamp.test.js && node tests/uuid.test.js && node tests/effective-schema-plan.test.js && node tests/effective-schema-equivalence.test.js",
     "test:db-error-taxonomy": "node tests/db-error-taxonomy.test.js",
     "test:db-error-taxonomy-mysql": "node tests/db-error-taxonomy-mysql.test.js",
