@@ -329,7 +329,7 @@ async function main() {
         assert.equal((await r.Model.findById(UUID)).__proto__, UUID);
         r.state.rows[0].constructor = 'BAD'; await assert.rejects(r.Model.findById(UUID));
     });
-    await test('A/O/frontend: compiler API phases, frontend UUID preset/token styling and real CLI disk bytes', async () => {
+    await test('A/O/frontend: compiler API phases, test-owned UUID relationship fixture/frontend token styling and real CLI disk bytes', async () => {
         const root = path.resolve(__dirname, '..'), sample = fs.readFileSync(path.join(root, 'samples/uuid.apiforge'), 'utf8');
         const express = require('express'), appServer = express(); appServer.use(express.json());
         appServer.use('/api', require('../src/api/compiler-api'));
@@ -343,8 +343,11 @@ async function main() {
         assert.equal(result.success, true); assert.equal(result.phaseStates.codegen, 'succeeded');
         assert(result.tokens.some(token => token.value === 'UUID' && token.type === 'DATATYPE'));
         const app = fs.readFileSync(path.join(root, 'frontend/app.js'), 'utf8');
-        const presets = vm.runInNewContext(app.slice(app.indexOf('const EXAMPLES'), app.indexOf('let currentExampleIndex')) + ';EXAMPLES');
-        const preset = presets.find(value => value.name.startsWith('UUID')); assert(preset); compileProject(preset.code);
+        const { UUID_RELATION_SOURCE } = require('./frontend-source-fixtures');
+        const fixtureFiles = compileProject(UUID_RELATION_SOURCE);
+        assert(fixtureFiles.some(file => file.path === 'models/User.js'));
+        assert(fixtureFiles.some(file => file.path === 'models/Group.js'));
+        assert.match(fixtureFiles.find(file => file.path === 'database/schema.sql').content, /CHAR\(36\)/);
         assert.match(app, /DATATYPE: 'token-datatype'/); assert.match(app, /const types = .*'CHAR'/);
         const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'apiforge-g25-cli-'));
         try {

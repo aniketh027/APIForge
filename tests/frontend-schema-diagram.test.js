@@ -6,6 +6,7 @@ const path = require('node:path');
 const os = require('node:os');
 const { chromium } = require('playwright');
 const app = require('../server');
+const { PROFESSOR_SOURCE, LIBRARY_SOURCE } = require('./frontend-source-fixtures');
 
 const TABS = ['tokens', 'ast', 'diagram', 'symboltable', 'ir', 'optimized-ir', 'sql', 'endpoints', 'live-api', 'api', 'swagger'];
 const SIMPLE = 'ENTITY Note\nid INT PRIMARY KEY\ntext STRING REQUIRED UNIQUE\nstate ENUM("open", "closed")\nuser_id INT';
@@ -20,33 +21,7 @@ id INT PRIMARY KEY
 name STRING
 RELATION Book WRITTEN_BY Author MANY_TO_ONE
 RELATION Book TAGGED Tag MANY_TO_MANY`;
-// Independent preset fixture, never obtained from the frontend constant.
-const DEMO = `ENTITY User
-
-id UUID PRIMARY KEY
-name STRING REQUIRED MIN_LENGTH 2 MAX_LENGTH 80
-email STRING REQUIRED UNIQUE
-role ENUM("student", "faculty", "admin") DEFAULT "student"
-active BOOLEAN DEFAULT TRUE
-joinedAt DATE REQUIRED
-
-ENTITY Project
-
-id INT PRIMARY KEY
-title STRING REQUIRED MIN_LENGTH 3 MAX_LENGTH 120
-status ENUM("planned", "active", "completed") DEFAULT "planned"
-progress INT MIN 0 MAX 100 DEFAULT 0
-createdAt TIMESTAMP
-
-ENTITY Task
-
-id INT PRIMARY KEY
-title STRING REQUIRED MIN_LENGTH 2 MAX_LENGTH 120
-priority INT MIN 1 MAX 5 DEFAULT 3
-done BOOLEAN DEFAULT FALSE
-
-RELATION User OWNS Project ONE_TO_MANY
-RELATION Project HAS Task ONE_TO_MANY`;
+const DEMO = PROFESSOR_SOURCE;
 
 async function main() {
     const server = app.listen(0, '127.0.0.1');
@@ -64,8 +39,8 @@ async function main() {
         const tab = page.getByRole('tab', { name: 'Diagram', exact: true });
         const editor = page.getByRole('textbox', { name: 'APIForge DSL source' });
         const compile = page.locator('#compile-btn');
-        const demo = page.getByRole('button', { name: 'Load demo', exact: true });
-        const example = page.getByRole('button', { name: 'Load example', exact: true });
+        const enterProfessor = { click: () => editor.fill(PROFESSOR_SOURCE) };
+        const enterLibrary = { click: () => editor.fill(LIBRARY_SOURCE) };
         const clear = page.getByRole('button', { name: 'Clear', exact: true });
         const target = name => page.getByRole('button', { name, exact: true });
         async function reset(title) {
@@ -138,7 +113,7 @@ async function main() {
         assert.equal(await tab.getAttribute('aria-controls'), 'output-diagram');
         assert.equal(await pane.getAttribute('aria-labelledby'), 'tab-diagram');
         await tab.click();
-        await reset('Ready to compile');
+        await reset('No compilation yet');
         await page.locator('#tab-ast').focus();
         await page.keyboard.press('ArrowRight');
         assert.equal(await tab.evaluate(element => document.activeElement === element), true);
@@ -164,8 +139,8 @@ async function main() {
         for (const database of ['MySQL', 'PostgreSQL']) {
             await target(database).click();
             if (database === 'PostgreSQL') await reset('Target changed');
-            await demo.click();
-            await reset('Demo ready');
+            await enterProfessor.click();
+            await reset('Source changed');
             assert.equal(await editor.inputValue(), DEMO);
             const data = await compileSource();
             await matchesAST(data);
@@ -215,7 +190,7 @@ async function main() {
         assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1));
         console.log('PASS: long legal entity/field identifiers remain contained at 390px');
 
-        for (const [button, title] of [[demo, 'Demo ready'], [example, 'Ready to compile'], [clear, 'No compilation yet']]) {
+        for (const [button, title] of [[enterProfessor, 'Source changed'], [enterLibrary, 'Source changed'], [clear, 'No compilation yet']]) {
             await compileSource(SIMPLE);
             await button.click();
             await reset(title);
@@ -239,7 +214,7 @@ async function main() {
         assert.equal(await pane.locator('.schema-entity').count(), 0);
 
         // Delay actual server responses across each invalidating action.
-        for (const [button, title] of [[demo, 'Demo ready'], [example, 'Ready to compile'], [clear, 'No compilation yet'], [target('MySQL'), 'Target changed']]) {
+        for (const [button, title] of [[enterProfessor, 'Source changed'], [enterLibrary, 'Source changed'], [clear, 'No compilation yet'], [target('MySQL'), 'Target changed']]) {
             await compileSource(SIMPLE);
             let responseReady;
             const ready = new Promise(resolve => { responseReady = resolve; });
@@ -260,7 +235,7 @@ async function main() {
             await reset(title);
             await page.unroute('**/api/compile');
         }
-        console.log('PASS: Load demo/example, Clear, target change, running/failed compilation and delayed stale responses clear the diagram');
+        console.log('PASS: Source edits, Clear, target change, running/failed compilation and delayed stale responses clear the diagram');
 
         // Isolate only the new renderer, including malformed data and hostile text.
         const safety = await page.evaluate(() => {

@@ -4,6 +4,7 @@
 const assert = require('node:assert/strict');
 const { chromium } = require('playwright');
 const app = require('../server');
+const { STUDENT_SOURCE, LIBRARY_SOURCE } = require('./frontend-source-fixtures');
 
 async function main() {
     const server = app.listen(0, '127.0.0.1');
@@ -35,8 +36,10 @@ async function main() {
         const mysql = page.getByRole('button', { name: 'MySQL', exact: true });
         const postgres = page.getByRole('button', { name: 'PostgreSQL', exact: true });
         const editor = page.locator('#dsl-editor');
-        const source = await editor.inputValue();
-        const sourceName = await page.locator('#example-name').textContent();
+        assert.equal(await editor.inputValue(), '');
+        await editor.fill(STUDENT_SOURCE);
+        const source = STUDENT_SOURCE;
+        const sourceName = await page.locator('#source-name').textContent();
 
         async function assertSelected(target) {
             assert.equal(await mysql.getAttribute('aria-pressed'), String(target === 'mysql'));
@@ -103,7 +106,7 @@ async function main() {
         await assertSelected('postgres');
         await assertInvalidated('postgres');
         assert.equal(await editor.inputValue(), source);
-        assert.equal(await page.locator('#example-name').textContent(), sourceName);
+        assert.equal(await page.locator('#source-name').textContent(), sourceName);
         assert.equal(requests.length, 1, 'Target change does not automatically compile');
         const postgresSQL = await compileAndCheck('postgres');
         assert.notEqual(postgresSQL, mysqlSQL);
@@ -125,8 +128,8 @@ async function main() {
         await postgres.click();
         await assertInvalidated('postgres');
         assert.equal(await editor.inputValue(), 'ENTITY Broken\nvalue UNKNOWN');
-        assert.equal(await page.locator('#example-name').textContent(), 'Modified source');
-        await page.locator('#example-btn').click();
+        assert.equal(await page.locator('#source-name').textContent(), 'Modified source');
+        await editor.fill(LIBRARY_SOURCE);
         await assertSelected('postgres');
         assert.notEqual(await editor.inputValue(), source);
         await compileAndCheck('postgres');
@@ -134,9 +137,9 @@ async function main() {
         await assertSelected('postgres');
         assert.equal(await editor.inputValue(), '');
         assert.equal(await page.locator('#download-btn').isVisible(), false);
-        await page.locator('#example-btn').click();
+        await editor.fill(LIBRARY_SOURCE);
         await assertSelected('postgres');
-        console.log('PASS: failure invalidation and target persistence across loading examples and clearing source');
+        console.log('PASS: failure invalidation and target persistence across user-entered source and Clear');
 
         // Delay a real server response, then switch away and back while it is pending.
         let responseReady;
@@ -164,7 +167,7 @@ async function main() {
         for (const width of [1440, 900, 390]) {
             await page.setViewportSize({ width, height: 1000 });
             await compileAndCheck('postgres');
-            for (const control of [mysql, postgres, page.locator('#compile-btn'), page.locator('#example-btn'), page.locator('#clear-btn')]) {
+            for (const control of [mysql, postgres, page.locator('#compile-btn'), page.locator('#clear-btn')]) {
                 assert.equal(await control.isVisible(), true);
                 assert.equal(await control.isEnabled(), true);
                 assert.ok(await control.evaluate(element => {

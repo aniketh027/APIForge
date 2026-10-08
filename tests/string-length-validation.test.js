@@ -273,9 +273,12 @@ phase('integration', () => {
 });
 
 phase('frontend', () => {
-    test('keeps the playground example and generic validation renderers length-aware', () => {
+    test('keeps independent DSL coverage and generic validation renderers length-aware', () => {
         const frontend = fs.readFileSync(path.join(__dirname, '..', 'frontend', 'app.js'), 'utf8');
-        assert(frontend.includes('MIN_LENGTH 2 MAX_LENGTH 80'));
+        const { PROFESSOR_SOURCE } = require('./frontend-source-fixtures');
+        const ast = Parser.parse(Lexer.tokenize(PROFESSOR_SOURCE));
+        const name = ast.entities[0].fields.find(field => field.name === 'name');
+        assert.deepEqual(name.validations, [{ type: 'MIN_LENGTH', value: 2 }, { type: 'MAX_LENGTH', value: 80 }]);
         assert(frontend.includes('field.validations.map(v => `${v.type} ${v.value}`)'));
         assert(frontend.includes('inst.validations.map(v => `${v.type} ${v.value}`)'));
     });

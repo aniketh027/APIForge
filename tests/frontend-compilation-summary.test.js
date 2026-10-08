@@ -7,6 +7,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 const { chromium } = require('playwright');
 const app = require('../server');
+const { PROFESSOR_SOURCE, LIBRARY_SOURCE } = require('./frontend-source-fixtures');
 const SIMPLE = 'ENTITY Single\nvalue STRING REQUIRED'; // Real implicit-key warning; one declared field.
 const LABELS = { mysql: 'MySQL', postgres: 'PostgreSQL' };
 
@@ -72,8 +73,8 @@ async function main() {
         const content = page.locator('#compilation-summary-content');
         const editor = page.getByRole('textbox', { name: 'APIForge DSL source' });
         const compile = page.locator('#compile-btn');
-        const demo = page.getByRole('button', { name: 'Load demo', exact: true });
-        const example = page.getByRole('button', { name: 'Load example', exact: true });
+        const enterProfessor = { click: () => editor.fill(PROFESSOR_SOURCE) };
+        const enterLibrary = { click: () => editor.fill(LIBRARY_SOURCE) };
         const clear = page.getByRole('button', { name: 'Clear', exact: true });
         const target = name => page.getByRole('button', { name: LABELS[name], exact: true });
         const metric = name => content.locator(`[data-summary-metric="${name}"]`);
@@ -170,7 +171,7 @@ async function main() {
 
         for (const selected of ['mysql', 'postgres']) {
             await target(selected).click();
-            await demo.click();
+            await enterProfessor.click();
             await assertHidden();
             const data = await compileSource(selected);
             const expected = await assertMetrics(data, selected);
@@ -209,7 +210,7 @@ async function main() {
         console.log('PASS: real warning details stay readable at all three widths');
         await page.setViewportSize({ width: 1440, height: 1000 });
 
-        for (const control of [target('mysql'), demo, example, clear]) {
+        for (const control of [target('mysql'), enterProfessor, enterLibrary, clear]) {
             await editor.fill(SIMPLE);
             await compileSource(await page.evaluate(() => selectedTarget));
             await control.click();
@@ -232,9 +233,9 @@ async function main() {
         await page.waitForFunction(() => !document.getElementById('compile-btn').disabled);
         await assertHidden();
         await page.unroute('**/api/compile');
-        console.log('PASS: target/demo/example/Clear/compiler failure/network failure clear old success');
+        console.log('PASS: target/source edits/Clear/compiler failure/network failure clear old success');
 
-        for (const control of [target('postgres'), demo, example, clear]) {
+        for (const control of [target('postgres'), enterProfessor, enterLibrary, clear]) {
             await editor.fill(SIMPLE);
             await compileSource(await page.evaluate(() => selectedTarget));
             let responseReady;

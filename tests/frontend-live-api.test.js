@@ -4,6 +4,7 @@ const path = require('node:path');
 const fs = require('node:fs');
 const { chromium } = require('playwright');
 const app = require('../server');
+const { PROFESSOR_SOURCE } = require('./frontend-source-fixtures');
 const SIMPLE = 'ENTITY User\nid UUID PRIMARY KEY\nname STRING REQUIRED';
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 async function main() {
@@ -94,27 +95,25 @@ async function main() {
         assert.match(await pane.locator('#live-status').textContent(), /expired/); requestError = null;
         await start(); await stop();
         await start(); let stops = liveCount('stop'); await editor.fill(SIMPLE + '\nemail STRING'); await until(() => liveCount('stop') > stops);
-        await tab.click(); assert.equal(await pane.locator('#live-start').isDisabled(), true); assert.match(await pane.textContent(), /Source or target changed/);
+        await tab.click(); assert.equal(await pane.locator('#live-start').count(), 0); assert.match(await pane.textContent(), /Compile successfully/);
         await compile(); await start(); stops = liveCount('stop'); await page.getByRole('button', { name: 'PostgreSQL', exact: true }).click(); await until(() => liveCount('stop') > stops);
-        await tab.click(); assert.match(await pane.textContent(), /Compile again/); assert.equal(await pane.locator('#live-start').isDisabled(), true);
+        await tab.click(); assert.match(await pane.textContent(), /Compile successfully/); assert.equal(await pane.locator('#live-start').count(), 0);
         await compile(); await start(); stops = liveCount('stop'); await compile(); await until(() => liveCount('stop') > stops);
-        for (const name of ['Load demo', 'Load example', 'Clear']) {
-            if (name === 'Clear') { await editor.fill(SIMPLE); await compile(); }
-            await start(); stops = liveCount('stop'); await page.getByRole('button', { name, exact: true }).click(); await until(() => liveCount('stop') > stops);
-            await tab.click(); assert.match(await pane.textContent(), /Compile successfully/);
-            if (name !== 'Clear') await compile();
-        }
+        await start(); stops = liveCount('stop');
+        await page.getByRole('button', { name: 'Clear', exact: true }).click();
+        await until(() => liveCount('stop') > stops);
+        await tab.click(); assert.match(await pane.textContent(), /Compile successfully/);
         await editor.fill(SIMPLE); await compile(); holdStart = true; releaseStart = null;
         await pane.locator('#live-start').click(); await until(() => releaseStart);
         await editor.fill(SIMPLE + '\nemail STRING'); stops = liveCount('stop'); releaseStart();
-        await until(() => liveCount('stop') > stops); assert.equal(await pane.locator('#live-stop').count(), 0); assert.equal(await pane.locator('#live-start').isDisabled(), true);
+        await until(() => liveCount('stop') > stops); assert.equal(await pane.locator('#live-stop').count(), 0); assert.equal(await pane.locator('#live-start').count(), 0);
         // Editing while compilation is pending must never enable Live against stale source.
         let releaseCompile;
         await page.route('**/api/compile', async route => { const response = await route.fetch(); await new Promise(resolve => { releaseCompile = resolve; }); await route.fulfill({ response }); });
         await page.locator('#compile-btn').click(); await until(() => releaseCompile); await editor.fill(SIMPLE + '\nchanged INT'); releaseCompile();
-        await page.waitForFunction(() => !document.getElementById('compile-btn').disabled); await tab.click(); assert.equal(await pane.locator('#live-start').isDisabled(), true);
+        await page.waitForFunction(() => !document.getElementById('compile-btn').disabled); await tab.click(); assert.equal(await pane.locator('#live-start').count(), 0);
         await page.unroute('**/api/compile');
-        await page.getByRole('button', { name: 'Load demo', exact: true }).click(); await compile(); await start();
+        await editor.fill(PROFESSOR_SOURCE); await compile(); await start();
         assert.equal(await pane.locator('#live-endpoint option').count(), 17);
         await choose('POST', '/users'); await pane.locator('#live-body').fill('{"name":"Demo User","email":"live@example.test","joinedAt":"2026-10-06"}');
         responseBody = { data: [{ name: 'x'.repeat(2000) }] }; await send();

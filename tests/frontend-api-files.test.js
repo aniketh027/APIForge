@@ -44,6 +44,7 @@ async function main() {
         // Chrome requests a favicon even though the frontend doesn't supply one.
         await page.route('**/favicon.ico', route => route.fulfill({ status: 204 }));
         await page.goto(`http://127.0.0.1:${server.address().port}`);
+        await page.locator('#dsl-editor').fill('ENTITY Document\nid INT PRIMARY KEY\ntitle STRING REQUIRED');
         await page.locator('#compile-btn').click();
         await page.locator('#output-api .api-file').first().waitFor({ state: 'attached' });
 

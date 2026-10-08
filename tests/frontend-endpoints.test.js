@@ -4,6 +4,7 @@
 const assert = require('node:assert/strict');
 const { chromium } = require('playwright');
 const app = require('../server');
+const { PROFESSOR_SOURCE, LIBRARY_SOURCE } = require('./frontend-source-fixtures');
 
 // Independent oracle: inspect the actual HTTP response, never frontend state/helpers.
 const METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD', 'TRACE'];
@@ -53,8 +54,8 @@ async function main() {
         const pane = page.locator('#output-endpoints');
         const editor = page.getByRole('textbox', { name: 'APIForge DSL source' });
         const compile = page.locator('#compile-btn');
-        const demo = page.getByRole('button', { name: 'Load demo', exact: true });
-        const example = page.getByRole('button', { name: 'Load example', exact: true });
+        const enterProfessor = { click: () => editor.fill(PROFESSOR_SOURCE) };
+        const enterLibrary = { click: () => editor.fill(LIBRARY_SOURCE) };
         const clear = page.getByRole('button', { name: 'Clear', exact: true });
         const target = name => page.getByRole('button', { name, exact: true });
         const rows = () => pane.locator('.endpoint-row').evaluateAll(elements => elements.map(element => [
@@ -135,7 +136,7 @@ async function main() {
 
         assert.deepEqual(await page.getByRole('tab').evaluateAll(tabs => tabs.map(tab => tab.dataset.tab)), TABS);
         await tab.click();
-        await assertReset('Ready to compile');
+        await assertReset('No compilation yet');
         assert.equal(await pane.getAttribute('aria-labelledby'), 'tab-endpoints');
         assert.equal(await tab.getAttribute('aria-controls'), 'output-endpoints');
         await page.locator('#tab-sql').focus();
@@ -160,8 +161,8 @@ async function main() {
         await assertOtherPanes(simpleData);
         console.log('PASS: real single-entity CRUD, exact OpenAPI pairs, no duplicates, SQL/API/OpenAPI and CodeGen mapping');
 
-        await demo.click();
-        await assertReset('Demo ready');
+        await enterProfessor.click();
+        await assertReset('Source changed');
         const mysqlData = await compileSource();
         const mysqlSpec = await assertEndpoints(mysqlData);
         assertDemo(mysqlSpec, mysqlData);
@@ -175,7 +176,7 @@ async function main() {
         await assertOtherPanes(postgresData);
         console.log('PostgreSQL Professor Demo pairs:', JSON.stringify(operations(postgresSpec)));
 
-        for (const [control, title] of [[demo, 'Demo ready'], [example, 'Ready to compile'], [clear, 'No compilation yet']]) {
+        for (const [control, title] of [[enterProfessor, 'Source changed'], [enterLibrary, 'Source changed'], [clear, 'No compilation yet']]) {
             await assertEndpoints(await compileSource());
             await control.click();
             await assertReset(title);
@@ -192,11 +193,11 @@ async function main() {
         expectingFailure = false;
         assert.equal(await pane.locator('.endpoint-row').count(), 0);
         assert.match(await pane.textContent(), /Unavailable after .* failure/);
-        console.log('PASS: both target outputs, demo relationships, target/demo/example/Clear/failure reset');
+        console.log('PASS: both target outputs, demo relationships, target/source edits/Clear/failure reset');
 
         // Hold a real server response to observe running state and invalidation races.
-        for (const [control, title] of [[target('MySQL'), 'Target changed'], [demo, 'Demo ready'],
-            [example, 'Ready to compile'], [clear, 'No compilation yet']]) {
+        for (const [control, title] of [[target('MySQL'), 'Target changed'], [enterProfessor, 'Source changed'],
+            [enterLibrary, 'Source changed'], [clear, 'No compilation yet']]) {
             await editor.fill(SIMPLE);
             await assertEndpoints(await compileSource());
             let responseReady;
@@ -218,7 +219,7 @@ async function main() {
             await assertReset(title);
             await page.unroute('**/api/compile');
         }
-        console.log('PASS: running compilation clears endpoints; late responses cannot restore target/demo/example/Clear output');
+        console.log('PASS: running compilation clears endpoints; late responses cannot restore target/source edits/Clear output');
 
         // Exercise isolated renderer inputs in the actual loaded frontend.
         async function renderFixture(files) {
@@ -266,7 +267,7 @@ async function main() {
 
         for (const width of [1440, 900, 390]) {
             await page.setViewportSize({ width, height: 1000 });
-            await demo.click();
+            await enterProfessor.click();
             const data = await compileSource();
             await assertEndpoints(data);
             await tab.scrollIntoViewIfNeeded();

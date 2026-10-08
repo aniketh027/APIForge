@@ -2,7 +2,6 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const vm = require('node:vm');
 const express = require('express');
 const { createManager } = require('../src/live-runner/manager');
 const { databaseResource } = require('../src/live-runner/database');
@@ -12,11 +11,7 @@ const { snapshotDirectory } = require('./generated-backend-test-helpers');
 const { publicError, LiveError } = require('../src/live-runner/errors');
 // Test-only credentials may come from existing APIFORGE_TEST_* infrastructure.
 // Production only consumes APIFORGE_LIVE_* configuration.
-function professorSource() {
-    const app = fs.readFileSync(path.join(__dirname, '../frontend/app.js'), 'utf8');
-    const snippet = app.slice(app.indexOf('const PROFESSOR_DEMO ='), app.indexOf('let currentExampleIndex'));
-    return vm.runInNewContext(snippet + '\nPROFESSOR_DEMO.code');
-}
+const { PROFESSOR_SOURCE } = require('./frontend-source-fixtures');
 async function native(target) {
     let infrastructure, server, manager, session, observed = {}, phase = 'configuration';
     const before = snapshotDirectory(path.join(__dirname, '../output'));
@@ -43,7 +38,7 @@ async function native(target) {
                 { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
             const data = await response.json(); if (response.status !== 200) throw new LiveError(data.code); return data;
         };
-        phase = 'start'; session = await call('start', { source: professorSource(), target });
+        phase = 'start'; session = await call('start', { source: PROFESSOR_SOURCE, target });
         assert(!Object.hasOwn(session, 'port')); assert(!Object.hasOwn(session, 'database'));
         assert(!fs.existsSync(path.join(observed.root, 'node_modules')));
         assert(!fs.existsSync(path.join(observed.root, '.env')));
@@ -89,7 +84,10 @@ async function native(target) {
     }
 }
 (async () => {
-    const results = []; for (const target of ['mysql', 'postgres']) results.push(await native(target));
+    const targets = process.argv.slice(2);
+    if (!targets.length) targets.push('mysql', 'postgres');
+    assert(targets.every(target => ['mysql', 'postgres'].includes(target)), 'Native targets must be mysql or postgres');
+    const results = []; for (const target of targets) results.push(await native(target));
     const complete = results.every(Boolean); console.log(complete ? 'NATIVE COMPLETE' : 'NATIVE BLOCKED');
     if (!complete) process.exitCode = 1;
 })().catch(() => { console.error('NATIVE BLOCKED: cleanup failed'); process.exitCode = 1; });

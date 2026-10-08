@@ -19,94 +19,6 @@
 
 // ── Constants ───────────────────────────────────────────────
 
-const EXAMPLES = [
-    {
-        name: 'Basic Student Entity',
-        code: `ENTITY Student
-
-id INT PRIMARY KEY
-name STRING REQUIRED MIN_LENGTH 2 MAX_LENGTH 80
-email STRING UNIQUE
-age INT
-cgpa FLOAT`
-    },
-    {
-        name: 'Relationships (M:N)',
-        code: `ENTITY Student
-
-id INT PRIMARY KEY
-name STRING REQUIRED
-
-ENTITY Course
-
-id INT PRIMARY KEY
-title STRING REQUIRED
-
-RELATION Student ENROLLS_IN Course MANY_TO_MANY`
-    },
-    {
-        name: 'Validations & Defaults',
-        code: `ENTITY Student
-
-id INT PRIMARY KEY
-name STRING REQUIRED
-age INT MIN 18 MAX 60 DEFAULT 25
-status STRING DEFAULT "active" MIN_LENGTH 3 MAX_LENGTH 20
-cgpa FLOAT MIN 0.0 MAX 10.0 DEFAULT 8.5
-active BOOLEAN DEFAULT TRUE`
-    },
-    { name: 'ENUM Account', code: `ENTITY Account
-id INT PRIMARY KEY
-email STRING REQUIRED UNIQUE
-status ENUM("active", "suspended", "closed") DEFAULT "active"` },
-    { name: 'DATE and TIMESTAMP Event', code: `ENTITY Event
-id INT PRIMARY KEY
-eventDate DATE REQUIRED
-createdAt TIMESTAMP
-publishedAt TIMESTAMP DEFAULT "2026-10-05T12:30:00Z"` },
-    { name: 'UUID User and Groups', code: `ENTITY User
-id UUID PRIMARY KEY
-email STRING REQUIRED UNIQUE
-token UUID
-ENTITY Group
-id UUID PRIMARY KEY
-label STRING
-RELATION User JOINS Group MANY_TO_MANY` }
-];
-
-const PROFESSOR_DEMO = {
-    name: 'Professor Demo — Project Workspace',
-    code: `ENTITY User
-
-id UUID PRIMARY KEY
-name STRING REQUIRED MIN_LENGTH 2 MAX_LENGTH 80
-email STRING REQUIRED UNIQUE
-role ENUM("student", "faculty", "admin") DEFAULT "student"
-active BOOLEAN DEFAULT TRUE
-joinedAt DATE REQUIRED
-
-ENTITY Project
-
-id INT PRIMARY KEY
-title STRING REQUIRED MIN_LENGTH 3 MAX_LENGTH 120
-status ENUM("planned", "active", "completed") DEFAULT "planned"
-progress INT MIN 0 MAX 100 DEFAULT 0
-createdAt TIMESTAMP
-
-ENTITY Task
-
-id INT PRIMARY KEY
-title STRING REQUIRED MIN_LENGTH 2 MAX_LENGTH 120
-priority INT MIN 1 MAX 5 DEFAULT 3
-done BOOLEAN DEFAULT FALSE
-
-RELATION User OWNS Project ONE_TO_MANY
-RELATION Project HAS Task ONE_TO_MANY`
-};
-
-let currentExampleIndex = 0;
-const EXAMPLE_DSL = EXAMPLES[0].code;
-
 const PHASE_ORDER = ['lexer', 'parser', 'semantic', 'ir', 'optimizer', 'codegen'];
 
 const TAB_IDS = [
@@ -131,14 +43,12 @@ const editorBackdrop   = document.getElementById('editor-backdrop');
 const editorHighlights = document.getElementById('editor-highlights');
 const compileBtn       = document.getElementById('compile-btn');
 const clearBtn         = document.getElementById('clear-btn');
-const exampleBtn       = document.getElementById('example-btn');
-const demoBtn          = document.getElementById('demo-btn');
 const downloadBtn      = document.getElementById('download-btn');
 const downloadSection  = document.getElementById('download-section');
 const errorPanel       = document.getElementById('error-panel');
 const summaryPanel     = document.getElementById('compilation-summary');
 const summaryContent   = document.getElementById('compilation-summary-content');
-const exampleName      = document.getElementById('example-name');
+const workspaceName    = document.getElementById('source-name');
 const pipelineState    = document.getElementById('pipeline-state');
 const headerStatus     = document.getElementById('header-status');
 const headerStatusText = document.getElementById('header-status-text');
@@ -152,7 +62,7 @@ const errorLines = new Set();
 let lastCompileResult = null;
 let isCompiling = false;
 let selectedTarget = 'mysql';
-// Changes to the target or loaded source invalidate pending compilation output.
+// Every source edit/reset or target change invalidates pending compilation output.
 let targetRevision = 0;
 
 // Live actions have their own revision; compiler response ordering remains independent.
@@ -321,22 +231,14 @@ async function sendLive() {
 
 function selectTarget(target) {
     if (target === selectedTarget) return;
-    invalidateLive();
     selectedTarget = target;
-    targetRevision++;
     targetButtons.forEach(button => {
         button.setAttribute('aria-pressed', String(button.dataset.target === target));
     });
-    clearErrorHighlights();
-    hideError();
-    hideSummary();
-    lastCompileResult = null;
-    downloadSection.classList.remove('visible');
-    resetAllStatus();
-    resetOutputPanes('Target changed', `Compile again to generate ${TARGET_LABELS[target]} output.`);
+    invalidateCompilation('Target changed', `Compile again to generate ${TARGET_LABELS[target]} output.`);
 }
 
-function emptyState(title = 'No compilation yet', message = 'Write APIForge DSL and press Compile, or load an example.') {
+function emptyState(title = 'No compilation yet', message = 'Write APIForge DSL and press Compile.') {
     return `<div class="output-placeholder">
         <div class="empty-state">
             <strong>${escapeHtml(title)}</strong>
@@ -1184,65 +1086,33 @@ function escapeHtml(str) {
 // CLEAR STATE (TASK 6)
 // ═════════════════════════════════════════════════════════════
 
-function clearAll() {
-    invalidateLive();
-    lastCompiledSource = null; lastCompiledTarget = null; liveOperations = [];
+function invalidateCompilation(title, message) {
     targetRevision++;
-    editor.value = '';
+    lastCompileResult = null;
+    lastCompiledSource = null;
+    lastCompiledTarget = null;
+    liveOperations = [];
+    invalidateLive();
     clearErrorHighlights();
     hideError();
     hideSummary();
-    resetAllStatus();
-    lastCompileResult = null;
     downloadSection.classList.remove('visible');
-
-    if (exampleName) exampleName.textContent = 'Untitled source';
-    resetOutputPanes('No compilation yet', 'Write APIForge DSL and press Compile, or load an example.');
-
-    switchTab('tokens');
+    resetAllStatus();
+    resetOutputPanes(title, message);
 }
 
-// ═════════════════════════════════════════════════════════════
-// LOAD EXAMPLE (TASK 6)
-// ═════════════════════════════════════════════════════════════
+function sourceChanged() {
+    if (workspaceName) workspaceName.textContent = editor.value ? 'Modified source' : 'Untitled source';
+    invalidateCompilation(editor.value ? 'Source changed' : 'No compilation yet', 'Write APIForge DSL and press Compile.');
+}
 
-function loadDemo() {
-    invalidateLive();
-    lastCompiledSource = null; lastCompiledTarget = null; liveOperations = [];
-    targetRevision++;
-    editor.value = PROFESSOR_DEMO.code;
-    if (exampleName) exampleName.textContent = PROFESSOR_DEMO.name;
-    clearErrorHighlights();
-    hideError();
-    hideSummary();
-    lastCompileResult = null;
-    downloadSection.classList.remove('visible');
-    resetAllStatus();
-    resetOutputPanes('Demo ready', `${PROFESSOR_DEMO.name} is loaded. Press Compile to generate ${TARGET_LABELS[selectedTarget]} output.`);
+function clearAll() {
+    editor.value = '';
+    sourceChanged();
     switchTab('tokens');
     editor.scrollTop = 0;
     editor.scrollLeft = 0;
     syncScroll();
-}
-
-function loadExample() {
-    invalidateLive();
-    lastCompiledSource = null; lastCompiledTarget = null; liveOperations = [];
-    targetRevision++;
-    const example = EXAMPLES[currentExampleIndex % EXAMPLES.length];
-    currentExampleIndex++;
-    editor.value = example.code;
-    if (exampleName) exampleName.textContent = example.name;
-    exampleBtn.title = `Loaded: ${example.name} (Click to load next example)`;
-    clearErrorHighlights();
-    hideError();
-    hideSummary();
-    resetAllStatus();
-    downloadSection.classList.remove('visible');
-
-    resetOutputPanes('Ready to compile', `${example.name} is loaded in the editor.`);
-
-    switchTab('tokens');
 }
 
 // ═════════════════════════════════════════════════════════════
@@ -1255,7 +1125,7 @@ async function compile() {
     lastCompiledSource = null; lastCompiledTarget = null; liveOperations = [];
     const source = editor.value;
     const target = selectedTarget;
-    const revision = targetRevision;
+    const revision = ++targetRevision;
 
     // Reset previous UI state
     hideError();
@@ -1283,8 +1153,8 @@ async function compile() {
         });
 
         const data = await response.json();
-        // Target changes and source resets invalidate output from an earlier request.
-        if (revision !== targetRevision) return;
+        // Reject obsolete results even when source/target changed away and back.
+        if (revision !== targetRevision || source !== editor.value || target !== selectedTarget) return;
         setCompilerAvailability(true);
 
         // Update phase statuses
@@ -1336,7 +1206,7 @@ async function compile() {
             }
         }
     } catch (err) {
-        if (revision !== targetRevision) return;
+        if (revision !== targetRevision || source !== editor.value || target !== selectedTarget) return;
         setCompilerAvailability(false);
         hideSummary();
         showError('network', [{ message: 'Failed to connect to the compiler server. Make sure it is running.' }]);
@@ -1486,17 +1356,7 @@ function downloadProject() {
 
 document.addEventListener('DOMContentLoaded', () => {
     // Editor event listeners
-    editor.addEventListener('input', () => {
-        invalidateLive();
-        if (exampleName) exampleName.textContent = 'Modified source';
-        if (errorLines.size > 0) {
-            clearErrorHighlights();
-            hideError();
-        } else {
-            updateLineNumbers();
-            updateEditorHighlights();
-        }
-    });
+    editor.addEventListener('input', sourceChanged);
 
     window.addEventListener('pagehide', () => {
         if (liveSessionId) liveCall('stop', { sessionId: liveSessionId }, true).catch(() => {});
@@ -1507,8 +1367,6 @@ document.addEventListener('DOMContentLoaded', () => {
     // Buttons
     compileBtn.addEventListener('click', compile);
     clearBtn.addEventListener('click', clearAll);
-    exampleBtn.addEventListener('click', loadExample);
-    demoBtn.addEventListener('click', loadDemo);
     downloadBtn.addEventListener('click', downloadProject);
     targetButtons.forEach(button => {
         button.addEventListener('click', () => selectTarget(button.dataset.target));
@@ -1556,8 +1414,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const end = editor.selectionEnd;
             editor.value = editor.value.substring(0, start) + '    ' + editor.value.substring(end);
             editor.selectionStart = editor.selectionEnd = start + 4;
-            updateLineNumbers();
-            updateEditorHighlights();
+            editor.dispatchEvent(new Event('input'));
         }
     });
 
@@ -1569,8 +1426,8 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // Load example by default
-    loadExample();
+    // Start with an immediately editable, empty workspace.
+    clearAll();
 
     // Initial rendering
     updateLineNumbers();
