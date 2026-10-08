@@ -7,6 +7,7 @@
     "start": "node server.js",
     "compile": "node index.js samples/student.apiforge",
     "dev": "node server.js",
+    "test:windows-bootstrap": "node tests/windows-bootstrap.test.js",
     "test:frontend-compilation-summary": "node tests/frontend-compilation-summary.test.js",
     "test:frontend-api-files": "node tests/frontend-api-files.test.js",
     "test:frontend-target-selector": "node tests/frontend-target-selector.test.js",
