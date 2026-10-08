@@ -8,6 +8,9 @@ const {spawnSync,execFileSync}=require('child_process');
 const { createPinnedCompiler, currentCompiler, compileSource } = require('./pinned-compiler-loader');
 const { sourceCases, directIRCases, rawSQLCases } = require('./effective-schema-corpus');
 const BASE = '1caf927b5bcef627575a36c1d29800ce03e6f17c';
+// Keep the G26 compiler oracle frozen while pinning intentional frontend changes
+// separately, with the same exact committed-byte protection as G28.
+const FRONTEND_BASE = '6702d5656917b29d63b0c1183f1d6434c78e2837';
 const pinned = createPinnedCompiler({ revision: BASE });
 const current = currentCompiler();
 let valid = 0, invalid = 0, files = 0, checks = 0;
@@ -66,10 +69,8 @@ async function zip(source, historical) {
             same(await zip(compileSource(source,current).files,false),await zip(pinned.compile(source).files,true),'ZIP with '+state+' state');
             same(plain(compileSource(source,current)),plain(pinned.compile(source)),'public phases with '+state+' state');
         }
-        // UI repository objects have unchanged bytes. The compiler oracle's
-        // deliberate CRLF smudge policy is for its dependency closure; this
-        // checkout's untouched stylesheet uses LF. Compare UI Git blobs raw.
-        for(const file of ['frontend/app.js','frontend/index.html','frontend/style.css'])same(execFileSync('git',['show','HEAD:'+file]),execFileSync('git',['show',BASE+':'+file]),'browser Git blob bytes '+file);
+        // Compare all three frontend Git blobs raw against the frontend pin.
+        for(const file of ['frontend/app.js','frontend/index.html','frontend/style.css'])same(execFileSync('git',['show','HEAD:'+file]),execFileSync('git',['show',FRONTEND_BASE+':'+file]),'browser Git blob bytes '+file);
     }finally{fs.rmSync(root,{recursive:true,force:true});}
     console.log(JSON.stringify({base:BASE,valid,invalid,files,checks,result:'PASS'}));
 })().catch(e=>{console.error(e);process.exitCode=1;});

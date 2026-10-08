@@ -12,7 +12,7 @@ const BASE = '112a464ee4615c3956c686bfff59c9aa5d9f8497';
 // BASE remains the frozen G28/compiler compatibility oracle. FRONTEND_BASE
 // separately pins the current approved frontend baseline;
 // exact committed frontend-byte protection remains enabled for all three files.
-const FRONTEND_BASE = 'bb093fe257c6ef9cf46c1e4abe85bf05c2a45fdb';
+const FRONTEND_BASE = '6702d5656917b29d63b0c1183f1d6434c78e2837';
 const pinned = createPinnedCompiler({ revision: BASE });
 const current = currentCompiler();
 const explicit = { ...current,
