@@ -10,6 +10,8 @@ const bootstrap = require('../src/windows-bootstrap');
 const results = [];
 const errorMessages = new Map();
 const MARKER = 'bootstrap.identity.json';
+const DATABASE = 'projects.sqlite3';
+const JOURNAL = 'projects.sqlite3-journal';
 let fixtures;
 const workers = new Set();
 const hash = value => crypto.createHash('sha256').update(value).digest('hex');
@@ -22,6 +24,17 @@ async function ps(source, data = {}) {
         child.stdout.on('data',b=>out+=b); child.stderr.on('data',b=>err+=b);
         child.on('error',reject); child.on('close',code=>code===0?resolve(out.trim()):reject(new Error(err || out)));
         child.stdin.end(JSON.stringify(data));
+    });
+}
+async function securityRequest(source, request, env = {}) {
+    return new Promise((resolve, reject) => {
+        const child = spawn(exe, ['-NoLogo','-NoProfile','-NonInteractive','-EncodedCommand',Buffer.from(source.replace(/\r\n/g,'\n'),'utf16le').toString('base64')], {
+            shell:false, windowsHide:true, stdio:['pipe','pipe','ignore'],
+            env:{...process.env,...env,PSModulePath:path.join(process.env.SystemRoot,'System32','WindowsPowerShell','v1.0','Modules')}
+        });
+        let out='';child.stdout.on('data',b=>out+=b);child.once('error',reject);
+        child.once('close',exitCode=>{try{resolve({...JSON.parse(out.trim()),exitCode});}catch(error){reject(error);}});
+        child.stdin.end(JSON.stringify(request));
     });
 }
 function owned(file) {
@@ -48,14 +61,14 @@ async function snapshot(root) {
     async function walk(p) {
         const s=await fsp.lstat(p,{bigint:true});
         const key=path.relative(root,p);
-        files[key]={ino:String(s.ino),dev:String(s.dev),mode:String(s.mode)};
+        files[key]={ino:String(s.ino),dev:String(s.dev),mode:String(s.mode),size:String(s.size)};
         if(s.isSymbolicLink()) files[key].link=await fsp.readlink(p);
         else if(s.isFile()) files[key].hash=hash(await fsp.readFile(p));
         else if(s.isDirectory()) for(const n of (await fsp.readdir(p)).sort()) await walk(path.join(p,n));
     }
     await walk(root);
     const paths=Object.entries(files).filter(([,value])=>!Object.hasOwn(value,'link')).map(([relative])=>path.join(root,relative));
-    const acl=await ps('$d.paths | ForEach-Object {$p=$_; $a=Get-Acl -LiteralPath $p; [pscustomobject]@{path=$p;sddl=$a.Sddl}} | ConvertTo-Json -Depth 3 -Compress',{paths});
+    const acl=await ps('$d.paths | ForEach-Object {$p=$_; $a=Get-Acl -LiteralPath $p; [pscustomobject]@{path=$p;sddl=$a.Sddl;attributes=[int][IO.File]::GetAttributes($p)}} | ConvertTo-Json -Depth 3 -Compress',{paths});
     return {files,acl};
 }
 async function mutateAcl(file, change) {
@@ -89,21 +102,76 @@ async function main() {
     await fsp.mkdir(fixtures);
     console.log('Retained disposable fixtures: '+fixtures);
     const localData=await ps('[Environment]::GetFolderPath("LocalApplicationData")');
-    const realRoots=[path.join(localData,'APIForge-ProjectStore'),path.join(localData,'APIForge')];
+    const profile=await ps('[Environment]::GetFolderPath("UserProfile")');
+    const realRoots=[path.join(profile,'.apiforge-projects'),path.join(localData,'APIForge-ProjectStore'),path.join(localData,'APIForge')];
     const realBefore=await Promise.all(realRoots.map(async root=>fs.existsSync(root)?snapshot(root):null));
+    const source=fs.readFileSync(path.join(__dirname,'../src/windows-bootstrap/security.ps1'),'utf8');
+    let parentSecurity, directRoot;
     await test('default root uses the OS known folder without initialization',async()=>{
-        const source=fs.readFileSync(path.join(__dirname,'../src/windows-bootstrap/security.ps1'),'utf8');
-        const value=await new Promise((resolve,reject)=>{
-            const child=spawn(exe,['-NoLogo','-NoProfile','-NonInteractive','-EncodedCommand',Buffer.from(source,'utf16le').toString('base64')],{shell:false,windowsHide:true,stdio:['pipe','pipe','ignore'],env:{...process.env,PSModulePath:path.join(process.env.SystemRoot,'System32','WindowsPowerShell','v1.0','Modules')}});
-            let out='';child.stdout.on('data',b=>out+=b);child.once('error',reject);child.once('close',code=>code===0?resolve(JSON.parse(out.trim())):reject(new Error('default resolver failed')));
-            child.stdin.end(JSON.stringify({action:'resolve',root:null}));
-        });
-        assert.equal(value.root,path.join(localData,'APIForge-ProjectStore'));
+        const value=await securityRequest(source,{action:'resolve',root:null});
+        assert.equal(value.exitCode,0);assert.equal(value.root,path.join(profile,'.apiforge-projects'));
+        const spoofed=await securityRequest(source,{action:'resolve',root:null},{HOME:fixtures,LOCALAPPDATA:fixtures});
+        assert.deepEqual(spoofed,value);
+        // Windows may fail the legacy known-folder lookup with a malformed USERPROFILE.
+        // Refusal is required when that lookup is unavailable; it must not select a fallback.
+        const unavailable=await securityRequest(source,{action:'resolve',root:null},{USERPROFILE:path.join(fixtures,'nonexistent-profile')});
+        assert.equal(unavailable.exitCode,1);assert.equal(unavailable.code,'BOOTSTRAP_UNSAFE_LOCATION');
+        assert.ok(Buffer.from(source.replace(/\r\n/g,'\n'),'utf16le').toString('base64').length<=30000);
+    });
+    await test('actual default-parent security evaluated read-only; direct profile fixture admitted without repair',async()=>{
+        const policy=source.slice(source.indexOf('function Refuse'),source.indexOf('function Create-PrivateDirectory'));
+        const setup='$script:sid=[Security.Principal.WindowsIdentity]::GetCurrent().User; $script:privateTrusted=@($sid.Value,"S-1-5-18","S-1-5-32-544"); $script:ancestorTrusted=$privateTrusted+"S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464"; ';
+        parentSecurity=JSON.parse(await ps(policy+setup+'$a=@(Check-Ancestors $d.root); [pscustomobject]@{ancestors=$a;windows=[Environment]::OSVersion.Version.ToString();powershell=$PSVersionTable.PSVersion.ToString()}|ConvertTo-Json -Depth 5 -Compress',{root:realRoots[0]}));
+        directRoot=fixtures+'-private-root';
+        assert.equal(path.dirname(directRoot),profile);assert.equal(fs.existsSync(directRoot),false);
+        const first=await bootstrap.initializePrivateStoreRoot({root:directRoot});
+        assert.deepEqual(await bootstrap.openPrivateStoreRoot({root:directRoot}),first);
+        const after=JSON.parse(await ps(policy+setup+'@(Check-Ancestors $d.root)|ConvertTo-Json -Depth 5 -Compress',{root:realRoots[0]}));
+        assert.deepEqual(after,parentSecurity.ancestors);
+    });
+    // Test-only OS-folder responses in a copy of fixed helper code; no production override.
+    const fakeFolders=source.replace("[Environment]::GetFolderPath('UserProfile')",'[string]$request.testProfile')
+        .replace("[Environment]::GetFolderPath('LocalApplicationData')",'[string]$request.testLocalData');
+    await test('default selection refuses retained legacy storage instead of switching or adopting',async()=>{
+        const root=await fixture('legacy');const folder=path.dirname(root);const local=owned(path.join(folder,'local'));await fsp.mkdir(local);
+        await bootstrap.initializePrivateStoreRoot({root:path.join(local,'APIForge-ProjectStore')});
+        await bootstrap.initializePrivateStoreRoot({root:path.join(folder,'.apiforge-projects')});
+        const before=await snapshot(folder);
+        for(const action of ['resolve','initialize','verifyRoot']) {
+            const result=await securityRequest(fakeFolders,{action,root:null,testProfile:folder,testLocalData:local});
+            assert.equal(result.code,'BOOTSTRAP_LEGACY_LOCATION');assert.equal(result.exitCode,1);
+        }
+        assert.deepEqual(await snapshot(folder),before);
+    });
+    await test('dangerous capability ancestor access refused with no default fallback or ACL repair',async()=>{
+        const root=await fixture('capability');const folder=path.dirname(root);const local=owned(path.join(folder,'local'));await fsp.mkdir(local);
+        await mutateAcl(folder,'$acl.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule((New-Object Security.Principal.SecurityIdentifier("S-1-15-3-1")),[Security.AccessControl.FileSystemRights]::FullControl,[Security.AccessControl.AccessControlType]::Allow)))');
+        const before=await snapshot(folder);
+        const result=await securityRequest(fakeFolders,{action:'initialize',root:null,testProfile:folder,testLocalData:local});
+        assert.equal(result.code,'BOOTSTRAP_UNSAFE_ANCESTOR');assert.equal(result.exitCode,1);
+        assert.equal(fs.existsSync(path.join(folder,'.apiforge-projects')),false);
+        assert.equal(fs.existsSync(path.join(local,'APIForge-ProjectStore')),false);
+        assert.deepEqual(await snapshot(folder),before);
+    });
+    await test('unknown legacy file, directory and junction destinations refused without new default creation',async()=>{
+        for(const kind of ['file','directory','junction']) {
+            const root=await fixture('legacy-unknown');const folder=path.dirname(root);const local=owned(path.join(folder,'local'));await fsp.mkdir(local);
+            const legacy=owned(path.join(local,'APIForge-ProjectStore'));
+            if(kind==='file')await fsp.writeFile(legacy,'unknown',{flag:'wx'});
+            else if(kind==='directory'){await fsp.mkdir(legacy);await fsp.writeFile(path.join(legacy,'sentinel'),'unknown',{flag:'wx'});}
+            else {const target=owned(path.join(folder,'target'));await fsp.mkdir(target);await fsp.symlink(target,legacy,'junction');}
+            const before=await snapshot(folder);
+            const result=await securityRequest(fakeFolders,{action:'initialize',root:null,testProfile:folder,testLocalData:local});
+            assert.equal(result.code,'BOOTSTRAP_LEGACY_LOCATION');assert.equal(result.exitCode,1);
+            assert.equal(fs.existsSync(path.join(folder,'.apiforge-projects')),false);
+            assert.deepEqual(await snapshot(folder),before);
+        }
     });
     await test('fresh private initialization and reopen without elevation',async()=>{
         const root=await fixture('fresh'); const first=await bootstrap.initializePrivateStoreRoot({root});
         assert.deepEqual(await bootstrap.openPrivateStoreRoot({root}),first);
         assert.equal(first.formatVersion,1); assert.equal(Object.isFrozen(first),true);
+        assert.deepEqual(first.sqlite,{main:null,journal:null,contentValidated:false});assert.equal(Object.isFrozen(first.sqlite),true);
         assert.deepEqual(await fsp.readdir(root),[MARKER]);
         const acl=JSON.parse(await ps('$a=Get-Acl -LiteralPath $d.path; [pscustomobject]@{protected=$a.AreAccessRulesProtected;owner=$a.GetOwner([Security.Principal.SecurityIdentifier]).Value;rules=@($a.GetAccessRules($true,$true,[Security.Principal.SecurityIdentifier])|ForEach-Object{[pscustomobject]@{sid=$_.IdentityReference.Value;rights=[int]$_.FileSystemRights;inherited=$_.IsInherited}});elevated=([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)}|ConvertTo-Json -Depth 5 -Compress',{path:root}));
         assert.equal(acl.elevated,false); assert.equal(acl.protected,true);assert.equal(acl.owner,first.ownerSid);
@@ -233,6 +301,65 @@ async function main() {
         const other=await init('unknown-file');await fsp.writeFile(path.join(other,'unrelated.txt'),'keep');
         await unchanged(other,()=>bootstrap.openPrivateStoreRoot({root:other}),'BOOTSTRAP_RECOVERY_REQUIRED');
     });
+    await test('safe simulated SQLite main and rollback journal admitted as unvalidated; bytes and security untouched',async()=>{
+        const root=await init('sqlite-files');
+        await fsp.writeFile(path.join(root,DATABASE),'SIMULATED, NOT A SQLITE DATABASE\0',{flag:'wx'});
+        let before=await snapshot(root);let value=await bootstrap.openPrivateStoreRoot({root});
+        assert.deepEqual(await snapshot(root),before);assert.equal(value.sqlite.main.name,DATABASE);
+        assert.equal(value.sqlite.journal,null);assert.equal(value.sqlite.contentValidated,false);
+        assert.equal(Object.isFrozen(value.sqlite.main),true);
+        await fsp.writeFile(path.join(root,JOURNAL),'SIMULATED interrupted journal bytes',{flag:'wx'});
+        before=await snapshot(root);
+        const opened=[];const original=fsp.open;
+        fsp.open=async(file,...args)=>{opened.push({file,flags:args[0]});return original(file,...args);};
+        try {value=await bootstrap.openPrivateStoreRoot({root});} finally {fsp.open=original;}
+        assert.deepEqual(opened,[{file:path.join(root,MARKER),flags:'r'}]);
+        assert.deepEqual(await snapshot(root),before);assert.equal(value.sqlite.journal.name,JOURNAL);
+        assert.equal(value.sqlite.contentValidated,false);assert.equal(Object.isFrozen(value.sqlite.journal),true);
+        await unchanged(root,()=>bootstrap.initializePrivateStoreRoot({root}),'BOOTSTRAP_ROOT_EXISTS');
+    });
+    await test('orphan journal, WAL/SHM, alternate spelling and wildcard lookalikes refused without cleanup',async()=>{
+        for(const name of [JOURNAL,'projects.sqlite3-wal','projects.sqlite3-shm','other.sqlite3','other-journal','Projects.sqlite3']) {
+            const root=await init('sqlite-unknown');await fsp.writeFile(path.join(root,name),'retain',{flag:'wx'});
+            await unchanged(root,()=>bootstrap.openPrivateStoreRoot({root}),'BOOTSTRAP_RECOVERY_REQUIRED');
+        }
+    });
+    await test('recognized SQLite names with directories, junctions or hard links refused',async()=>{
+        for(const name of [DATABASE,JOURNAL]) for(const kind of ['directory','junction','hardlink']) {
+            const root=await init('sqlite-'+kind);
+            if(name===JOURNAL)await fsp.writeFile(path.join(root,DATABASE),'simulated',{flag:'wx'});
+            const file=path.join(root,name);const target=owned(path.join(path.dirname(root),'target'));
+            if(kind==='directory')await fsp.mkdir(file);
+            else if(kind==='junction'){await fsp.mkdir(target);await fsp.symlink(target,file,'junction');}
+            else {await fsp.writeFile(file,'simulated',{flag:'wx'});await fsp.link(file,target);}
+            await unchanged(path.dirname(root),()=>bootstrap.openPrivateStoreRoot({root}),'BOOTSTRAP_UNSAFE_PATH');
+        }
+    });
+    await test('recognized SQLite files with broad DACLs or unexpected attributes refused without repair',async()=>{
+        for(const name of [DATABASE,JOURNAL]) for(const kind of ['broad','ReadOnly','Hidden']) {
+            const root=await init('sqlite-'+kind);await fsp.writeFile(path.join(root,DATABASE),'simulated',{flag:'wx'});
+            const file=path.join(root,name);if(name===JOURNAL)await fsp.writeFile(file,'simulated journal',{flag:'wx'});
+            if(kind==='broad')await mutateAcl(file,broad);
+            else await ps('[IO.File]::SetAttributes($d.path,([IO.File]::GetAttributes($d.path) -bor [IO.FileAttributes]$d.attribute))',{path:owned(file),attribute:kind});
+            await unchanged(root,()=>bootstrap.openPrivateStoreRoot({root}),kind==='broad'?'BOOTSTRAP_UNSAFE_ACL':'BOOTSTRAP_UNSAFE_PATH');
+        }
+    });
+    await test('marker corruption still refuses populated storage and preserves SQLite evidence',async()=>{
+        const root=await init('sqlite-corrupt-marker');await fsp.writeFile(path.join(root,DATABASE),'simulated',{flag:'wx'});
+        await fsp.writeFile(path.join(root,JOURNAL),'simulated interrupted journal',{flag:'wx'});
+        await fsp.writeFile(path.join(root,MARKER),'{');
+        await unchanged(root,()=>bootstrap.openPrivateStoreRoot({root}),'BOOTSTRAP_CORRUPT_IDENTITY');
+    });
+    await test('termination during populated-store reopen preserves all simulated SQLite-owned evidence',async()=>{
+        const root=await init('sqlite-interrupted-reopen');await fsp.writeFile(path.join(root,DATABASE),'simulated',{flag:'wx'});
+        await fsp.writeFile(path.join(root,JOURNAL),'simulated interrupted journal',{flag:'wx'});
+        const before=await snapshot(root);const child=await worker();const pending=reply(child);
+        child.send({root,open:true,pauseBeforeReadMarker:true});assert.equal((await pending).barrier,'before-marker-read');
+        const exited=new Promise(resolve=>child.once('exit',resolve));child.kill('SIGKILL');await exited;
+        assert.deepEqual(await snapshot(root),before);
+        assert.equal((await bootstrap.openPrivateStoreRoot({root})).sqlite.contentValidated,false);
+        assert.deepEqual(await snapshot(root),before);
+    });
     await test('corrupt, incompatible, and incomplete marker bytes retained',async()=>{
         for(const mutation of ['empty','json','version','sid','extra','oversize','utf8','bom']) {
             const root=await init('corrupt-'+mutation);const file=path.join(root,MARKER);const record=JSON.parse(await fsp.readFile(file,'utf8'));
@@ -265,10 +392,11 @@ async function main() {
     notRun('native non-NTFS, remote, removable and substituted-volume fixtures','no authorized mounted unsupported-volume fixture; lexical UNC rejection exercised separately');
     notRun('missing owner, null DACL and callback/object ACE native fixtures','no approved privilege/low-level fixture mechanism to install these descriptors');
     notRun('Windows 10 and Node 18 execution','host is Windows 11 with Node '+process.version+'; compatibility reviewed, separate native matrix required');
+    notRun('native SQLite structure, transaction and hot-journal recovery','filesystem admission uses simulated bytes only; future Project Store owns SQLite validation and recovery');
     await test('real application-data storage unchanged',async()=>{
         assert.deepEqual(await Promise.all(realRoots.map(async root=>fs.existsSync(root)?snapshot(root):null)),realBefore);
     });
-    await fsp.writeFile(path.join(fixtures,'results.json'),JSON.stringify({fixtures,node:process.version,platform:process.platform,arch:process.arch,realRoots,realBefore,results},null,2)+'\n',{flag:'wx'});
+    await fsp.writeFile(path.join(fixtures,'results.json'),JSON.stringify({fixtures,directRoot,parentSecurity,node:process.version,platform:process.platform,arch:process.arch,realRoots,realBefore,results},null,2)+'\n',{flag:'wx'});
     console.log(JSON.stringify({fixtures,counts:results.reduce((a,r)=>(a[r.status]=(a[r.status]||0)+1,a),{})}));
 }
 main().catch(error=>{console.error(error);process.exitCode=1;}).finally(()=>{for(const child of workers)child.kill('SIGKILL');});

@@ -509,7 +509,9 @@ the ZIP in your browser; neither action writes to the repository's `output/`.
 
 The standalone [Windows private storage bootstrap](docs/windows-storage-bootstrap.md)
 uses built-in Windows PowerShell 5.1 on Windows 10/11 x64. It is separate from the
-playground and requires explicit initialization; it does not create a database.
+playground and requires explicit initialization. Its default is the OS user
+profile's `.apiforge-projects`; it admits narrowly specified SQLite filesystem
+entries without creating or validating a database.
 
 ### Install Dependencies
 ```bash

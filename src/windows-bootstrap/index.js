@@ -6,6 +6,8 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const { spawn } = require('node:child_process');
 const MARKER = 'bootstrap.identity.json';
+const DATABASE = 'projects.sqlite3';
+const JOURNAL = 'projects.sqlite3-journal';
 const messages = Object.freeze({
     BOOTSTRAP_UNSUPPORTED_PLATFORM: 'Windows 10/11 x64 is required for this bootstrap.',
     BOOTSTRAP_INVALID_OPTIONS: 'Invalid Windows bootstrap options.',
@@ -17,6 +19,7 @@ const messages = Object.freeze({
     BOOTSTRAP_PARENT_MISSING: 'The storage parent must already exist.',
     BOOTSTRAP_ROOT_EXISTS: 'The destination already exists; initialization cannot adopt it.',
     BOOTSTRAP_ROOT_MISSING: 'Established storage is missing; manual resolution is required.',
+    BOOTSTRAP_LEGACY_LOCATION: 'Previous default storage exists; explicit manual location resolution is required.',
     BOOTSTRAP_UNSAFE_PATH: 'Storage contains unsupported filesystem indirection or entry types.',
     BOOTSTRAP_UNSAFE_OWNER: 'Storage ownership is unsafe; manual resolution is required.',
     BOOTSTRAP_UNSAFE_ACL: 'Storage access restrictions are unsafe; manual resolution is required.',
@@ -53,7 +56,7 @@ function optionsRoot(options) {
         (Object.hasOwn(options, 'root') && !Object.hasOwn(Object.getOwnPropertyDescriptor(options, 'root'), 'value'))) fail('BOOTSTRAP_INVALID_OPTIONS');
     return Object.hasOwn(options, 'root') ? validatePath(options.root) : null;
 }
-function helper(action, root) {
+function helper(action, root, file) {
     return new Promise((resolve, reject) => {
         let exe, encoded;
         try {
@@ -62,7 +65,8 @@ function helper(action, root) {
             exe = path.join(systemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
             if (fs.realpathSync(exe).toLowerCase() !== exe.toLowerCase()) fail('BOOTSTRAP_HELPER_UNAVAILABLE');
             // -EncodedCommand expects UTF-16LE, never includes request data.
-            encoded = Buffer.from(fs.readFileSync(path.join(__dirname, 'security.ps1'), 'utf8'), 'utf16le').toString('base64');
+            const source = fs.readFileSync(path.join(__dirname, 'security.ps1'), 'utf8').replace(/\r\n/g, '\n');
+            encoded = Buffer.from(source, 'utf16le').toString('base64');
             if (encoded.length > 30000) fail('BOOTSTRAP_HELPER_UNAVAILABLE');
         } catch { return reject(new WindowsBootstrapError('BOOTSTRAP_HELPER_UNAVAILABLE')); }
         const child = spawn(exe, ['-NoLogo', '-NoProfile', '-NonInteractive', '-EncodedCommand', encoded], {
@@ -90,7 +94,7 @@ function helper(action, root) {
                 finish(null, result);
             } catch { finish(new WindowsBootstrapError('BOOTSTRAP_HELPER_UNAVAILABLE')); }
         });
-        child.stdin.end(JSON.stringify({ action, root }), 'utf8');
+        child.stdin.end(JSON.stringify({ action, root, file }), 'utf8');
     });
 }
 function identity(stat) {
@@ -130,7 +134,6 @@ async function checkRoot(root) {
     return { stat: await statEntry(root, 'BOOTSTRAP_ROOT_MISSING'), security };
 }
 async function readIdentity(root, ownerSid, rootStat) {
-    if (JSON.stringify((await fsp.readdir(root)).sort()) !== JSON.stringify([MARKER])) fail('BOOTSTRAP_RECOVERY_REQUIRED');
     const file = path.join(root, MARKER);
     const before = await statEntry(file, 'BOOTSTRAP_RECOVERY_REQUIRED');
     if (!before.isFile() || before.isSymbolicLink() || before.nlink !== 1n) fail('BOOTSTRAP_UNSAFE_PATH');
@@ -158,14 +161,36 @@ async function readIdentity(root, ownerSid, rootStat) {
         fail('BOOTSTRAP_CORRUPT_IDENTITY');
     } finally { if (handle) await handle.close(); }
 }
+async function readInventory(root) {
+    const names = (await fsp.readdir(root)).sort();
+    if (!names.includes(MARKER) || names.some(name => ![MARKER, DATABASE, JOURNAL].includes(name)) ||
+        (names.includes(JOURNAL) && !names.includes(DATABASE))) fail('BOOTSTRAP_RECOVERY_REQUIRED');
+    const files = {};
+    for (const name of [DATABASE, JOURNAL]) {
+        if (!names.includes(name)) { files[name] = null; continue; }
+        const file = path.join(root, name);
+        const before = await statEntry(file, 'BOOTSTRAP_RECOVERY_REQUIRED');
+        if (!before.isFile() || before.isSymbolicLink() || before.nlink !== 1n ||
+            (await fsp.realpath(file)).toLowerCase() !== file.toLowerCase()) fail('BOOTSTRAP_UNSAFE_PATH');
+        await helper('verifyFile', root, name);
+        const after = await statEntry(file, 'BOOTSTRAP_RECOVERY_REQUIRED');
+        if (!after.isFile() || after.isSymbolicLink() || after.nlink !== 1n ||
+            !same(identity(before), identity(after))) fail('BOOTSTRAP_IDENTITY_MISMATCH');
+        files[name] = Object.freeze({ name, ...identity(after) });
+    }
+    // Filesystem observations only: no SQLite content read, validation or adoption.
+    return Object.freeze({ main: files[DATABASE], journal: files[JOURNAL], contentValidated: false });
+}
 async function openPrivateStoreRoot(options) {
     try {
         const { root, ownerSid } = await resolveRoot(options);
         const { stat } = await checkRoot(root);
+        const sqlite = await readInventory(root);
         const result = await readIdentity(root, ownerSid, stat);
         const final = await checkRoot(root);
         if (!same(identity(stat), identity(final.stat))) fail('BOOTSTRAP_IDENTITY_MISMATCH');
-        return result;
+        if (JSON.stringify(sqlite) !== JSON.stringify(await readInventory(root))) fail('BOOTSTRAP_IDENTITY_MISMATCH');
+        return Object.freeze({ ...result, sqlite });
     } catch (error) {
         if (error instanceof WindowsBootstrapError) throw error;
         fail('BOOTSTRAP_SECURITY_CHECK_FAILED');

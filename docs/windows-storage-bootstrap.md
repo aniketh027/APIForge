@@ -29,10 +29,24 @@ const reopened = await openPrivateStoreRoot();
 ```
 
 These calls return promises, so use them inside an async function in a CommonJS
-application. The default is the OS current user's `LocalApplicationData` known
-folder plus **`APIForge-ProjectStore`**. Environment `LOCALAPPDATA` is not used to
-choose storage. There is no fallback. A missing default parent or unsafe known
-folder is an error; no ancestors are created or repaired.
+application. The one default is the OS current user's `UserProfile` known folder
+plus **`.apiforge-projects`**, directly beneath the profile, outside the usual
+AppData and synchronized-document folders. Environment `USERPROFILE`, `HOME` and
+`LOCALAPPDATA` do not select the default. There is no fallback. A missing or unsafe
+parent is an error; no ancestors are created or repaired. A redirected profile
+must still pass the same fixed-local-NTFS, no-reparse and ancestor-security checks;
+this module does not certify arbitrary synchronization software.
+
+This is an explicit default-location correction in the unpublished M2A-W milestone.
+The previous candidate was `LocalApplicationData\APIForge-ProjectStore`. Default
+resolution checks that OS known-folder destination without creating it. Any
+retained entry there returns `BOOTSTRAP_LEGACY_LOCATION`, even when the new default
+already exists: no silent switch, migration or adoption occurs. Lookup failure
+also refuses. A malformed process `USERPROFILE` can make Windows' legacy AppData
+lookup unavailable; this produces a refusal rather than bypassing the check or
+selecting another destination. No user environment setting is changed. Manual
+location resolution would need separately reviewed integration; there is no
+production relocation API here.
 
 Both operations accept `{ root: canonicalAbsoluteWindowsPath }` for an explicitly
 selected disposable test root under the OS current user's profile. Its parent
@@ -76,7 +90,7 @@ engine**:
 - Reject **every deny ACE**, including overlapping current-user or group denies.
   This can refuse a harmless descriptor, but cannot treat a deny as an allow.
 - For root, require owner=current SID, protected inheritance, exactly three
-  distinct FullControl ACEs with ObjectInherit+ContainerInherit flags. For marker,
+  distinct FullControl ACEs with ObjectInherit+ContainerInherit flags. For files,
   require owner=current SID and exactly those three inherited FullControl ACEs.
   Membership in another group/capability never makes that trustee private.
 - Inspect every existing ancestor through the drive root. Owners and effective
@@ -103,13 +117,19 @@ device, offline, compressed and encrypted attributes. Junctions, symbolic links,
 mount points and canonical-path aliases are unsupported. Native tests of other
 volume types require authorized fixtures; do not infer such test execution from
 the admission code. Cloud synchronization is not supported or configured by this
-module; do not select a synchronized directory as a test override.
+module; do not select a synchronized directory as a test override. Private files
+allow only Normal, Archive and NotContentIndexed attributes; read-only, hidden,
+system, sparse, temporary, cloud/offline and other unsupported flags are refused.
 
 On the implementation host, an extra capability SID has effective FullControl on
-AppData / Local AppData. The policy refuses that ancestry. The real default store
-was never initialized or changed, and no permissions were repaired. A normal
-Windows installation with a private admitted ancestry can initialize; this host's
-configuration requires manual resolution before default storage can be used.
+AppData / Local AppData. The policy still refuses that ancestry. Read-only
+inspection admitted the profile, Users directory and drive-root ancestry of the
+new default under the unchanged policy. The profile has a capability ACE with
+execute/synchronize rights, not dangerous modification rights; it receives no
+trust exception. Disposable private roots directly under that profile initialized
+and reopened without elevation or parent ACL changes. The real old and new stores
+were never initialized or changed. This proves feasibility on this Windows
+profile, not universal compatibility.
 
 ## Initialization, reopening and identity
 
@@ -125,14 +145,82 @@ reopen path before returning success. No unknown files are overwritten.
 The record contains version 1, a random UUID-v4 store ID, current owner SID and
 root/marker identities (Node bigint device, NTFS file ID and birth timestamp,
 serialized as decimal strings). Reopen validates owner/DACL/ancestors/volume/types,
-requires the directory to contain exactly that marker, rejects marker hard links,
+requires the marker and the narrow inventory below, rejects marker hard links,
 reads at most 4096 bytes through an opened handle with `fstat`, validates exact
 fields/encoding/canonical bytes/version and compares both identities. It checks
 root/ancestor identities again before returning a frozen result:
 
 ```js
-{ root, storeId, ownerSid, formatVersion: 1 }
+{
+  root, storeId, ownerSid, formatVersion: 1,
+  sqlite: { main: null, journal: null, contentValidated: false }
+}
 ```
+
+`sqlite.main` and `sqlite.journal`, when present, are frozen filesystem observations
+`{ name, device, file, birth }`. The nested `sqlite` object is also frozen. They
+are not persisted database bindings or database-validity verdicts. The on-disk
+marker format and its strict validation remain unchanged.
+
+## SQLite inventory and responsibility boundary
+
+Only these exact, case-sensitive directory-entry names are admitted:
+
+| Entry | Filesystem admission |
+| --- | --- |
+| `bootstrap.identity.json` | Mandatory; strict canonical content and root/file identity binding. |
+| `projects.sqlite3` | Optional; ordinary private file, never created or read by bootstrap. |
+| `projects.sqlite3-journal` | Optional only with the main file; same private-file checks, retained for SQLite. |
+
+The database and journal must be regular non-reparse files, with exactly one hard
+link, canonical real paths, current-user ownership, the exact three inherited
+private FullControl ACEs and supported attributes. Inventory and identities are
+checked again before return. Directories, junctions, hard links, aliases, broad
+permissions and unsupported attributes fail closed. Missing marker, an orphan
+journal, unknown entries, alternate spellings, `*-wal`, `*-shm`, super-journals,
+other databases and wildcard lookalikes return recovery-required. Nothing is
+deleted, renamed, repaired or truncated. This contract is for one database in
+**DELETE rollback-journal mode**, with no ATTACH or WAL; supporting another engine
+configuration would require another reviewed contract.
+
+A valid marker-only root reopens and reports `main: null`; it creates no database
+and does not authorize automatic database creation. A root with recognized safe
+files reopens and reports their filesystem observations. **Every successful
+result says `contentValidated: false`, including simulated or malformed database
+bytes.** The bootstrap does not read SQLite headers, validate schemas, authenticate
+journals, adopt a database or label any file as a valid SQLite store. Consumers
+must not expose project operations from bootstrap success alone.
+
+The later Project Store must, **before a SQLite connection**, consume this explicit
+unvalidated result, repeat filesystem/security/identity admission at the point of
+use, coordinate initialization versus ordinary reopen, and establish that the
+root/store ID belongs to its expected lifecycle. It must separately track whether
+database initialization completed: the current bootstrap marker cannot distinguish
+a never-created database from a missing established database. Ordinary reopen must
+refuse a missing established database and use a noncreating read/write engine-open
+mode, never SQLite's default create-if-missing behavior. First database creation
+needs an explicit coordinated lifecycle and cannot adopt unknown content.
+[SQLite open modes](https://sqlite.org/c3ref/open.html).
+
+The future integration must select and configure a reviewed engine, validate
+database format, application/store identity, schema/version, expected tables and
+data before exposing operations, and enforce its approved engine settings. Schema
+validation necessarily follows a SQLite connection and any required recovery;
+bootstrap cannot provide it beforehand. Filesystem identity observations alone do
+not establish database provenance. Malformed or incompatible content must produce
+a controlled refusal, with no application reset, replacement or cleanup.
+
+A rollback journal may contain an interrupted transaction. Bootstrap retains it
+unchanged and returns its presence without deciding whether it is hot or valid.
+Only the later reviewed SQLite engine integration may inspect and recover it under
+SQLite's own locks before application reads. It must not delete a journal as an
+application lock or force another journal mode to bypass recovery. A changing
+inventory during these pathname checks can cause a conservative refusal; it does
+not trigger cleanup. Native hot-journal recovery and corruption handling remain
+future integration tests, not evidence from simulated filesystem fixtures.
+[SQLite rollback and hot-journal recovery](https://sqlite.org/lockingv3.html).
+
+## Retained state and trust boundary
 
 The marker is a bootstrap binding, not an authenticated external registry. It
 does not protect against a malicious process with the same effective filesystem
@@ -153,8 +241,8 @@ valid root, which explicit reopen can verify. No cleanup or takeover is attempte
 Errors are `WindowsBootstrapError` with a fixed `code` and fixed sanitized message;
 raw paths, native exceptions, credentials and causes are not exposed. See
 `index.js` for the complete codes. Access/owner/ACL problems explicitly require
-manual resolution. There is no repair/reset/deletion operation and no journal,
-lock-file or database handling.
+manual resolution. There is no repair/reset/deletion operation, application lock
+handling, SQLite connection or SQLite file mutation.
 
 Separate pathname checks are **detection under the admitted trusted namespace**,
 not atomic handle-relative confinement against malicious same-authority processes
@@ -175,7 +263,13 @@ profile, never in checkouts or the real application-data store. It tests native
 private creation/reopening, ownership/DACLs, independent process initialization,
 externally terminated initialization, conservative deny/group handling, unsafe
 ancestors, junctions, file/root replacement, hard links, malformed paths/identity,
-and unchanged rejected state. Raw-descriptor policy probes are explicitly synthetic.
+and unchanged rejected state. Correction tests cover OS default selection and
+environment spoofing, actual read-only parent admission, legacy-location refusal,
+dangerous capability rights without fallback, simulated main/journal admission,
+orphan/unknown names, private-file permissions/attributes/types and interruption
+during populated-root reopen. Snapshots compare file bytes/IDs/sizes, ACLs and
+attributes. Simulated bytes establish filesystem admission only. Raw-descriptor
+policy probes are explicitly synthetic.
 Every result is PASS, FAIL, NOT RUN or BLOCKED, and the retained `results.json`
 contains exact classifications. Unsupported symlink privileges, unprovided
 cross-user credentials and unavailable volume/OS/runtime fixtures are reported

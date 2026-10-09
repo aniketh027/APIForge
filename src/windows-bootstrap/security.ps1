@@ -1,4 +1,4 @@
-# Fixed repository code. Request data arrives as JSON stdin, never shell syntax.
+# Fixed code; request data is JSON stdin.
 $ErrorActionPreference = 'Stop'
 [Console]::InputEncoding = New-Object Text.UTF8Encoding($false)
 [Console]::OutputEncoding = New-Object Text.UTF8Encoding($false)
@@ -15,8 +15,8 @@ function Map-Mask([int64]$Mask) {
 }
 function Check-Entry([string]$Path, [string]$Kind) {
     $attributes = [IO.File]::GetAttributes($Path)
-    # No reparse, encrypted, compressed, device or offline entries.
     if ([int]$attributes -band 23616) { Refuse 'BOOTSTRAP_UNSAFE_PATH' }
+    if ($Kind -eq 'marker' -and ([int]$attributes -band (-bnot 8352))) { Refuse 'BOOTSTRAP_UNSAFE_PATH' }
     $directory = ([int]$attributes -band 16) -ne 0
     if (($Kind -eq 'marker') -eq $directory) { Refuse 'BOOTSTRAP_UNSAFE_PATH' }
     $sections = [Security.AccessControl.AccessControlSections]'Owner,Group,Access'
@@ -45,13 +45,11 @@ function Check-Descriptor($Raw, [bool]$Canonical, [bool]$Protected, [string]$Kin
         $id = $ace.SecurityIdentifier.Value
         $effective = ([int]$ace.AceFlags -band 8) -eq 0
         if ($private) {
-            # An exact small allowlist, never trust other groups/capabilities.
             if ($id -notin $script:privateTrusted -or $mask -ne 2032127) { Refuse 'BOOTSTRAP_UNSAFE_ACL' }
             $expectedFlags = if ($Kind -eq 'root') { 3 } else { 16 }
             if ([int]$ace.AceFlags -ne $expectedFlags -or $id -in $seen) { Refuse 'BOOTSTRAP_UNSUPPORTED_ACL' }
             $seen += $id
         } elseif ($effective -and $id -notin $script:ancestorTrusted -and ($mask -band 852306)) {
-            # DELETE, DELETE_CHILD, WRITE_DAC, WRITE_OWNER, WRITE_DATA/EA/ATTRIBUTES.
             Refuse 'BOOTSTRAP_UNSAFE_ANCESTOR'
         }
         if ($effective -and $id -eq $script:sid.Value) { $userMask = $userMask -bor $mask }
@@ -69,7 +67,7 @@ function Check-Ancestors([string]$Root) {
     return $items
 }
 function Create-PrivateDirectory([string]$Root) {
-    # One in-memory P/Invoke declaration; no Add-Type, compiler or temporary DLL.
+    # In-memory P/Invoke, no compiler or DLL.
     $assembly = [AppDomain]::CurrentDomain.DefineDynamicAssembly((New-Object Reflection.AssemblyName('APIForgeBootstrap')), [Reflection.Emit.AssemblyBuilderAccess]::Run)
     $module = $assembly.DefineDynamicModule('Native')
     $type = $module.DefineType('APIForgeBootstrapNative', [Reflection.TypeAttributes]'Public,Sealed,Abstract')
@@ -80,7 +78,7 @@ function Create-PrivateDirectory([string]$Root) {
         [object[]]@($true,$true,[Runtime.InteropServices.CharSet]::Unicode,[Runtime.InteropServices.CallingConvention]::Winapi))
     $method.SetCustomAttribute($attribute)
     $method.SetImplementationFlags([Reflection.MethodImplAttributes]::PreserveSig)
-    # Capture the P/Invoke last-error cache before PowerShell's binder runs again.
+    # Capture last error before the PowerShell binder.
     $wrapper = $type.DefineMethod('CreateResult', [Reflection.MethodAttributes]'Public,Static', [int], [Type[]]@([string],[IntPtr]))
     $il = $wrapper.GetILGenerator()
     $success = $il.DefineLabel()
@@ -142,8 +140,12 @@ try {
     $request = [Console]::In.ReadToEnd() | Microsoft.PowerShell.Utility\ConvertFrom-Json
     $profile = [Environment]::GetFolderPath('UserProfile')
     $localData = [Environment]::GetFolderPath('LocalApplicationData')
-    $root = if ($request.root) { [string]$request.root } else { [IO.Path]::Combine($localData, 'APIForge-ProjectStore') }
+    $root = if ($request.root) { [string]$request.root } else { [IO.Path]::Combine($profile, '.apiforge-projects') }
     if (-not $profile -or -not $localData -or -not $root.StartsWith($profile+'\', [StringComparison]::OrdinalIgnoreCase)) { Refuse 'BOOTSTRAP_UNSAFE_LOCATION' }
+    if (-not $request.root) {
+        try { [void][IO.File]::GetAttributes([IO.Path]::Combine($localData,'APIForge-ProjectStore')); Refuse 'BOOTSTRAP_LEGACY_LOCATION' }
+        catch [IO.FileNotFoundException] {} catch [IO.DirectoryNotFoundException] {}
+    }
     if ($request.action -eq 'resolve') {
         [pscustomobject]@{ok=$true;root=$root;ownerSid=$script:sid.Value} | Microsoft.PowerShell.Utility\ConvertTo-Json -Compress
         exit 0
@@ -152,12 +154,14 @@ try {
     if (-not $drive.IsReady -or $drive.DriveType -ne [IO.DriveType]::Fixed -or $drive.DriveFormat -ne 'NTFS') { Refuse 'BOOTSTRAP_UNSUPPORTED_VOLUME' }
     $ancestors = @(Check-Ancestors $root)
     if ($request.action -eq 'initialize') { Create-PrivateDirectory $root }
-    elseif ($request.action -notin @('verifyRoot','verifyMarker')) { Refuse 'BOOTSTRAP_INVALID_OPTIONS' }
+    elseif ($request.action -notin @('verifyRoot','verifyMarker','verifyFile')) { Refuse 'BOOTSTRAP_INVALID_OPTIONS' }
     $entry = Check-Entry $root 'root'
-    if ($request.action -eq 'verifyMarker') {
-        $marker = Check-Entry ([IO.Path]::Combine($root,'bootstrap.identity.json')) 'marker'
+    if ($request.action -in @('verifyMarker','verifyFile')) {
+        $name = if ($request.action -eq 'verifyMarker') { 'bootstrap.identity.json' } else { [string]$request.file }
+        if ($name -cnotin @('bootstrap.identity.json','projects.sqlite3','projects.sqlite3-journal')) { Refuse 'BOOTSTRAP_INVALID_OPTIONS' }
+        $marker = Check-Entry ([IO.Path]::Combine($root,$name)) 'marker'
     }
-    # Recheck after creation. These checks detect change within the admitted namespace.
+    # Detect ancestry changes within the admitted namespace.
     $after = @(Check-Ancestors $root)
     if (($ancestors | Microsoft.PowerShell.Utility\ConvertTo-Json -Compress) -ne ($after | Microsoft.PowerShell.Utility\ConvertTo-Json -Compress)) { Refuse 'BOOTSTRAP_IDENTITY_MISMATCH' }
     [pscustomobject]@{ok=$true;root=$root;ownerSid=$script:sid.Value;entry=$entry;ancestors=$after;marker=$marker} | Microsoft.PowerShell.Utility\ConvertTo-Json -Depth 5 -Compress

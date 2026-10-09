@@ -2,9 +2,13 @@
 const fs = require('node:fs/promises');
 const { initializePrivateStoreRoot, openPrivateStoreRoot } = require('../src/windows-bootstrap');
 process.on('message', async message => {
-    if (message.pauseBeforeMarker || message.pauseAfterMarker) {
+    if (message.pauseBeforeMarker || message.pauseAfterMarker || message.pauseBeforeReadMarker) {
         const original = fs.open;
         fs.open = async (file, ...args) => {
+            if (message.pauseBeforeReadMarker && file.endsWith('bootstrap.identity.json') && args[0] === 'r') {
+                process.send({ barrier: 'before-marker-read' });
+                await new Promise(() => {});
+            }
             if (message.pauseBeforeMarker && file.endsWith('bootstrap.identity.json')) {
                 process.send({ barrier: 'private-directory-created' });
                 await new Promise(() => {});
