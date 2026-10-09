@@ -88,7 +88,11 @@ The single database has application ID `0x41504653`, user/schema version 1 and
 format version 1. All three tables are STRICT:
 
 - `store_meta`: singleton versions, canonical bootstrap UUID-v4 and immutable UTC
-  creation timestamp. SQL triggers prohibit metadata update/deletion.
+  creation timestamp. SQL triggers permit its initial insertion and prohibit
+  subsequent insertion, replacement, update and deletion. A BEFORE INSERT guard
+  rejects insertion whenever metadata already exists, including REPLACE and
+  UPSERT conflict forms, with `recursive_triggers` either OFF or ON. The API does
+  not issue metadata replacement statements.
 - `projects`: canonical generated UUID-v4, name, exact `mysql`/`postgres` target,
   positive safe-integer revision, UTF-8 source BLOB, 32-byte SHA-256, and creation/
   update timestamps. A deferred composite foreign key references its snapshot.
@@ -154,8 +158,10 @@ Opening checks header/journal format, application/user versions, exact applicati
 owned schema SQL and expected indexes, immutable store ID, canonical metadata,
 `integrity_check(1)`, foreign-key consistency, contiguous history, timestamps, exact
 current/snapshot equality, and every source's byte length, UTF-8 and SHA-256.
-Unknown/older/future schemas refuse. Reads screen byte lengths before materializing
-metadata/BLOBs, stream history during validation, and allocate at most one bounded
+Unknown/older/future schemas refuse. An unpublished candidate database missing the
+metadata INSERT guard also refuses as incompatible; there is no automatic
+migration, metadata rewrite or deletion. Reads screen byte lengths before
+materializing metadata/BLOBs, stream history during validation, and allocate at most one bounded
 source per record. SQLite itself still parses pages/schema under its own compiled
 limits; these application bounds are not an engine-wide memory sandbox.
 

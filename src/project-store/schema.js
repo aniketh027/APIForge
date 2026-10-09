@@ -23,6 +23,7 @@ FOREIGN KEY(project_id) REFERENCES projects(id) DEFERRABLE INITIALLY DEFERRED) S
     revisions_no_delete: `CREATE TRIGGER revisions_no_delete BEFORE DELETE ON project_revisions BEGIN SELECT RAISE(ABORT,'immutable revision'); END`,
     meta_no_update: `CREATE TRIGGER meta_no_update BEFORE UPDATE ON store_meta BEGIN SELECT RAISE(ABORT,'immutable store'); END`,
     meta_no_delete: `CREATE TRIGGER meta_no_delete BEFORE DELETE ON store_meta BEGIN SELECT RAISE(ABORT,'immutable store'); END`,
+    meta_no_insert: `CREATE TRIGGER meta_no_insert BEFORE INSERT ON store_meta WHEN EXISTS(SELECT 1 FROM store_meta) BEGIN SELECT RAISE(ABORT,'immutable store'); END`,
     projects_no_delete: `CREATE TRIGGER projects_no_delete BEFORE DELETE ON projects BEGIN SELECT RAISE(ABORT,'deletion unsupported'); END`,
     revisions_contiguous: `CREATE TRIGGER revisions_contiguous BEFORE INSERT ON project_revisions
 WHEN NEW.revision<>coalesce((SELECT max(revision)+1 FROM project_revisions WHERE project_id=NEW.project_id),1)

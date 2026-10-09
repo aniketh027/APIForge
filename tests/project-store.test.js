@@ -88,6 +88,74 @@ async function injected(stage) {
     else assert.equal((await primary.getProjectRevision(p.id,2)).source,'saved');
     assert.equal((await primary.saveProject(p.id,got.revision,{name:'after failure'})).revision,got.revision+1);
 }
+async function metadataImmutabilityTests() {
+    for (const recursive of [0, 1]) await test('metadata and revision replacements refused with recursive_triggers='+recursive,async()=>{
+        // Set the production initialization connection too, proving its first INSERT is allowed in both modes.
+        const originalExec=DatabaseSync.prototype.exec;
+        let initialized;
+        DatabaseSync.prototype.exec=function(sql) {
+            if(sql.startsWith('CREATE TABLE store_meta')) {
+                originalExec.call(this,'PRAGMA recursive_triggers='+recursive);
+                assert.equal(this.prepare('PRAGMA recursive_triggers').get().recursive_triggers,recursive);
+            }
+            return originalExec.call(this,sql);
+        };
+        try {initialized=await init('metadata-recursive-'+recursive);}
+        finally {DatabaseSync.prototype.exec=originalExec;}
+        const {root,store}=initialized,storeId=store.storeId;
+        const source=Buffer.from('\uFEFFα😀漢字\r\nLF\n \t\0','utf8');
+        const first=await store.createProject({name:'initial',target:'mysql',source});
+        assert.equal(first.revision,1);close(store);
+        const before=inventory(root),checks=[];let originalMetadata;
+        raw(root,db=>{
+            db.exec('PRAGMA recursive_triggers='+recursive);
+            assert.equal(db.prepare('PRAGMA recursive_triggers').get().recursive_triggers,recursive);
+            const readMeta=()=>db.prepare('SELECT * FROM store_meta').all();
+            const metadata=readMeta();originalMetadata=metadata;assert.equal(metadata.length,1);assert.equal(metadata[0].store_id,storeId);
+            const readBytes=()=>db.prepare('SELECT hex(CAST(store_id AS BLOB)) AS id,hex(CAST(created_at AS BLOB)) AS time FROM store_meta').all();
+            const bytes=readBytes(),row=metadata[0],values=Object.values(row),insert=' INTO store_meta VALUES(?,?,?,?,?)';
+            const reject=(name,sql,params=values)=>{
+                assert.throws(()=>db.prepare(sql).run(...params),error=>(error.errcode&255)===19&&error.message==='immutable store');
+                assert.deepEqual(readMeta(),metadata);assert.deepEqual(readBytes(),bytes);
+                assert.deepEqual(inventory(root),before);checks.push(name);
+            };
+            reject('UPDATE created_at','UPDATE store_meta SET created_at=?',['2000-01-01T00:00:00.000Z']);
+            reject('UPDATE store_id','UPDATE store_meta SET store_id=?',[crypto.randomUUID()]);
+            reject('DELETE','DELETE FROM store_meta',[]);
+            reject('second INSERT','INSERT'+insert);
+            reject('INSERT OR REPLACE same row','INSERT OR REPLACE'+insert);
+            reject('INSERT OR REPLACE created_at only','INSERT OR REPLACE'+insert,[...values.slice(0,4),'2000-01-01T00:00:00.000Z']);
+            reject('INSERT OR REPLACE store_id only','INSERT OR REPLACE'+insert,[...values.slice(0,3),crypto.randomUUID(),row.created_at]);
+            reject('REPLACE alias','REPLACE'+insert);
+            for(const conflict of ['ROLLBACK','ABORT','FAIL','IGNORE'])reject('INSERT OR '+conflict,'INSERT OR '+conflict+insert);
+            reject('UPSERT DO UPDATE','INSERT'+insert+' ON CONFLICT(singleton) DO UPDATE SET created_at=excluded.created_at',[...values.slice(0,4),'2000-01-01T00:00:00.000Z']);
+            reject('UPSERT DO NOTHING','INSERT'+insert+' ON CONFLICT(singleton) DO NOTHING');
+            reject('INSERT SELECT','INSERT OR REPLACE INTO store_meta SELECT * FROM store_meta',[]);
+            const history=()=>db.prepare('SELECT * FROM project_revisions WHERE project_id=?').all(first.id),snapshot=history();
+            for(const verb of ['INSERT OR REPLACE','REPLACE']) {
+                assert.throws(()=>db.prepare(verb+' INTO project_revisions VALUES(?,?,?,?,?,?,?)').run(first.id,1,'replacement','mysql',source,Buffer.from(hash(source),'hex'),first.createdAt),error=>(error.errcode&255)===19&&error.message==='revision sequence');
+                assert.deepEqual(history(),snapshot);assert.deepEqual(inventory(root),before);checks.push(verb+' revision');
+            }
+            console.log('Metadata immutability evidence: '+JSON.stringify({recursive,storeId,initialInsert:'PASS',expectedRejections:checks,metadataHash:hash(Buffer.from(JSON.stringify(metadata))),databaseHash:before.find(entry=>entry.name==='projects.sqlite3').hash,unchangedAfterEveryRejection:true}));
+        });
+        assert.deepEqual(inventory(root),before);
+        const reopened=await api.openProjectStore({root});stores.add(reopened);
+        assert.equal(reopened.storeId,storeId);assert.equal((await bootstrap.openPrivateStoreRoot({root})).storeId,storeId);
+        assert.deepEqual(Buffer.from((await reopened.getProject(first.id)).source,'utf8'),source);
+        const saved=await reopened.saveProject(first.id,1,{name:'saved',source:Buffer.from('saved\r\n😀\0','utf8')});
+        assert.equal(saved.revision,2);
+        await rejects(()=>reopened.saveProject(first.id,1,{source:'stale'}),'PROJECT_REVISION_CONFLICT');
+        assert.equal((await reopened.getProjectRevision(first.id,1)).name,'initial');
+        assert.deepEqual(Buffer.from((await reopened.getProjectRevision(first.id,1)).source,'utf8'),source);close(reopened);
+        const committed=await api.openProjectStore({root});stores.add(committed);
+        assert.equal((await committed.getProject(first.id)).revision,2);assert.equal((await committed.getProjectRevision(first.id,2)).source,saved.source);
+        raw(root,db=>{assert.deepEqual(db.prepare('SELECT * FROM store_meta').all(),originalMetadata);});
+        close(committed);assert.deepEqual(fs.readdirSync(root).sort(),['bootstrap.identity.json','projects.sqlite3']);
+        const final=inventory(root);assert.equal(final[0].ino,before[0].ino);assert.equal(final[0].hash,before[0].hash);assert.equal(final[1].ino,before[1].ino);
+    });
+    await test('unpublished candidate missing metadata INSERT guard refuses without migration',()=>altered('missing-meta-insert',root=>raw(root,db=>db.exec('DROP TRIGGER meta_no_insert')),'PROJECT_STORE_INCOMPATIBLE'));
+    await test('changed metadata INSERT guard definition refuses without weakening exact schema checks',()=>altered('changed-meta-insert',root=>raw(root,db=>db.exec("DROP TRIGGER meta_no_insert; CREATE TRIGGER meta_no_insert BEFORE INSERT ON store_meta WHEN EXISTS(SELECT 1 FROM store_meta WHERE singleton=1) BEGIN SELECT RAISE(ABORT,'immutable store'); END")),'PROJECT_STORE_INCOMPATIBLE'));
+}
 async function main() {
     fixtures=path.join(os.homedir(),'APIForge-M2A-SQLite-Project-Store-tests-'+crypto.randomUUID());
     await fsp.mkdir(fixtures);console.log('Retained disposable fixtures: '+fixtures);
@@ -113,6 +181,8 @@ async function main() {
     });
     if(process.platform!=='win32'||process.arch!=='x64'){notRun('native Project Store','requires Windows x64');return;}
     DatabaseSync=require('node:sqlite').DatabaseSync;
+    await metadataImmutabilityTests();
+    if(process.argv.includes('--metadata-immutability-only'))return;
     await test('fresh explicit initialization and complete filesystem inventory',async()=>{
         const value=await init('primary');primary=value.store;primaryRoot=value.root;assert.deepEqual(fs.readdirSync(primaryRoot).sort(),['bootstrap.identity.json','projects.sqlite3']);
         const boot=await bootstrap.openPrivateStoreRoot({root:primaryRoot});assert.equal(boot.sqlite.contentValidated,false);assert.equal(boot.storeId,primary.storeId);assert.deepEqual(await primary.listProjects(),[]);
