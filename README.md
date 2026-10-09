@@ -507,6 +507,10 @@ the ZIP in your browser; neither action writes to the repository's `output/`.
 ### Prerequisites
 - Node.js (v18 or higher)
 
+The isolated [SQLite Project Store core](docs/sqlite-project-store.md) has its own
+Windows x64 / Node 24.14.0+ runtime gate. It is not loaded by ordinary compiler
+startup and does not change the compiler's Node 18+ requirement.
+
 The standalone [Windows private storage bootstrap](docs/windows-storage-bootstrap.md)
 uses built-in Windows PowerShell 5.1 on Windows 10/11 x64. It is separate from the
 playground and requires explicit initialization. Its default is the OS user
