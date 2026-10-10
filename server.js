@@ -76,16 +76,48 @@ if (require.main === module) {
         console.log('╚══════════════════════════════════════════════╝');
         console.log('');
     });
+    // One deadline bounds HTTP draining AND application cleanup. Never wait again
+    // after it fires; accepted work that misses it has no completion guarantee.
+    const SHUTDOWN_GRACE_MS = 30000;
+    const sockets = new Set();
+    server.on('connection', socket => {
+        sockets.add(socket);
+        socket.once('close', () => sockets.delete(socket));
+    });
     let shuttingDown = false;
-    for (const signal of ['SIGINT', 'SIGTERM']) process.once(signal, async () => {
+    for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => {
         if (shuttingDown) return;
         shuttingDown = true;
-        const httpClosed = new Promise(resolve => server.close(resolve));
-        const cleanup = await Promise.allSettled([liveManager.shutdown(), projectApi.shutdown()]);
-        if (cleanup[0].status === 'rejected') console.error('LIVE_CLEANUP_FAILED');
-        if (cleanup[1].status === 'rejected') console.error('PROJECT_STORE_CLOSE_FAILED');
-        await httpClosed;
-        process.exit(cleanup.some(result => result.status === 'rejected') ? 1 : 0);
+        const deadline = setTimeout(() => {
+            console.error('SHUTDOWN_DEADLINE_EXCEEDED');
+            try {
+                if (typeof server.closeAllConnections === 'function') server.closeAllConnections();
+                else for (const socket of sockets) socket.destroy(); // Node 18.0/18.1.
+            } catch { console.error('HTTP_CLOSE_FAILED'); }
+            process.exit(1);
+        }, SHUTDOWN_GRACE_MS);
+        const httpClosed = new Promise((resolve, reject) => {
+            try {
+                server.close(error => error ? reject(error) : resolve());
+                // Added in Node 18.2; never destroys an active request/response.
+                server.closeIdleConnections?.();
+            } catch (error) { reject(error); }
+        });
+        function cleanup(action, failureCode) {
+            try {
+                return Promise.resolve(action()).then(() => true, () => {
+                    console.error(failureCode); return false;
+                });
+            } catch { console.error(failureCode); return Promise.resolve(false); }
+        }
+        // Mark the project queue as stopping synchronously, before awaiting Live.
+        const projectCleanup = cleanup(() => projectApi.shutdown(), 'PROJECT_STORE_CLOSE_FAILED');
+        const liveCleanup = cleanup(() => liveManager.shutdown(), 'LIVE_CLEANUP_FAILED');
+        const httpCleanup = cleanup(() => httpClosed, 'HTTP_CLOSE_FAILED');
+        Promise.all([projectCleanup, liveCleanup, httpCleanup]).then(results => {
+            clearTimeout(deadline);
+            process.exit(results.every(Boolean) ? 0 : 1);
+        });
     });
 }
 

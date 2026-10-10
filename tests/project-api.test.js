@@ -454,6 +454,176 @@ async function regressionTests() {
         assert.equal(child.status, 0, child.stderr);
     });
 }
+const SHUTDOWN_GRACE_MS = 30000, SHUTDOWN_ALLOWANCE_MS = 5000;
+const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
+async function shutdownProcess(mode = 'normal', root = path.join(fixtures, 'shutdown-' + crypto.randomUUID()), enabled = false) {
+    const events = [], observers = new Set(); let output = '', outcome;
+    const child = fork(path.join(__dirname, '../server.js'), ['--shutdown-fixture', JSON.stringify({ mode, root })], {
+        execArgv: ['--require', path.join(__dirname, 'project-api-worker.js')], windowsHide: true,
+        stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
+        env: { ...process.env, DEV_PORT: '0', APIFORGE_PROJECT_API: enabled ? '1' : '0', APIFORGE_LIVE_RUNNER: '0' }
+    });
+    children.add(child);
+    for (const stream of [child.stdout, child.stderr]) stream.on('data', bytes => { output += bytes; });
+    child.on('message', data => { events.push({ ...data, at: Date.now() }); for (const observer of observers) observer(); });
+    const exited = new Promise(resolve => child.once('exit', (code, signal) => {
+        children.delete(child); outcome = { code, signal }; resolve(outcome);
+    }));
+    function waitFor(event, count = 1, predicate = () => true) {
+        return new Promise((resolve, reject) => {
+            const timer = setTimeout(() => { observers.delete(check); reject(new Error('Shutdown fixture event missing: ' + event)); }, 40000);
+            function check() {
+                const found = events.filter(value => value.event === event && predicate(value));
+                if (found.length >= count) { clearTimeout(timer); observers.delete(check); resolve(found[count - 1]); }
+            }
+            observers.add(check); check();
+        });
+    }
+    const listening = await waitFor('listening');
+    return { child, root, events, exited, waitFor, port: listening.port, host: '127.0.0.1',
+        output: () => output, outcome: () => outcome,
+        signal(signals = ['SIGTERM']) {
+            if (process.platform === 'win32') child.send({ action: 'signal', signals });
+            else for (const signal of signals) child.kill(signal);
+            return Date.now();
+        }
+    };
+}
+async function boundedExit(value, started) {
+    let timer;
+    try {
+        const outcome = await Promise.race([value.exited, new Promise((resolve, reject) => {
+            timer = setTimeout(() => reject(new Error('Server exceeded shutdown deadline plus test allowance')), SHUTDOWN_GRACE_MS + SHUTDOWN_ALLOWANCE_MS);
+        })]);
+        const ms = Date.now() - started;
+        assert.ok(ms <= SHUTDOWN_GRACE_MS + SHUTDOWN_ALLOWANCE_MS, String(ms));
+        assert.ok(!/PRIVATE_SECRET_NATIVE|C:\\secret|SELECT password|Error:|\bat .*\.js:\d+/.test(value.output()));
+        assert.equal(outcome.signal, null, 'handler must exit itself, not be killed by the harness');
+        console.log('Shutdown evidence: ' + JSON.stringify({ mode: value.child.spawnargs.at(-1) && JSON.parse(value.child.spawnargs.at(-1)).mode,
+            code: outcome.code, ms, events: value.events.map(event => event.event),
+            signalMechanism: process.platform === 'win32' ? 'IPC process.emit of registered signal handler' : 'native child signal' }));
+        return { ...outcome, ms };
+    } finally { clearTimeout(timer); }
+}
+async function releaseShutdownProcess(value) {
+    if (!value.outcome()) { value.child.kill('SIGKILL'); await value.exited; }
+}
+async function stalledRequest(value, url, headers = {}, body = JSON.stringify({ source: 'ENTITY Student\nid INT PRIMARY KEY' })) {
+    const socket = net.connect(value.port, value.host); let text = '';
+    const closed = new Promise(resolve => socket.once('close', () => resolve(Date.now())));
+    socket.on('data', bytes => { text += bytes; }); socket.on('error', () => {});
+    await new Promise((resolve, reject) => { socket.once('connect', resolve); socket.once('error', reject); });
+    socket.write('POST ' + url + ' HTTP/1.1\r\nHost: 127.0.0.1:' + value.port + '\r\nContent-Type: application/json\r\nContent-Length: ' + Buffer.byteLength(body) + '\r\nConnection: close\r\n' + Object.entries(headers).map(([name, content]) => name + ': ' + content + '\r\n').join('') + '\r\n' + body[0]);
+    assert.equal((await value.waitFor('httpRequest', 1, event => event.path === url)).path, url);
+    await pause(100);
+    return { socket, closed, text: () => text, finish: () => socket.end(body.slice(1)) };
+}
+async function shutdownReproduction() {
+    await test('original server reproduces indefinite close with an incomplete real TCP body', async () => {
+        const value = await shutdownProcess(), stalled = await stalledRequest(value, '/api/compile');
+        try {
+            const started = value.signal();
+            await value.waitFor('liveCleanupFinished'); await value.waitFor('projectCleanupFinished');
+            await pause(SHUTDOWN_GRACE_MS + 500);
+            assert.equal(value.outcome(), undefined); assert.equal(stalled.socket.destroyed, false);
+            assert.ok(value.events.some(event => event.event === 'httpCloseStarted'));
+            assert.ok(!value.events.some(event => event.event === 'httpClosed'));
+            console.log('Original shutdown defect: ' + JSON.stringify({ observedMs: Date.now() - started, applicationCleanupFinished: true, serverStillAlive: true, stalledSocketOpen: true }));
+        } finally { stalled.socket.destroy(); await releaseShutdownProcess(value); }
+    });
+}
+async function shutdownTests() {
+    await test('actual server gracefully awaits both cleanups, preserves routes, clears deadline and repeated signals are idempotent', async () => {
+        const value = await shutdownProcess('delayed-cleanup');
+        try {
+            assert.deepEqual((await request(value, 'GET', '/api/health')).json, { status: 'ok', version: '1.0.0' });
+            error(await request(value, 'GET', '/api/projects/session'), 403, 'PROJECT_API_DISABLED');
+            assert.equal((await request(value, 'GET', '/api/live/status')).json.code, 'LIVE_DISABLED');
+            const compile = await request(value, 'POST', '/api/compile', { body: { source: 'ENTITY Student\nid INT PRIMARY KEY' } });
+            assert.equal(compile.status, 200); assert.equal(compile.json.success, true);
+            const started = value.signal(['SIGTERM', 'SIGTERM', 'SIGINT', 'SIGINT']);
+            await value.waitFor('projectCleanupStarted');
+            await assert.rejects(request(value, 'GET', '/api/health'), error => error.code === 'ECONNREFUSED');
+            const result = await boundedExit(value, started); assert.equal(result.code, 0); assert.ok(result.ms >= 700 && result.ms < 5000);
+            for (const event of ['liveCleanupStarted', 'liveCleanupFinished', 'projectCleanupStarted', 'projectCleanupFinished', 'httpCloseStarted', 'httpClosed', 'deadlineStarted', 'deadlineCleared']) assert.equal(value.events.filter(item => item.event === event).length, 1, event);
+            assert.ok(!value.output().includes('SHUTDOWN_DEADLINE_EXCEEDED'));
+            assert.equal(fs.existsSync(value.root), false);
+        } finally { await releaseShutdownProcess(value); }
+    });
+    for (const [mode, url] of [['normal', '/api/compile'], ['normal', '/api/projects'], ['early-node18', '/api/compile']]) await test('actual stalled TCP body forces nonzero bounded shutdown: ' + mode + ' ' + url, async () => {
+        const value = await shutdownProcess(mode, undefined, url.startsWith('/api/projects'));
+        const headers = url.startsWith('/api/projects') ? auth(await session(value)) : {};
+        const stalled = await stalledRequest(value, url, headers);
+        try {
+            const started = value.signal(); await value.waitFor('projectCleanupStarted');
+            await pause(250); assert.equal(stalled.socket.destroyed, false);
+            const result = await boundedExit(value, started), closedAt = await stalled.closed;
+            assert.equal(result.code, 1); assert.ok(result.ms >= SHUTDOWN_GRACE_MS - 500);
+            assert.ok(closedAt - started >= SHUTDOWN_GRACE_MS - 500);
+            assert.ok(value.output().includes('SHUTDOWN_DEADLINE_EXCEEDED'));
+            if (mode !== 'early-node18') assert.equal(value.events.filter(event => event.event === 'httpForced').length, 1);
+            assert.equal(fs.existsSync(value.root), false);
+        } finally { stalled.socket.destroy(); await releaseShutdownProcess(value); }
+    });
+    for (const mode of ['live-reject', 'live-throw', 'project-reject', 'both-reject', 'http-close-error', 'http-close-throw']) await test('actual shutdown safely handles ' + mode + ' and runs both application cleanups', async () => {
+        const value = await shutdownProcess(mode);
+        try {
+            const result = await boundedExit(value, value.signal()); assert.equal(result.code, 1); assert.ok(result.ms < 5000);
+            for (const event of ['liveCleanupStarted', 'projectCleanupStarted']) assert.equal(value.events.filter(item => item.event === event).length, 1);
+            assert.ok(value.events.some(event => event.event === 'projectCleanupFinished'));
+            if (mode !== 'live-throw') assert.ok(value.events.some(event => event.event === 'liveCleanupFinished'));
+            const expected = mode.startsWith('http-') ? 'HTTP_CLOSE_FAILED' : mode.startsWith('project') ? 'PROJECT_STORE_CLOSE_FAILED' : 'LIVE_CLEANUP_FAILED';
+            assert.ok(value.output().includes(expected));
+            if (mode === 'both-reject') assert.ok(value.output().includes('PROJECT_STORE_CLOSE_FAILED'));
+            assert.equal(value.events.filter(event => event.event === 'deadlineCleared').length, 1);
+        } finally { await releaseShutdownProcess(value); }
+    });
+    await test('unresolved Live cleanup cannot extend the actual process deadline', async () => {
+        const value = await shutdownProcess('stuck-live');
+        try {
+            const result = await boundedExit(value, value.signal()); assert.equal(result.code, 1); assert.ok(result.ms >= SHUTDOWN_GRACE_MS - 500);
+            assert.ok(value.events.some(event => event.event === 'projectCleanupFinished'));
+            assert.ok(!value.events.some(event => event.event === 'liveCleanupFinished'));
+            assert.ok(value.output().includes('SHUTDOWN_DEADLINE_EXCEEDED'));
+        } finally { await releaseShutdownProcess(value); }
+    });
+    for (const mode of ['accepted', 'stuck-project']) await test('accepted native Project Store work during actual shutdown: ' + mode, async () => {
+        const fixture = isolated('shutdown-' + mode), store = await fixture.options.storeApi.initializeProjectStore();
+        const project = await store.createProject({ name: 'shutdown', target: 'mysql', source: 'before' }); store.close();
+        const value = await shutdownProcess(mode, fixture.root, true), token = await session(value);
+        let stalled;
+        try {
+            const operation = request(value, 'PUT', '/api/projects/' + project.id, { headers: auth(token), body: { expectedRevision: 1, changes: { source: 'committed during shutdown' } } }).then(result => ({ result }), error => ({ error: error.code }));
+            await value.waitFor('operationAccepted');
+            if (mode === 'accepted') stalled = await stalledRequest(value, '/api/projects', auth(token), JSON.stringify({ name: 'after shutdown', target: 'mysql', source: '' }));
+            const started = value.signal(); await value.waitFor('projectCleanupStarted');
+            assert.ok(!value.events.some(event => event.event === 'storeClosed'));
+            if (stalled) {
+                stalled.finish(); await stalled.closed;
+                assert.match(stalled.text(), /^HTTP\/1\.1 503 /); assert.ok(stalled.text().includes('PROJECT_API_STOPPING'));
+            }
+            const result = await boundedExit(value, started), response = await operation;
+            const reopened = await fixture.options.storeApi.openProjectStore();
+            try {
+                const current = await reopened.getProject(project.id);
+                if (mode === 'accepted') {
+                    assert.equal(result.code, 0); assert.equal(response.result.status, 200); assert.equal(response.result.json.data.revision, 2);
+                    assert.equal(current.revision, 2); assert.equal(current.source, 'committed during shutdown');
+                    const sequence = value.events.map(event => event.event);
+                    assert.ok(sequence.indexOf('operationCommitted') < sequence.indexOf('storeCloseStarted'));
+                    assert.equal(sequence.filter(event => event === 'storeClosed').length, 1);
+                } else {
+                    assert.equal(result.code, 1); assert.ok(result.ms >= SHUTDOWN_GRACE_MS - 500); assert.ok(response.error);
+                    assert.equal(current.revision, 1); assert.equal(current.source, 'before');
+                    assert.ok(!value.events.some(event => event.event === 'storeClosed'));
+                    assert.ok(value.output().includes('SHUTDOWN_DEADLINE_EXCEEDED'));
+                }
+                console.log('Shutdown committed state: ' + JSON.stringify({ mode, revision: current.revision, storeClosedBeforeExit: value.events.some(event => event.event === 'storeClosed') }));
+            } finally { reopened.close(); }
+        } finally { stalled?.socket.destroy(); await releaseShutdownProcess(value); }
+    });
+    if (process.platform === 'win32') notRun('native OS SIGTERM/SIGINT delivery to disposable child', 'Windows child.kill forcibly terminates; IPC process.emit exercised the same registered handlers with native TCP and actual server.js, not OS signal certification');
+}
 async function browserTests() {
     await test('native browser same-origin token exchange and cross-origin reads/mutations', async () => {
         let chromium;
@@ -494,7 +664,10 @@ async function browserTests() {
 async function main() {
     fixtures = path.join(os.homedir(), 'APIForge-M2B-HTTP-tests-' + crypto.randomUUID()); fs.mkdirSync(fixtures);
     console.log('Retained disposable fixtures: ' + fixtures);
+    if (process.argv.includes('--shutdown-reproduce')) { await shutdownReproduction(); return; }
+    if (process.argv.includes('--shutdown-only')) { await shutdownTests(); return; }
     await securityTests(); await mappingAndLifecycleTests(); await regressionTests(); await browserTests(); await nativeTests();
+    await shutdownTests();
     notRun('native Node 18, second-user, Windows 10, Linux/macOS and unsupported filesystems', 'No authorized runtime/account/OS/volume fixtures; simulated runtime refusal is not native Node 18');
     notRun('external remote host or reverse proxy security certification', 'Nonloopback test uses this host LAN interface; proxy termination does not identify the original peer');
     notRun('native generated MySQL/PostgreSQL operations', 'Outside M2B; project routes store source only');

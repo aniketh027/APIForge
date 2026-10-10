@@ -241,10 +241,50 @@ retained as a lifecycle failure and reported on shutdown.
 `createProjectApi()` returns `{router, shutdown}`. `shutdown()` immediately refuses
 new work, drains queued accepted operations, closes the connection once and is
 idempotent. The server exposes `app.locals.shutdownProjectApi` for embedded use;
-call it when stopping an embedded listener. SIGINT/SIGTERM stop HTTP acceptance,
-run both Live and project cleanup, drain HTTP responses and exit with failure if
-either cleanup fails. Existing Live cleanup still runs even if project close
-fails. Forced termination cannot execute shutdown hooks.
+call it when stopping an embedded listener. The standalone development server's
+SIGINT/SIGTERM handler uses one fixed **30,000 ms grace deadline** for both HTTP
+draining and application cleanup. It first calls `server.close()` to stop new
+connections, closes idle HTTP connections when supported, marks the project
+queue as stopping immediately, and runs project and Live cleanup independently.
+Active requests and responses remain open during the grace period. Repeated
+signals reuse the shutdown in progress; they never start duplicate cleanup.
+
+The deadline allows the published Windows admission helper's bounded 20-second
+wait, SQLite's 350 ms BUSY timeout, and ordinary Live forwarding/cleanup work
+(10-second forwarding, 2-second process-exit polling and 2.5-second port-release
+polling) time to finish. It is a grace budget, not a promise that every queue,
+database driver or transaction will complete within it. It is not configurable
+through HTTP inputs or an environment variable.
+
+If both cleanups and HTTP close finish in time, the timer is cleared and the
+process exits 0 only if all three succeeded. Rejections and synchronous throws
+produce fixed `LIVE_CLEANUP_FAILED`, `PROJECT_STORE_CLOSE_FAILED` or
+`HTTP_CLOSE_FAILED` logs and exit 1 after the other work settles. No native
+exception text, paths, source, tokens, credentials or stacks are logged by this
+shutdown handler. If any work remains at the deadline, it logs
+`SHUTDOWN_DEADLINE_EXCEEDED`, force-closes remaining HTTP connections and exits 1
+without a second wait. This is forced failure, not graceful success.
+
+Accepted Project Store operations retain the router's FIFO drain and close-after-
+work ordering during grace. If they miss the deadline, forced process termination
+cannot guarantee their completion, connection-close cleanup or receipt of an
+acknowledgment. A write may have committed before its response was lost; reopen
+and inspect current state/history before deciding whether to retry. Shutdown does
+not retry operations or claim that signal-time writes necessarily rolled back.
+Live cleanup that misses the deadline may likewise leave resources requiring
+manual inspection. JavaScript deadlines require a responsive event loop; they
+cannot execute during a blocked synchronous/native call or an OS failure.
+
+`closeIdleConnections()` and `closeAllConnections()` were added in Node 18.2.
+Earlier Node 18 releases use tracked sockets' `destroy()` at the deadline; idle
+closure is optional there. This preserves the compiler's Node 18+ runtime floor.
+See [Node HTTP shutdown APIs](https://nodejs.org/download/release/v18.20.8/docs/api/http.html#servercloseallconnections).
+Windows `child.kill('SIGTERM')`/`SIGINT` terminate without running Node's handler;
+native shutdown tests therefore dispatch the same registered handler with IPC
+and `process.emit` inside a disposable actual `server.js` process, using real TCP
+clients and disposable storage. This proves handler behavior, not native Windows
+OS-signal delivery. POSIX tests use child signals when run there. See
+[Node signal limitations](https://nodejs.org/download/release/latest-hydrogen/docs/api/process.html#signal-events).
 
 Tests inject application-owned factory functions returning disposable stores;
 this JS-only seam is absent from HTTP/environment configuration. Test roots live
@@ -262,6 +302,8 @@ npm run test:g27
 npm run test:g28
 npm run test:migrations
 npm run test:live-api-runner
+# Focused shutdown regressions, using the actual server process and 30 s deadline:
+node tests/project-api.test.js --shutdown-only
 ```
 
 M2B tests include real HTTP loopback IPv4/IPv6, raw duplicate Host/origin/token
@@ -270,7 +312,12 @@ same-origin and cross-origin Chromium requests when installed, disposable native
 Windows SQLite lifecycle/revisions, independent HTTP server process reopen and
 racing writers, BUSY, post-COMMIT fault injection, malformed/missing/corrupt/
 incompatible/unsafe storage preservation, shutdown and public-route regression
-guards. Fake stores are limited to security, mapping and controller-lifecycle
+guards. Shutdown regressions include incomplete compiler/project bodies, normal
+cleanup, delayed native saves, refusal of new project work, repeated signals,
+cleanup rejection/synchronous throws, HTTP-close callback errors and unresolved
+cleanup promises. Test-only preloading instruments factories and handler dispatch;
+it does not replace the standalone server's registered shutdown handler. Fake
+stores are limited to security, mapping and controller-lifecycle
 tests. Per-run `results.json` records PASS/FAIL/NOT RUN in the retained fixture
 directory; unavailable interfaces/browser fixtures are classified explicitly.
 
