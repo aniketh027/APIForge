@@ -30,6 +30,11 @@ const { createManager } = require('./src/live-runner/manager');
 const liveManager = createManager();
 app.use('/api/live', require('./src/api/live-runner-api').createRouter(liveManager));
 
+// Project requests have their own access checks and JSON size policy.
+const projectApi = require('./src/api/project-api').createProjectApi();
+app.use('/api/projects', projectApi.router);
+app.locals.shutdownProjectApi = projectApi.shutdown;
+
 // ── Middleware ───────────────────────────────────────────────
 app.use(express.json({ limit: '1mb' }));
 
@@ -75,9 +80,12 @@ if (require.main === module) {
     for (const signal of ['SIGINT', 'SIGTERM']) process.once(signal, async () => {
         if (shuttingDown) return;
         shuttingDown = true;
-        server.close();
-        try { await liveManager.shutdown(); process.exit(0); }
-        catch { console.error('LIVE_CLEANUP_FAILED'); process.exit(1); }
+        const httpClosed = new Promise(resolve => server.close(resolve));
+        const cleanup = await Promise.allSettled([liveManager.shutdown(), projectApi.shutdown()]);
+        if (cleanup[0].status === 'rejected') console.error('LIVE_CLEANUP_FAILED');
+        if (cleanup[1].status === 'rejected') console.error('PROJECT_STORE_CLOSE_FAILED');
+        await httpClosed;
+        process.exit(cleanup.some(result => result.status === 'rejected') ? 1 : 0);
     });
 }
 

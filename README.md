@@ -23,6 +23,15 @@ watch each compiler phase run live.
 For the complete syntax, validation rules, and worked examples, read the
 [APIForge Language Guide](docs/APIForge-Language-Guide.md).
 
+M2B adds an opt-in local saved-project HTTP API at `/api/projects`. It is disabled
+unless the server starts with the exact `APIFORGE_PROJECT_API=1` value. A protected
+session endpoint issues an ephemeral token; explicit initialization and all
+project operations require that token, loopback peer/Host and same-origin checks.
+Storage requires the published Windows x64 private NTFS bootstrap and supported
+Node 24.14.0+ SQLite runtime; compiler-only startup retains Node 18+ support.
+See [the project HTTP API contract](docs/project-http-api.md) for PowerShell
+enablement, endpoints, limits, lifecycle, status mappings and security boundaries.
+
 G27 adds an explicit PostgreSQL 18 target while MySQL remains the default.
 Use `node index.js source.apiforge --target postgres`, library options
 `{ target: 'postgres' }`, or an HTTP compile body with `target: "postgres"`.
