@@ -32,10 +32,16 @@ Node 24.14.0+ SQLite runtime; compiler-only startup retains Node 18+ support.
 See [the project HTTP API contract](docs/project-http-api.md) for PowerShell
 enablement, endpoints, limits, lifecycle, status mappings and security boundaries.
 
+M2C adds New/Open/Save controls for named local projects, exact saved source,
+MySQL/PostgreSQL targets, acknowledged revisions and unsaved-change feedback.
+Startup remains empty and makes no project requests. Save and storage initialization
+are separate explicit actions; conflicts and uncertain saves preserve the local
+draft and offer inspection before replacement. See [the project UI workflow](docs/project-ui.md).
+
 G27 adds an explicit PostgreSQL 18 target while MySQL remains the default.
 Use `node index.js source.apiforge --target postgres`, library options
 `{ target: 'postgres' }`, or an HTTP compile body with `target: "postgres"`.
-The browser continues to generate MySQL. See [the PostgreSQL contract](docs/postgres-target.md)
+The browser target selector supports MySQL and PostgreSQL. See [the PostgreSQL contract](docs/postgres-target.md)
 and [native verification](docs/postgres-target-verification.md).
 
 G28 adds local filesystem imports with one global entity/relation namespace.

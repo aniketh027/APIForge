@@ -62,6 +62,7 @@ const errorLines = new Set();
 let lastCompileResult = null;
 let isCompiling = false;
 let selectedTarget = 'mysql';
+let projectWorkspace = null;
 // Every source edit/reset or target change invalidates pending compilation output.
 let targetRevision = 0;
 
@@ -236,6 +237,7 @@ function selectTarget(target) {
         button.setAttribute('aria-pressed', String(button.dataset.target === target));
     });
     invalidateCompilation('Target changed', `Compile again to generate ${TARGET_LABELS[target]} output.`);
+    projectWorkspace?.changed();
 }
 
 function emptyState(title = 'No compilation yet', message = 'Write APIForge DSL and press Compile.') {
@@ -1104,9 +1106,11 @@ function invalidateCompilation(title, message) {
 function sourceChanged() {
     if (workspaceName) workspaceName.textContent = editor.value ? 'Modified source' : 'Untitled source';
     invalidateCompilation(editor.value ? 'Source changed' : 'No compilation yet', 'Write APIForge DSL and press Compile.');
+    projectWorkspace?.changed();
 }
 
 function clearAll() {
+    if (projectWorkspace && !projectWorkspace.canClear()) return;
     editor.value = '';
     sourceChanged();
     switchTab('tokens');
@@ -1428,6 +1432,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Start with an immediately editable, empty workspace.
     clearAll();
+
+    projectWorkspace = APIForgeProjects.start({
+        editor, workspaceName, getTarget: () => selectedTarget,
+        restore(source, target) {
+            editor.value = source;
+            selectTarget(target);
+            sourceChanged();
+            switchTab('tokens');
+            editor.scrollTop = editor.scrollLeft = 0;
+            syncScroll();
+        }
+    });
 
     // Initial rendering
     updateLineNumbers();

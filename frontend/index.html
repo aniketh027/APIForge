@@ -33,6 +33,35 @@
                     <span class="file-state">DSL source</span>
                 </div>
 
+                <section id="project-workspace" class="project-workspace" aria-label="Project workspace">
+                    <div class="project-name-row">
+                        <label for="project-name">Project name</label>
+                        <input id="project-name" type="text" placeholder="Untitled project" autocomplete="off" spellcheck="false">
+                    </div>
+                    <div class="project-actions" role="group" aria-label="Project actions">
+                        <button id="project-new" class="btn btn-quiet" type="button">New</button>
+                        <button id="project-open" class="btn btn-quiet" type="button">Open</button>
+                        <button id="project-save" class="btn" type="button">Save</button>
+                        <span id="project-status" role="status" aria-live="polite">Not saved</span>
+                        <span id="project-revision">No committed revision</span>
+                    </div>
+                    <div id="project-notice" class="project-notice" hidden>
+                        <p id="project-message" role="status" aria-live="polite"></p>
+                        <div class="project-recovery">
+                            <button id="project-inspect" class="btn" type="button" hidden>Inspect saved projects</button>
+                            <button id="project-keep" class="btn btn-quiet" type="button" hidden>Keep editing locally</button>
+                        </div>
+                    </div>
+                    <details id="project-storage" class="project-storage">
+                        <summary>Saved-project storage</summary>
+                        <p>Requires the local Project API. Storage is created only after you confirm Initialize Storage.</p>
+                        <div class="project-actions">
+                            <button id="project-initialize" class="btn btn-quiet" type="button">Initialize Storage</button>
+                            <button id="project-reconnect" class="btn btn-quiet" type="button">Reconnect Project API</button>
+                        </div>
+                    </details>
+                </section>
+
                 <div class="editor-wrapper">
                     <div id="line-numbers" class="line-numbers" aria-hidden="true"><div>1</div></div>
                     <div class="editor-container">
@@ -125,7 +154,23 @@
         </section>
     </div>
 
+    <dialog id="project-dialog" class="project-dialog" aria-labelledby="project-dialog-title" aria-describedby="project-dialog-description">
+        <div class="project-dialog-heading">
+            <h2 id="project-dialog-title">Open project</h2>
+            <button id="project-dialog-close" class="btn btn-quiet" type="button" autofocus>Cancel</button>
+        </div>
+        <p id="project-dialog-description">Saved projects are listed in UUID order. Select one to open it.</p>
+        <p id="project-dialog-status" role="status" aria-live="polite"></p>
+        <div id="project-list" role="list" aria-label="Saved projects"></div>
+        <div id="project-preview" hidden>
+            <p id="project-preview-meta"></p>
+            <pre id="project-preview-source" tabindex="0" aria-label="Saved DSL source"></pre>
+            <button id="project-load-snapshot" class="btn" type="button">Load saved version</button>
+        </div>
+    </dialog>
+
     <script src="source-frame.js"></script>
+    <script src="project-workspace.js"></script>
     <script src="app.js"></script>
 </body>
 </html>

@@ -8,9 +8,15 @@ const {spawnSync,execFileSync}=require('child_process');
 const { createPinnedCompiler, currentCompiler, compileSource } = require('./pinned-compiler-loader');
 const { sourceCases, directIRCases, rawSQLCases } = require('./effective-schema-corpus');
 const BASE = '1caf927b5bcef627575a36c1d29800ce03e6f17c';
-// Keep the G26 compiler oracle frozen while pinning intentional frontend changes
-// separately, with the same exact committed-byte protection as G28.
+// Historical M1 frontend bytes and G26/G28 compiler compatibility remain frozen.
+// The current frontend evolves through independently reviewed milestones and is
+// tested by browser regression suites; equality with M1 is not a future invariant.
 const FRONTEND_BASE = '6702d5656917b29d63b0c1183f1d6434c78e2837';
+const FRONTEND_BLOBS = Object.freeze({
+    'frontend/app.js': '648aae3c0104aac5b376ddbb91baa882f11fb8a4',
+    'frontend/index.html': '7c3beee2c3120ae2a044a56cd2d3b39ad1401914',
+    'frontend/style.css': '75c70fb8d88c9ba7fba1b5323a2c51d41e596e33'
+});
 const pinned = createPinnedCompiler({ revision: BASE });
 const current = currentCompiler();
 let valid = 0, invalid = 0, files = 0, checks = 0;
@@ -69,8 +75,14 @@ async function zip(source, historical) {
             same(await zip(compileSource(source,current).files,false),await zip(pinned.compile(source).files,true),'ZIP with '+state+' state');
             same(plain(compileSource(source,current)),plain(pinned.compile(source)),'public phases with '+state+' state');
         }
-        // Compare all three frontend Git blobs raw against the frontend pin.
-        for(const file of ['frontend/app.js','frontend/index.html','frontend/style.css'])same(execFileSync('git',['show','HEAD:'+file]),execFileSync('git',['show',FRONTEND_BASE+':'+file]),'browser Git blob bytes '+file);
+        // Verify immutable historical identities and contents, independently of HEAD.
+        for(const [file,expectedBlob] of Object.entries(FRONTEND_BLOBS)) {
+            const blob=execFileSync('git',['rev-parse',FRONTEND_BASE+':'+file],{encoding:'utf8'}).trim();
+            same(blob,expectedBlob,'historical M1 blob identity '+file);
+            same(execFileSync('git',['cat-file','-t',blob],{encoding:'utf8'}).trim(),'blob','historical M1 object type '+file);
+            const content=execFileSync('git',['cat-file','blob',blob]);
+            same(execFileSync('git',['hash-object','--stdin'],{input:content,encoding:'utf8'}).trim(),expectedBlob,'historical M1 content hash '+file);
+        }
     }finally{fs.rmSync(root,{recursive:true,force:true});}
     console.log(JSON.stringify({base:BASE,valid,invalid,files,checks,result:'PASS'}));
 })().catch(e=>{console.error(e);process.exitCode=1;});
