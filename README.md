@@ -598,6 +598,16 @@ The MySQL harness creates a uniquely named `apiforge_e2e_*` database, imports th
 
 ---
 
+M2D-A adds a disabled-by-default backend candidate for persistent generated API
+initialization, Run, Stop and protected forwarding. It preserves generated data
+on Stop and server shutdown, requires an acknowledged saved-project revision,
+and refuses automatic schema changes. Scoped native MySQL 8.4 and PostgreSQL 18
+acceptance passed in fresh disposable Docker fixtures with out-of-tree test
+instrumentation: CRUD retention across Stop/Run, actual parent restart and Store
+reopen, and durable ownership/revision refusal. This is not an uninstrumented
+package-alias rerun; see [persistent runtime configuration, recovery and HTTP
+contract](docs/persistent-runtime.md). M2D-B frontend controls are deferred.
+
 ## 🛠 Tech Stack
 
 | Technology    | Purpose                          |

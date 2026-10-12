@@ -35,6 +35,10 @@ const projectApi = require('./src/api/project-api').createProjectApi();
 app.use('/api/projects', projectApi.router);
 app.locals.shutdownProjectApi = projectApi.shutdown;
 
+const persistentApi = require('./src/api/persistent-runtime-api').createPersistentApi();
+app.use('/api/persistent', persistentApi.router);
+app.locals.shutdownPersistentApi = persistentApi.shutdown;
+
 // ── Middleware ───────────────────────────────────────────────
 app.use(express.json({ limit: '1mb' }));
 
@@ -112,9 +116,10 @@ if (require.main === module) {
         }
         // Mark the project queue as stopping synchronously, before awaiting Live.
         const projectCleanup = cleanup(() => projectApi.shutdown(), 'PROJECT_STORE_CLOSE_FAILED');
+        const persistentCleanup = cleanup(() => persistentApi.shutdown(), 'PERSISTENT_CLEANUP_FAILED');
         const liveCleanup = cleanup(() => liveManager.shutdown(), 'LIVE_CLEANUP_FAILED');
         const httpCleanup = cleanup(() => httpClosed, 'HTTP_CLOSE_FAILED');
-        Promise.all([projectCleanup, liveCleanup, httpCleanup]).then(results => {
+        Promise.all([projectCleanup, persistentCleanup, liveCleanup, httpCleanup]).then(results => {
             clearTimeout(deadline);
             process.exit(results.every(Boolean) ? 0 : 1);
         });
