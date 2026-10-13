@@ -1,4 +1,4 @@
-/* M2D-B. Saved selections and owned sessions stay separate; no durable browser state. */
+/* Saved selections and owned sessions stay separate; recovery is browser memory only. */
 'use strict';
 window.APIForgePersistent = (() => {
     const HEX = /^[a-f0-9]{64}$/;
@@ -174,6 +174,11 @@ window.APIForgePersistent = (() => {
         let selected = null, generation = 0, state = null, lastState = null, transient = '', pending = false;
         let message = 'Choose Reconnect Persistent API to connect explicitly. The local server requires APIFORGE_PROJECT_API=1 and APIFORGE_PERSISTENT_RUNNER=1, with dedicated target credentials configured server-side.';
         let owned = null, operations = [], operationIndex = 0, connected = false;
+        let connectionGeneration = 0, projectGeneration = 0, stoppedProof = null;
+        const projectArea = document.getElementById('project-workspace');
+        const projectDialog = document.getElementById('project-dialog');
+        const projectStatus = document.getElementById('project-status');
+        let projectObserver = null;
         const uncertainInitialization = new Set();
         const controls = {};
         function node(tag, id, text, parent = pane) {
@@ -199,6 +204,9 @@ window.APIForgePersistent = (() => {
         button('persistent-initialize', 'Initialize Database', initialize);
         button('persistent-run', 'Run API', run);
         button('persistent-stop', 'Stop API', stop);
+        const forget = button('persistent-forget', 'Forget Stale Browser Session', forgetStaleSession);
+        forget.setAttribute('aria-describedby', 'persistent-forget-reason');
+        node('p', 'persistent-forget-reason', '', card);
         node('p', 'persistent-owned', '', card);
         const builder = node('div', 'persistent-builder', '', card); builder.className = 'persistent-builder';
         function label(id, text, parent = builder) { const value = node('label', null, text, parent); value.htmlFor = id; }
@@ -217,6 +225,22 @@ window.APIForgePersistent = (() => {
         const response = node('div', 'persistent-response', '', card); response.setAttribute('aria-label', 'Persistent generated API response'); response.setAttribute('aria-live', 'polite');
         const valid = ticket => ticket === generation;
         const matches = () => owned && identity(owned.selection) === identity(selected);
+        const projectIdle = () => projectArea?.getAttribute('aria-busy') === 'false' && projectDialog?.open === false &&
+            ['saved', 'unsaved'].includes(projectStatus?.dataset.state);
+        function projectActivity(records) {
+            if (records.some(record => record.oldValue !== record.target.getAttribute(record.attributeName))) {
+                projectGeneration++; stoppedProof = null;
+            }
+        }
+        function canForget(proof = stoppedProof) {
+            projectActivity(projectObserver?.takeRecords() || []);
+            return !!proof && proof === stoppedProof && !pending && connected && api.connected() &&
+                projectIdle() && proof.project === projectGeneration &&
+                selection(selected) && matches() && proof.session === owned &&
+                proof.identity === identity(selected) && proof.connection === connectionGeneration &&
+                proof.ticket === generation && state === 'stopped' && proof.result.state === 'stopped' &&
+                identity(proof.result) === identity(selected);
+        }
         function render() {
             card.setAttribute('aria-busy', String(pending));
             controls['persistent-project'].textContent = selection(selected) ? selected.name : 'No acknowledged saved project';
@@ -238,6 +262,12 @@ window.APIForgePersistent = (() => {
             controls['persistent-initialize'].disabled = pending || !connected || !selection(selected) || state !== 'absent' || !!owned || uncertainInitialization.has(identity(selected));
             controls['persistent-run'].disabled = pending || !connected || !selection(selected) || state !== 'stopped' || !!owned;
             controls['persistent-stop'].disabled = pending || !connected || !owned;
+            forget.disabled = !canForget();
+            controls['persistent-forget-reason'].textContent = canForget() ?
+                'Fresh Status verified this exact saved deployment as stopped. With confirmation, discard only its stale session reference in this page. The database and server ownership are unchanged.' :
+                ['running', 'occupied'].includes(state) ?
+                'Browser-session forgetting is refused while running or occupied. Use the existing safe lifecycle or a separately reviewed operator procedure to resolve ownership.' :
+                'Forgetting requires a known session for this exact saved project, target and revision, an explicit Persistent API connection, and a fresh verified stopped Status. Finish saved-project operations and resolve any unconfirmed Save before inspecting again. It cannot recover a lost ID or repair uncertain provisioning.';
             controls['persistent-owned'].textContent = owned ? 'Known owned session: ' + owned.selection.name + ' · ' + owned.selection.target + ' · revision ' + owned.selection.revision +
                 (matches() ? '. Stop remains available with unsaved edits.' : '. This belongs to a previous selection. Stop API explicitly stops that session; the current project is untouched.') :
                 ['running', 'occupied'].includes(state) ? 'No owned session ID is available in this page. Reload loses ephemeral IDs. Status cannot reconstruct them; no takeover or guessed Stop is available. Preserve state for operator inspection.' : 'No owned generated API session in this page.';
@@ -264,10 +294,10 @@ window.APIForgePersistent = (() => {
             value.forEach((entry, index) => { const option = node('option', null, entry.method + ' ' + entry.path, endpoints); option.value = String(index); });
             parameters();
         }
-        function begin(text) { pending = true; transient = text; message = ''; render(); return generation; }
+        function begin(text) { stoppedProof = null; generation++; pending = true; transient = text; message = ''; render(); return generation; }
         function finish() { pending = false; transient = ''; render(); }
         function report(error, action, ticket) {
-            connected = api.connected();
+            connected = connected && api.connected();
             if (action === 'request' && owned) owned.verified = false;
             if (action === 'stop' && owned) owned.verified = false;
             if (!valid(ticket)) return;
@@ -278,24 +308,44 @@ window.APIForgePersistent = (() => {
         }
         async function reconnect() {
             if (pending) return;
+            connectionGeneration++; connected = false;
             lastState = state || lastState; state = null;
             if (owned) owned.verified = false;
             const ticket = begin('connecting');
-            try { await api.connect(); connected = true; if (valid(ticket)) { state = null; message = 'Persistent API connected. Refresh Status explicitly. No mutation was replayed.'; } }
+            try { await api.connect(); if (valid(ticket)) { connected = true; state = null; message = 'Persistent API connected. Refresh Status explicitly. No mutation was replayed.'; } }
             catch (error) { report(error, 'connect', ticket); }
             finally { finish(); }
         }
         async function refresh() {
             if (pending || !connected || !selection(selected)) return;
-            const saved = selected, ticket = begin('inspecting');
+            const saved = selected, projectTicket = projectGeneration, ticket = begin('inspecting');
             try {
                 const result = await api.status(saved);
                 if (!valid(ticket)) return;
                 state = result.state;
+                stoppedProof = state === 'stopped' && projectIdle() && projectTicket === projectGeneration ? { session: owned, identity: identity(saved), project: projectTicket,
+                    connection: connectionGeneration, ticket, result } : null;
                 if (matches()) owned.verified = state === 'running';
                 message = state === 'occupied' ? 'Ownership is occupied. No automatic release or takeover is available.' : 'Verified status for saved revision ' + saved.revision + '.';
             } catch (error) { report(error, 'status', ticket); }
             finally { finish(); }
+        }
+        function forgetStaleSession() {
+            const proof = stoppedProof;
+            if (!canForget(proof)) { render(); return; }
+            if (!window.confirm('Forget Stale Browser Session for ' + selected.name + ' (' + selected.target +
+                ', saved revision ' + selected.revision + ')? Fresh Status verified this exact deployment as stopped. ' +
+                'This discards only the ephemeral session reference, request builder and old response held in this browser page. ' +
+                'It does not stop a process, change the database or server-side ownership, clear an occupied claim, or recover a lost token. ' +
+                'Refresh Status again before choosing Run API explicitly. Continue?')) return;
+            // Confirmation does not confer authority if selection, connection or a
+            // newer operation changed. Never issue an HTTP request from this action.
+            if (!canForget(proof)) { render(); return; }
+            generation++; stoppedProof = null; owned = null;
+            state = null; lastState = null;
+            installOperations([]); response.replaceChildren();
+            message = 'Only local browser session memory was discarded. The database and server-side ownership were unchanged. Refresh Status explicitly before Run API; no operation was sent.';
+            render();
         }
         async function initialize() {
             if (controls['persistent-initialize'].disabled) return;
@@ -382,11 +432,27 @@ window.APIForgePersistent = (() => {
         }
         projects.subscribe(snapshot => {
             if (identity(snapshot) !== identity(selected)) {
-                generation++; state = null; lastState = null; if (connected) message = ''; response.replaceChildren();
+                generation++; stoppedProof = null; state = null; lastState = null; if (connected) message = ''; response.replaceChildren();
                 selected = snapshot;
                 installOperations(matches() ? owned.operations : []);
             }
             selected = snapshot; render();
+        });
+        // The published metadata subscription intentionally excludes operation
+        // state. Observe its existing busy/dialog signals without changing that
+        // bridge or gating known-session Stop. Direct checks above also protect
+        // confirmation before the observer's microtask has run.
+        projectObserver = new MutationObserver(records => {
+            projectActivity(records); render();
+        });
+        if (projectArea) projectObserver.observe(projectArea, { attributes: true, attributeFilter: ['aria-busy'], attributeOldValue: true });
+        if (projectDialog) projectObserver.observe(projectDialog, { attributes: true, attributeFilter: ['open'], attributeOldValue: true });
+        window.addEventListener('offline', () => {
+            generation++; stoppedProof = null; connected = false;
+            lastState = state || lastState; state = null;
+            if (owned) owned.verified = false;
+            message = 'The browser connection was lost. Reconnect Persistent API explicitly, then Refresh Status. The known session reference is retained.';
+            render();
         });
         // Connecting, inspection and every mutation require explicit controls.
     }

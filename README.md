@@ -620,7 +620,8 @@ in the saved-project controls or expand its disclosure below the workbench,
 choose **Reconnect Persistent API**, then **Refresh Status**. Only a verified `absent` deployment offers
 **Initialize Database**, with confirmation explaining the dedicated database
 and one-time saved schema import. This action is distinct from **Initialize
-Storage** for saved projects. A verified `stopped` deployment offers **Run API**.
+Storage** for saved projects. A verified `stopped` deployment with no page-held
+session reference offers **Run API**.
 Run fetches the matching saved snapshot through the protected Project API and
 compiles that exact source to establish the generated OpenAPI request allowlist;
 it does not use editor drafts or unrelated compilation output. If this OpenAPI
@@ -633,7 +634,7 @@ deployment provenance without a separately reviewed schema upgrade. Switching
 projects retains the previous owned session and provides an explicit Stop for
 that session. Nothing stops a persistent API on browser unload. Tokens and
 session IDs stay only in JavaScript memory. After reload, status may report
-`running` or `occupied` without a usable owned session ID; no recovery, guessed
+`running` or `occupied` without a usable owned session ID; no token reconstruction, guessed
 Stop, automatic expiry or takeover is available.
 
 Timeouts and lost acknowledgments remain unconfirmed outcomes. No mutation or
@@ -649,11 +650,40 @@ initializes, runs or stops a runtime. The eleven compiler output tabs keep their
 published order and keyboard behavior. Reconnect discovers only the token; Refresh
 Status inspects the selected database explicitly.
 
+After a clean server restart, the same browser page may retain an obsolete session
+reference. **Forget Stale Browser Session** is available only for a known session
+matching the currently acknowledged saved project UUID, target and revision,
+after explicit Persistent API reconnection and a fresh validated **stopped** Status.
+Connection, selection/revision and newer operation changes invalidate that proof.
+Pending saved-project operations, the project selection dialog and an unconfirmed
+or conflicting Save also refuse forgetting; use the existing project workflow to
+resolve uncertainty, then inspect Status again. Known-session Stop remains available.
+The action requires confirmation and rechecks eligibility before clearing only
+the page-held session, cached request operations and old response. Cancellation
+changes nothing. It sends no HTTP request, changes no database or server ownership,
+and requires another explicit Status inspection before an explicit Run. Closing
+the disclosure never stops or forgets a session. Known-session Stop survives
+unsaved edits, project switches and failed requests or uncertain Stop outcomes.
+
+This action cannot clear an occupied claim, stop a child, recover a lost token,
+repair incomplete provisioning, migrate schema or create backups. Only `stopped`
+is eligible; `running`, `occupied`, `incomplete`, `absent` and unverified responses
+refuse recovery. Invalid tokens, timeouts, PIDs, ports and restart assumptions are
+insufficient. Occupied ownership requires the existing safe lifecycle or separately
+reviewed operator assessment. APIForge is not production-hosting certified and
+this action does not certify power-loss recovery. See the runtime guide for the
+distinction between saved-project Storage, generated Database and browser memory.
+
 `npm run test:frontend-persistent-runtime` runs real Chromium against controlled
 HTTP fixtures for identity, ownership, races, refusals, uncertainty, requests,
 safe rendering and accessibility. Controlled fixtures are separate from native
 MySQL/PostgreSQL evidence. Optional `APIFORGE_M2DB_EVIDENCE` writes browser
 screenshots and a result inventory to a test-owned evidence directory.
+
+`npm run test:frontend-persistent-recovery` separately verifies M2D-C recovery,
+confirmation, invalidation and the simulated restart in real Chromium with controlled
+fixtures. Optional `APIFORGE_M2DC_EVIDENCE` writes its browser evidence. Native
+MySQL/PostgreSQL acceptance and manual screen-reader certification are separate.
 
 ## 🛠 Tech Stack
 

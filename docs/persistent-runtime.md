@@ -1,10 +1,12 @@
-# Persistent generated API runtime core (M2D-A)
+# Persistent generated API runtime and browser session recovery
 
 This backend candidate implements explicit initialization, Run, Stop, status and
 OpenAPI forwarding for a saved project's generated MySQL/PostgreSQL database.
 Scoped native MySQL 8.4 and PostgreSQL 18 acceptance passed using fresh disposable
-Docker databases and out-of-tree verification instrumentation. M2D-B workbench controls are not
-implemented. The existing disposable Live runner retains its database deletion
+Docker databases and out-of-tree verification instrumentation. M2D-B provides an
+independent Persistent API disclosure with Status, confirmed Initialize Database,
+Run, known-session Stop and generated requests. M2D-C adds confirmed reconciliation
+of a stale session reference already held in the browser page. The existing disposable Live runner retains its database deletion
 and 15-minute lifetime; do not use it to reopen persistent data.
 
 ## Enablement and configuration
@@ -200,6 +202,57 @@ The standalone server includes persistent cleanup in its existing single
 or cleanup force connection closure and exit 1 at the deadline. Hard termination
 or power loss cannot certify asynchronous cleanup.
 
+## Browser memory and verified stopped deployments
+
+**Initialize Storage** prepares saved-project storage through the Project API.
+**Initialize Database** separately provisions the saved project's generated database
+once, with confirmation. A browser-held ephemeral session ID addresses an owned
+runtime; it is distinct from the Persistent API connection token, the durable
+database attestation and the non-expiring runtime ownership claim. These IDs and
+tokens stay in JavaScript memory and are never placed in browser storage or URLs.
+
+Clean Stop terminates the owned child and releases its exact claim while retaining
+records. Clean server shutdown follows that lifecycle. After an orderly server
+restart, an existing browser page may still hold its obsolete session reference.
+Reconnect Persistent API explicitly, then Refresh Status. Only a fresh, successful,
+validated `stopped` response for the identical acknowledged project UUID, target
+and saved revision enables **Forget Stale Browser Session** for that held reference.
+The proof is bound to the current connection generation and status operation.
+Project/revision changes, reconnection, newer operations, failed status or a
+browser offline event invalidate eligibility. Unsaved edits do not change the
+acknowledged deployment; they never cause a mutation or automatic recovery.
+Pending saved-project operations and the project selection dialog also disable
+forgetting and invalidate its proof, even before the saved identity changes.
+An unconfirmed/conflicting Save must be resolved through the existing project
+workflow before a new Status can establish eligibility. Known-session Stop is
+independent of these recovery-only checks.
+
+The action requires a click and confirmation explaining its limited effect.
+Cancellation changes no state and sends no request. Confirmation synchronously
+rechecks the proof, clears the exact local session reference, cached generated
+operations and old response, and invalidates async tickets. It sends **no HTTP
+request**. Run remains disabled until another explicit Refresh Status verifies
+stopped; Run still requires its own click. Nothing reconnects, initializes, runs,
+stops or sends a generated request automatically. Closing the disclosure retains
+the session. Known-session Stop remains available across unsaved edits, project
+switches and request/Stop errors; an invalid session error alone cannot justify
+forgetting. An uncertain Stop retains ownership in the page until an explicit
+authoritative status inspection establishes the deployment's state.
+
+Reload loses session IDs; successful Status cannot reconstruct a lost ID. `running`
+or `occupied` never permits this action or competing Start. Use the existing safe
+lifecycle or a separately reviewed operator assessment. `absent`, `incomplete`,
+collision, unavailable database and uncertain provisioning preserve state and
+offer no recovery/repair shortcut. A PID, port, timeout, invalid token, restart
+assumption, claim age or old cached Status is never proof of stopped ownership.
+
+Forgetting does not clear an occupied backend claim, stop a child process, change
+the database, recover a lost token, certify power-loss recovery, implement migrations
+or create backups. There is no Force Stop, Reset, Unlock or Takeover control. The
+read-only status proof describes the response at inspection time; it does not
+certify continuous server reachability or prevent another manager acquiring a
+claim afterward. Explicit Run revalidates ownership through the unchanged backend.
+
 ## Manual recovery boundary
 
 Preserve unknown/provisioning/occupied databases and all metadata. Before any
@@ -255,6 +308,13 @@ scripts, externally terminating proxies and manual database replacement/restore
 are outside the guarantee. This is not production hosting or power-loss proof.
 
 ## Verification
+
+`npm run test:frontend-persistent-recovery` runs a separate deterministic Chromium
+suite against controlled HTTP fixtures, including a simulated clean restart with
+an old page-held session and a new server token reporting stopped. This is browser
+behavior evidence, separate from native MySQL/PostgreSQL restart acceptance.
+`APIFORGE_M2DC_EVIDENCE` optionally captures screenshots and results. Manual
+screen-reader certification and power-loss recovery are not established by this suite.
 
 `npm run test:persistent-runtime` is deterministic offline/controlled-connector
 evidence, with actual Node child, TCP and standalone shutdown checks. Windows
