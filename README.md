@@ -606,7 +606,54 @@ acceptance passed in fresh disposable Docker fixtures with out-of-tree test
 instrumentation: CRUD retention across Stop/Run, actual parent restart and Store
 reopen, and durable ownership/revision refusal. This is not an uninstrumented
 package-alias rerun; see [persistent runtime configuration, recovery and HTTP
-contract](docs/persistent-runtime.md). M2D-B frontend controls are deferred.
+contract](docs/persistent-runtime.md).
+
+The independent **Persistent API** workspace section provides saved-project status, confirmed
+one-time database initialization, Run, Stop and a generated request builder.
+It remains separate from the disposable **Live API** tab. Enable both
+`APIFORGE_PROJECT_API=1` and `APIFORGE_PERSISTENT_RUNNER=1`, with the dedicated
+target credentials configured server-side as described above. The browser
+accepts no database credentials, connection settings, SQL or arbitrary URLs.
+
+Create or Open a project and Save an acknowledged revision. Choose **Persistent API**
+in the saved-project controls or expand its disclosure below the workbench,
+choose **Reconnect Persistent API**, then **Refresh Status**. Only a verified `absent` deployment offers
+**Initialize Database**, with confirmation explaining the dedicated database
+and one-time saved schema import. This action is distinct from **Initialize
+Storage** for saved projects. A verified `stopped` deployment offers **Run API**.
+Run fetches the matching saved snapshot through the protected Project API and
+compiles that exact source to establish the generated OpenAPI request allowlist;
+it does not use editor drafts or unrelated compilation output. If this OpenAPI
+cannot be verified, requests stay disabled while the acknowledged session can
+still be stopped. Stop retains the database and records for later Run or reopen.
+
+Unsaved edits are explicitly excluded from runtime actions. Saving a newer
+revision invalidates status and the request builder; the backend refuses changed
+deployment provenance without a separately reviewed schema upgrade. Switching
+projects retains the previous owned session and provides an explicit Stop for
+that session. Nothing stops a persistent API on browser unload. Tokens and
+session IDs stay only in JavaScript memory. After reload, status may report
+`running` or `occupied` without a usable owned session ID; no recovery, guessed
+Stop, automatic expiry or takeover is available.
+
+Timeouts and lost acknowledgments remain unconfirmed outcomes. No mutation or
+generated request is automatically retried. Use **Reconnect Persistent API**
+and read-only **Refresh Status** explicitly; reconnection never replays an
+action. An unconfirmed initialization cannot be repeated from that page.
+Unknown, incomplete or occupied database state needs the preservation and
+manual-inspection procedure in the runtime documentation. There are no Reset,
+Delete, Force Adopt or migration controls. Initial page load issues no Project
+or Persistent API requests and opens no Store; first opening the Persistent API
+section also issues no API requests. Opening or closing this section never
+initializes, runs or stops a runtime. The eleven compiler output tabs keep their
+published order and keyboard behavior. Reconnect discovers only the token; Refresh
+Status inspects the selected database explicitly.
+
+`npm run test:frontend-persistent-runtime` runs real Chromium against controlled
+HTTP fixtures for identity, ownership, races, refusals, uncertainty, requests,
+safe rendering and accessibility. Controlled fixtures are separate from native
+MySQL/PostgreSQL evidence. Optional `APIFORGE_M2DB_EVIDENCE` writes browser
+screenshots and a result inventory to a test-owned evidence directory.
 
 ## 🛠 Tech Stack
 

@@ -1444,6 +1444,7 @@ document.addEventListener('DOMContentLoaded', () => {
             syncScroll();
         }
     });
+    APIForgePersistent.start(projectWorkspace);
 
     // Initial rendering
     updateLineNumbers();

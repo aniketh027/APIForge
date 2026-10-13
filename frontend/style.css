@@ -132,7 +132,7 @@ textarea:focus-visible,
 
 .app-shell {
     display: grid;
-    grid-template-rows: 52px minmax(0, 1fr) 74px;
+    grid-template-rows: 52px minmax(0, 1fr) auto 74px;
     height: 100vh;
     min-height: 560px;
     background: var(--bg);
@@ -1647,4 +1647,42 @@ textarea:focus-visible,
 @media (max-width: 700px) {
     .live-card { padding: var(--space-2); }
     .live-card-heading { flex-direction: column; }
+}
+/* M2D-B persistent runtime panel uses the workbench palette and spacing. */
+.persistent-workspace {
+    min-width: 0; margin: 0 var(--space-2) var(--space-2);
+    background: var(--surface-1); border: 1px solid var(--border); border-radius: var(--radius-lg);
+}
+.persistent-workspace summary { cursor: pointer; padding: 10px 16px; font-weight: 600; }
+.persistent-workspace summary span { margin-left: 8px; color: var(--text-muted); font-size: 12px; font-weight: 400; }
+.persistent-workspace summary:focus-visible, .persistent-panel:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; }
+.persistent-panel { min-width: 0; max-height: min(420px, 38dvh, max(100px, calc(100dvh - 640px))); overflow: auto; border-top: 1px solid var(--border); }
+@media (max-width: 1050px) {
+    .persistent-panel { max-height: min(420px, 38dvh); }
+}
+@media (min-width: 1051px) and (max-height: 740px) {
+    body:has(.persistent-workspace[open]) { overflow: auto; }
+    .app-shell:has(.persistent-workspace[open]) { height: auto; grid-template-rows: 52px 480px auto 74px; }
+}
+.persistent-card { max-width: 100%; min-width: 0; padding: 16px; }
+.persistent-card h3 { margin: 0 0 12px; }
+.persistent-card p { margin: 10px 0; line-height: 1.5; overflow-wrap: anywhere; }
+.persistent-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0; }
+.persistent-builder { display: grid; gap: 8px; min-width: 0; }
+.persistent-builder[hidden], #persistent-body-control[hidden] { display: none; }
+.persistent-builder label { display: block; margin: 8px 0 4px; }
+.persistent-builder input, .persistent-builder select, .persistent-builder textarea {
+    box-sizing: border-box; width: 100%; min-width: 0; padding: 10px;
+    background: var(--editor-surface); color: var(--text);
+    border: 1px solid var(--border); border-radius: var(--radius-md); font: inherit;
+}
+.persistent-builder textarea { resize: vertical; font-family: var(--font-mono, monospace); }
+.persistent-card :is(button, input, select, textarea, pre):focus-visible { outline: 2px solid var(--accent, #58a6ff); outline-offset: 3px; }
+#persistent-status { font-weight: 600; }
+#persistent-message, #persistent-draft { color: var(--text-muted); }
+#persistent-response { min-width: 0; max-width: 100%; }
+#persistent-response pre { white-space: pre-wrap; overflow-wrap: anywhere; overflow: auto; max-height: 420px; }
+@media (max-width: 600px) {
+    .persistent-card { padding: 10px; }
+    .persistent-actions .btn { flex: 1 1 150px; }
 }

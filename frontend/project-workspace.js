@@ -123,6 +123,12 @@ window.APIForgeProjects = (() => {
         let id = null, revision = null, saved = null, sourceAnchor = '';
         let generation = 0, editVersion = 0, operation = null, active = false;
         let issue = null, notice = '', noticeError = false, tokenInvalid = false, preview = null, opener = null;
+        const subscribers = new Set();
+        let published = '';
+        function acknowledged() {
+            return Object.freeze({ projectId: id, revision, target: saved?.target || null,
+                name: saved?.name || null, dirty: unsaved() });
+        }
         function current() {
             // Textareas render CR/CRLF as LF. Retain the exact saved string when
             // the displayed source matches it, including after an exact revert.
@@ -156,6 +162,11 @@ window.APIForgeProjects = (() => {
             element('project-inspect').textContent = id ? 'Inspect latest saved version' : 'Inspect saved projects';
             workspaceName.textContent = active || name.value ? name.value || 'Untitled project'
                 : editor.value ? 'Modified source' : 'Untitled source';
+            const snapshot = acknowledged(), serialized = JSON.stringify(snapshot);
+            if (serialized !== published) {
+                published = serialized;
+                subscribers.forEach(listener => listener(snapshot));
+            }
         }
         function tell(message, error = false) { notice = message; noticeError = error; render(); }
         function changed() {
@@ -320,7 +331,10 @@ window.APIForgeProjects = (() => {
             event.preventDefault(); event.returnValue = '';
         });
         render();
-        return { changed, canClear: () => (!active && !name.value) || !unsaved() ||
+        return { changed, snapshot: acknowledged, subscribe(listener) {
+            subscribers.add(listener); listener(acknowledged());
+            return () => subscribers.delete(listener);
+        }, canClear: () => (!active && !name.value) || !unsaved() ||
             window.confirm('Clear the source and discard its unsaved edits? The project identity and committed revision are kept.') };
     }
     return { start };

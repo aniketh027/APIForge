@@ -42,6 +42,7 @@
                         <button id="project-new" class="btn btn-quiet" type="button">New</button>
                         <button id="project-open" class="btn btn-quiet" type="button">Open</button>
                         <button id="project-save" class="btn" type="button">Save</button>
+                        <button id="persistent-launcher" class="btn btn-quiet" type="button" aria-expanded="false" aria-controls="persistent-workspace">Persistent API</button>
                         <span id="project-status" role="status" aria-live="polite">Not saved</span>
                         <span id="project-revision">No committed revision</span>
                     </div>
@@ -138,6 +139,11 @@
             </section>
         </main>
 
+        <details id="persistent-workspace" class="persistent-workspace">
+            <summary id="persistent-disclosure">Persistent API <span>Saved project runtime</span></summary>
+            <section id="persistent-panel" class="persistent-panel" role="region" aria-labelledby="persistent-disclosure" tabindex="0"></section>
+        </details>
+
         <section class="pipeline" aria-labelledby="pipeline-title">
             <div class="pipeline-heading">
                 <h2 id="pipeline-title">Compiler pipeline</h2>
@@ -171,6 +177,7 @@
 
     <script src="source-frame.js"></script>
     <script src="project-workspace.js"></script>
+    <script src="persistent-workspace.js"></script>
     <script src="app.js"></script>
 </body>
 </html>

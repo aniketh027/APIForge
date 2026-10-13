@@ -13,6 +13,7 @@
     "test:persistent-runtime": "node tests/persistent-runtime.test.js",
     "test:persistent-runtime-native": "node tests/persistent-runtime-native.test.js",
     "test:frontend-projects": "node tests/frontend-projects.test.js",
+    "test:frontend-persistent-runtime": "node tests/frontend-persistent-runtime.test.js",
     "test:frontend-compilation-summary": "node tests/frontend-compilation-summary.test.js",
     "test:frontend-api-files": "node tests/frontend-api-files.test.js",
     "test:frontend-target-selector": "node tests/frontend-target-selector.test.js",
