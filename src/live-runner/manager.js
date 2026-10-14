@@ -25,7 +25,12 @@ function createManager({ env = process.env, ttlMs = TTL_MS, dependencies = {} } 
             ['process', () => d.stop(session.process)], ['port', () => d.released(session.port)],
             ['connections', () => session.database?.close()], ['database', () => session.database?.drop()],
             ['directory', () => d.removeProject(session.root)]
-        ]) { try { await action(); } catch { errors.push(step); } }
+        ]) {
+            // Deletion requires confirmed ownership AND completed runtime/connection
+            // prerequisites. Retain the session when any prerequisite needs retry.
+            if (step === 'database' && errors.some(step => ['process', 'port', 'connections'].includes(step))) continue;
+            try { await action(); } catch { errors.push(step); }
+        }
         if (active === session) active = null;
         // Keep failed ownership internal for retry; never start another runtime after incomplete cleanup.
         pendingCleanup = errors.length ? session : null;
