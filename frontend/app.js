@@ -530,77 +530,199 @@ function hideSummary() {
 // ENHANCED ERROR DISPLAY & HIGHLIGHTING (TASK 1 & TASK 2)
 // ═════════════════════════════════════════════════════════════
 
+// One in-memory presentation model for the canonical Inspector and Editor.
+// Neither view reads messages back from DOM text or owns compiler state.
+window.APIForgeDiagnostics = (() => {
+    const batchSize = 50, pages = new WeakMap();
+    let diagnostics = [], source = '', sourceLines = [], phase = '', revision = 0;
+    const text = value => value == null ? '' : String(value);
+    const positive = value => Number.isSafeInteger(value) && value > 0;
+    const phaseNames = new Map([['semantic', 'Semantic Analysis'], ['lexer', 'Lexical Analysis'], ['parser', 'Parsing'],
+        ['ir', 'IR Generation'], ['optimizer', 'Optimization'], ['codegen', 'Code Generation'], ['network', 'Connection']]);
+    const phaseName = value => phaseNames.get(value) || formatPhaseName(text(value));
+    const changed = () => window.dispatchEvent(new Event('apiforge-diagnostics-change'));
+
+    function set(failingPhase, errors) {
+        phase = text(failingPhase || 'compiler'); source = editor.value;
+        sourceLines = source.replace(/^\uFEFF/, '').split('\n').map(line => line.replace(/\r$/, ''));
+        revision++; errorLines.clear();
+        const highlights = new Int32Array(sourceLines.length + 1);
+        const entries = Array.isArray(errors) && errors.length ? errors : [{ message: 'Unknown compilation error.' }];
+        diagnostics = entries.map(entry => {
+            const err = entry && typeof entry === 'object' ? entry : { message: entry };
+            const structured = err.diagnostic && typeof err.diagnostic === 'object';
+            const d = structured ? err.diagnostic : err;
+            const message = text(structured ? d.message : err.userMessage || err.message) || 'Unknown compilation error.';
+            let line = d.line, column = d.column;
+            // Retain the legacy location fallback only for legacy messages.
+            if (!structured && line == null) line = Number(message.match(/line\s+(\d+)/i)?.[1]) || null;
+            if (!structured && column == null) column = Number(message.match(/column\s+(\d+)/i)?.[1]) || null;
+            const validLine = positive(line) && line <= sourceLines.length;
+            const navigable = validLine && positive(column) && column <= sourceLines[line - 1].length + 1;
+            // Invalid coordinates remain visible as reported, but never become actions or pointers.
+            const location = [line != null ? `Line ${text(line)}` : '', column != null ? `Column ${text(column)}` : ''].filter(Boolean).join(', ');
+            const validRange = navigable && positive(d.endLine) && positive(d.endColumn) && d.endLine <= sourceLines.length &&
+                d.endColumn <= sourceLines[d.endLine - 1].length + 1 &&
+                (d.endLine > line || (d.endLine === line && d.endColumn > column));
+            const endLine = validRange ? d.endLine - (d.endLine > line && d.endColumn === 1 ? 1 : 0) : line;
+            if (validLine) { highlights[line - 1]++; highlights[endLine]--; }
+            return { phase: text(d.phase || phase), code: text(d.code), symbol: text(d.symbol), message,
+                hint: text(d.hint), line, column, location, validLine, navigable, endLine,
+                range: validRange ? { endLine: d.endLine, endColumn: d.endColumn } : {}, frames: null };
+        });
+        let active = 0;
+        for (let i = 0; i < sourceLines.length; i++) { active += highlights[i]; if (active > 0) errorLines.add(i + 1); }
+    }
+    function navigate(index) {
+        const d = diagnostics[index];
+        if (!d?.navigable || editor.value !== source) return;
+        window.APIForgeIDE?.navigate('editor');
+        let offset = d.line === 1 && source.charCodeAt(0) === 0xFEFF ? 1 : 0;
+        const rawLines = source.split('\n');
+        for (let i = 0; i < d.line - 1; i++) offset += rawLines[i].length + 1;
+        offset += d.column - 1;
+        editor.focus({ preventScroll: true }); editor.setSelectionRange(offset, offset);
+        window.APIForgeEditor?.render(errorLines);
+        // The existing overlay measures wrapped row heights and shares textarea geometry.
+        const row = editorHighlights?.children[d.line - 1];
+        const style = getComputedStyle(editor), padding = parseFloat(style.paddingTop) || 0;
+        const bounds = editor.getBoundingClientRect();
+        let caret;
+        if (row) {
+            const measure = document.createRange();
+            const walker = document.createTreeWalker(row, NodeFilter.SHOW_TEXT);
+            let remaining = d.column - 1, node;
+            while ((node = walker.nextNode())) {
+                if (remaining <= node.length) {
+                    measure.setStart(node, remaining); measure.collapse(true);
+                    caret = measure.getBoundingClientRect();
+                    break;
+                }
+                remaining -= node.length;
+            }
+        }
+        const height = caret?.height || parseFloat(style.lineHeight);
+        const top = caret?.height ? editor.scrollTop + caret.top - bounds.top
+            : row ? row.offsetTop : padding + (d.line - 1) * height;
+        editor.scrollTop = Math.max(0, top - (editor.clientHeight - height) / 2);
+        if (document.documentElement.dataset.wrap !== 'on') {
+            if (caret) editor.scrollLeft = Math.max(0, editor.scrollLeft + caret.left - bounds.left - editor.clientWidth / 2);
+            else {
+                // The editor deliberately omits its overlay for large sources. Measure
+                // only this prefix; never recreate or mutate the editor's source DOM.
+                const measure = document.createElement('span');
+                Object.assign(measure.style, { position: 'fixed', visibility: 'hidden', whiteSpace: 'pre', font: style.font, tabSize: style.tabSize });
+                measure.textContent = sourceLines[d.line - 1].slice(0, d.column - 1); document.body.append(measure);
+                editor.scrollLeft = Math.max(0, measure.getBoundingClientRect().width - editor.clientWidth / 2); measure.remove();
+            }
+        }
+        syncScroll();
+    }
+    function framesFor(d) {
+        if (d.frames) return d.frames;
+        if (!d.validLine) return [];
+        // Share the compiler's source-frame algorithm, on only the relevant rows.
+        const excerpt = sourceLines.slice(d.line - 1, d.endLine).join('\n');
+        const range = d.range.endLine ? { endLine: d.endLine - d.line + 1,
+            endColumn: d.range.endLine > d.endLine ? sourceLines[d.endLine - 1].length + 1 : d.range.endColumn } : {};
+        d.frames = APIForgeSourceFrame.sourceFrame(excerpt, { line: 1, column: d.navigable ? d.column : null, ...range })
+            .map(frame => ({ ...frame, line: frame.line + d.line - 1 }));
+        return d.frames;
+    }
+    function render(host, { compact = false } = {}) {
+        let page = pages.get(host);
+        if (!page || page.revision !== revision) { page = { revision, limit: batchSize, expanded: !compact }; pages.set(host, page); }
+        host.replaceChildren();
+        if (!diagnostics.length) return;
+        const node = (tag, cls, value) => {
+            const el = document.createElement(tag); el.className = cls;
+            if (value != null) el.textContent = value;
+            return el;
+        };
+        const summary = node('div', 'diagnostic-summary');
+        const heading = node('div', 'diagnostic-summary-heading');
+        heading.append(node('strong', 'diagnostic-title', phaseName(phase) + ' Failed'));
+        const count = `${diagnostics.length} ${diagnostics.length === 1 ? 'problem' : 'problems'}`;
+        heading.append(node('span', 'diagnostic-count', count)); summary.append(heading);
+        if (compact) {
+            const toggle = node('button', 'btn btn-quiet diagnostic-details-toggle', page.expanded ? 'Hide details' : 'Show details');
+            toggle.type = 'button'; toggle.setAttribute('aria-expanded', String(page.expanded));
+            toggle.addEventListener('click', () => {
+                page.expanded = !page.expanded; render(host, { compact }); host.querySelector('.diagnostic-details-toggle').focus({ preventScroll: true });
+            }); summary.append(toggle);
+        }
+        host.append(summary);
+        const cards = node('div', 'diagnostic-cards'); cards.classList.toggle('diagnostic-compact', compact && !page.expanded);
+        for (let index = 0; index < Math.min(page.limit, diagnostics.length); index++) {
+            const d = diagnostics[index], card = node('article', 'error-card'), header = node('div', 'error-heading');
+            card.tabIndex = -1;
+            card.setAttribute('aria-label', phaseName(d.phase) + ' error' + (d.code ? ' ' + d.code : ''));
+            header.append(node('span', 'error-phase-title', phaseName(d.phase) + ' error'));
+            if (d.code) { const code = node('span', 'error-code', d.code); code.title = d.symbol || d.code; header.append(code); }
+            if (d.location) {
+                const location = node(d.navigable ? 'button' : 'span', 'error-location', d.location);
+                if (d.navigable) { location.type = 'button'; location.addEventListener('click', () => navigate(index)); }
+                header.append(location);
+            }
+            card.append(header, node('div', 'error-message-text', d.message));
+            if (page.expanded) {
+                const frames = framesFor(d);
+                if (frames.length) {
+                    const excerpt = node('div', 'error-excerpt'); excerpt.tabIndex = 0;
+                    excerpt.setAttribute('aria-label', 'Source excerpt' + (d.location ? ': ' + d.location : ''));
+                    for (const frame of frames) {
+                        const row = node('div', 'error-source-line');
+                        row.append(node('span', 'error-line-number', frame.line), node('span', 'error-source-text', frame.text));
+                        excerpt.append(row);
+                        if (frame.pointer) {
+                            const pointer = node('div', 'error-pointer-line'); pointer.setAttribute('aria-hidden', 'true');
+                            const marker = node('span', 'error-source-text');
+                            const start = frame.pointer.indexOf('^');
+                            // Mirror the actual prefix width, including tabs, Unicode and combining marks.
+                            marker.append(node('span', 'error-pointer-prefix', frame.text.slice(0, start)), node('span', 'error-caret', frame.pointer.slice(start)));
+                            pointer.append(node('span', 'error-line-number', ''), marker); excerpt.append(pointer);
+                        }
+                    }
+                    card.append(excerpt);
+                }
+                if (d.hint) {
+                    const hint = node('div', 'error-hint'), icon = node('span', 'error-hint-icon');
+                    icon.setAttribute('aria-hidden', 'true');
+                    // A small inline bulb uses only static, trusted markup.
+                    icon.innerHTML = '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M6 12h4m-3 2h2M5.5 10c0-1-2-2-2-4a4.5 4.5 0 0 1 9 0c0 2-2 3-2 4v1h-5z"/></svg>';
+                    hint.append(icon, node('span', '', 'Hint: ' + d.hint)); card.append(hint);
+                }
+            }
+            cards.append(card);
+        }
+        host.append(cards);
+        if (diagnostics.length > page.limit) {
+            const more = node('button', 'btn diagnostic-more', `Showing ${page.limit} of ${diagnostics.length} problems · Show ${Math.min(batchSize, diagnostics.length - page.limit)} more`);
+            more.type = 'button'; more.addEventListener('click', () => {
+                const previous = page.limit; page.limit += batchSize; render(host, { compact });
+                const card = host.querySelectorAll('.error-card')[previous];
+                const target = card.querySelector('button, .error-excerpt') || card;
+                target.scrollIntoView({ block: 'nearest' });
+                target.focus({ preventScroll: true });
+            }); host.append(more);
+        }
+    }
+    function clear() { diagnostics = []; source = ''; sourceLines = []; revision++; changed(); }
+    return { set, render, clear, changed, get count() { return diagnostics.length; } };
+})();
+
 function showError(phase, errors) {
+    APIForgeDiagnostics.set(phase, errors);
     errorPanel.classList.add('visible');
-    const phaseHeader = `${formatPhaseName(phase || 'compiler')} error`;
-
-    // Register all error lines for highlighting
-    errorLines.clear();
-
-    const formattedErrors = (errors || []).map(err => {
-        const diagnostic = err.diagnostic || err;
-        let line = diagnostic.line || null;
-        let column = diagnostic.column || null;
-        let message = err.diagnostic ? diagnostic.message : err.userMessage || err.message || String(err);
-
-        // Extract line/column from message if not directly set
-        if (!err.diagnostic && !line) {
-            const m = message.match(/line\s+(\d+)/i);
-            if (m) line = parseInt(m[1], 10);
-        }
-        if (!err.diagnostic && !column) {
-            const m = message.match(/column\s+(\d+)/i);
-            if (m) column = parseInt(m[1], 10);
-        }
-
-        if (line) {
-            errorLines.add(line);
-        }
-
-        // Clean up message prefix if redundant
-        let displayMessage = message;
-        displayMessage = displayMessage.replace(/^Syntax Error at line \d+, column \d+:\s*/i, '');
-        displayMessage = displayMessage.replace(/^Semantic Error:\s*/i, '');
-
-        // Location text
-        let locationText = '';
-        if (line && column) {
-            locationText = `Line ${line}, Column ${column}`;
-        } else if (line) {
-            locationText = `Line ${line}`;
-        }
-
-        const frames = APIForgeSourceFrame.sourceFrame(editor.value, { ...diagnostic, line, column });
-        frames.forEach(frame => errorLines.add(frame.line));
-        const excerptHtml = frames.length ? `<div class="error-excerpt">${frames.map(frame => `
-            <div class="error-source-line"><span class="error-line-number">${frame.line} │</span>${escapeHtml(frame.text)}</div>
-            ${frame.pointer ? `<div class="error-pointer-line">${escapeHtml(frame.pointer)}</div>` : ''}
-        `).join('')}</div>` : '';
-
-        return `
-            <div class="error-card">
-                <div class="error-heading">
-                    <div class="error-phase-title">${escapeHtml(err.diagnostic ? `${formatPhaseName(diagnostic.phase)} error` : phaseHeader)}</div>
-                    ${diagnostic.code ? `<span class="error-code" title="${escapeHtml(diagnostic.symbol || diagnostic.code)}">${escapeHtml(diagnostic.code)}</span>` : ''}
-                </div>
-                <div class="error-message-text">${escapeHtml(displayMessage)}</div>
-                ${excerptHtml}
-                ${diagnostic.hint ? `<div class="error-location">Hint: ${escapeHtml(diagnostic.hint)}</div>` : ''}
-                ${locationText ? `<div class="error-location">${escapeHtml(locationText)}</div>` : ''}
-            </div>
-        `;
-    }).join('');
-
-    errorPanel.innerHTML = formattedErrors;
-
-    // Apply visual highlights to editor and line numbers
-    updateLineNumbers();
-    updateEditorHighlights();
+    APIForgeDiagnostics.render(errorPanel);
+    updateLineNumbers(); updateEditorHighlights();
+    APIForgeDiagnostics.changed();
 }
 
 function hideError() {
     errorPanel.classList.remove('visible');
     errorPanel.innerHTML = '';
+    APIForgeDiagnostics.clear();
     clearErrorHighlights();
 }
 
@@ -1193,7 +1315,8 @@ async function compile() {
         } else {
             // ── Error occurred ──
             hideSummary();
-            showError(data.phase || 'unknown', data.diagnostics?.map(diagnostic => ({ diagnostic })) || data.errors || [{ message: 'Unknown compilation error.' }]);
+            showError(data.phase || 'unknown', Array.isArray(data.diagnostics) && data.diagnostics.length
+                ? data.diagnostics.map(diagnostic => ({ diagnostic: diagnostic || {} })) : data.errors);
             resetOutputPanes(
                 `Unavailable after ${formatPhaseName(data.phase || 'compiler')} failure`,
                 'This output was not produced because compilation stopped earlier.'

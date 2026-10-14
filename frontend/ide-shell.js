@@ -53,14 +53,14 @@ window.APIForgeIDE = (() => {
         const editorArea = document.createElement('div'); editorArea.id = 'ide-editor-split';
         const sourceArea = document.querySelector('.editor-wrapper'); sourceArea.before(editorArea); editorArea.append(sourceArea);
         const diagnostics = document.createElement('section'); diagnostics.id = 'ide-diagnostics';
-        diagnostics.innerHTML = '<div class="ide-diagnostics-heading"><strong>COMPILATION</strong><button id="ide-diagnostics-toggle" class="btn btn-quiet" aria-expanded="true">Collapse</button><button id="ide-inspect" class="btn btn-quiet">Open Compiler Inspector →</button></div><div id="ide-diagnostic-detail"></div>';
+        diagnostics.innerHTML = '<div class="ide-diagnostics-heading"><strong>COMPILATION</strong><span id="ide-diagnostic-count" hidden></span><button id="ide-diagnostics-toggle" class="btn btn-quiet" aria-expanded="true" aria-controls="ide-diagnostic-detail">Collapse</button><button id="ide-inspect" class="btn btn-quiet">Open Compiler Inspector →</button></div><div id="ide-diagnostic-detail"></div>';
         editorArea.append(diagnostics); diagnostics.append(document.querySelector('.pipeline'));
         const footer = document.createElement('footer'); footer.className = 'ide-statusbar';
         footer.innerHTML = '<span id="ide-workspace-label">DSL Editor</span><span id="ide-editor-mode">APIForge DSL · UTF-8</span><span id="ide-cursor">Ln 1, Col 1</span>';
         shell.append(footer);
         // Put summary ahead of tabs without changing its identity or its render contract.
         document.querySelector('.tab-bar').before(byId('compilation-summary'));
-        APIForgeSplits.attach(editorArea, sourceArea, diagnostics, { key: 'Editor and diagnostics', vertical: true, initial: 78, minimum: 100 });
+        APIForgeSplits.attach(editorArea, sourceArea, diagnostics, { key: 'Editor and diagnostics', vertical: true, initial: 70, minimum: 100 });
         APIForgeSplits.attach(byId('ide-project-split'), byId('ide-project-left'), byId('ide-project-detail'), { key: 'Projects and preview', initial: 38, minimum: 220 });
         sidebar.querySelectorAll('[data-workspace]').forEach(button => {
             button.setAttribute('aria-label', button.title);
@@ -88,11 +88,18 @@ window.APIForgeIDE = (() => {
             byId('ide-project-id').textContent = byId('project-workspace').dataset.projectId || 'This draft has no saved identity yet.';
             const preview = byId('dsl-editor').value;
             byId('ide-project-source').textContent = preview ? preview.slice(0, 20000) + (preview.length > 20000 ? '\n… Preview truncated. Full source remains in the editor.' : '') : 'No source yet.';
-            byId('ide-diagnostic-detail').textContent = byId('error-panel').classList.contains('visible') ? byId('error-panel').textContent.trim().replace(/\s+/g, ' ').slice(0, 600) : byId('pipeline-state').textContent;
+        };
+        const syncDiagnostics = () => {
+            const count = APIForgeDiagnostics.count, badge = byId('ide-diagnostic-count');
+            badge.hidden = !count;
+            badge.textContent = `${count} ${count === 1 ? 'problem' : 'problems'}`;
+            diagnostics.classList.toggle('has-errors', count > 0);
+            APIForgeDiagnostics.render(byId('ide-diagnostic-detail'), { compact: true });
+            if (!count) byId('ide-diagnostic-detail').textContent = byId('pipeline-state').textContent;
         };
         new MutationObserver(sync).observe(byId('project-workspace'), { childList: true, subtree: true, attributes: true });
-        new MutationObserver(sync).observe(byId('pipeline-state'), { childList: true, subtree: true });
-        new MutationObserver(sync).observe(byId('error-panel'), { childList: true, subtree: true, attributes: true });
+        new MutationObserver(() => { if (!APIForgeDiagnostics.count) syncDiagnostics(); }).observe(byId('pipeline-state'), { childList: true, subtree: true });
+        window.addEventListener('apiforge-diagnostics-change', syncDiagnostics);
         byId('dsl-editor').addEventListener('input', sync);
         byId('project-name').addEventListener('input', sync);
         const enhanceFiles = () => {
@@ -120,7 +127,7 @@ window.APIForgeIDE = (() => {
             const builder = byId('live-body-control')?.parentElement;
             if (builder && !builder.querySelector('.ide-request-response')) runtimePanels(builder, byId('live-response'), 'Live request and response');
         }).observe(byId('output-live-api'), { childList: true });
-        APIForgeEditor.start(); sync(); navigate('editor');
+        APIForgeEditor.start(); sync(); syncDiagnostics(); navigate('editor');
     }
     function runtimePanels(builder, response, key) {
         if (!builder || !response) return;
