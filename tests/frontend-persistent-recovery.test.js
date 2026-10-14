@@ -1,5 +1,20 @@
 'use strict';
 const assert = require('node:assert/strict');
+// Use the same visible workspace controls as a user; never reveal hidden panels.
+async function workspace(page, view) {
+    if (await page.locator('dialog:modal').count() && await page.locator('.ide-sidebar [data-workspace="' + view + '"]').getAttribute('aria-current') === 'page') return;
+    await page.locator('.ide-sidebar [data-workspace="' + view + '"]').click();
+    await page.locator('.ide-sidebar [data-workspace="' + view + '"][aria-current="page"]').waitFor();
+}
+async function clickIn(page, view, control) { await workspace(page, view); await control.click(); }
+async function enterSource(page, source) { await workspace(page, 'editor'); await page.locator('#dsl-editor').fill(source); }
+async function enterName(page, value) { await workspace(page, 'projects'); await page.locator('#project-name').fill(value); }
+async function saveDialog(page) {
+    await page.locator('#ide-save').click();
+    await page.locator('#ide-save-dialog').waitFor();
+    await page.locator('#ide-save-form button[type="submit"]').click();
+}
+
 const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -63,12 +78,12 @@ async function setup({ target = 'mysql', saved = true, enabled = true } = {}) {
 }
 async function idle(page) { await page.waitForFunction(() => document.querySelector('.persistent-card')?.getAttribute('aria-busy') === 'false'); }
 async function openPersistent(page) {
-    if (!await page.locator('#persistent-workspace').evaluate(value => value.open)) await page.locator('#persistent-launcher').click();
+    await workspace(page, 'persistent');
     assert(await page.locator('#persistent-panel').isVisible());
 }
-async function choose(page, action) { await page.locator('#persistent-' + action).click(); await idle(page); }
+async function choose(page, action) { await workspace(page, 'persistent'); await page.locator('#persistent-' + action).click(); await idle(page); }
 async function open(page, id) {
-    await page.locator('#project-open').click();
+    await clickIn(page, 'projects', page.locator('#project-open'));
     const button = page.locator('#project-list button[data-project-id="' + id + '"]'); await button.click();
     await page.waitForFunction(() => !document.querySelector('#project-dialog').open);
 }
@@ -113,6 +128,7 @@ async function localSnapshot(page) {
         forget: document.querySelector('#persistent-forget').disabled }));
 }
 async function confirmForget(c, accept) {
+    await workspace(c.page, 'persistent');
     const dialogPromise = c.page.waitForEvent('dialog'), click = c.page.locator('#persistent-forget').click();
     const dialog = await dialogPromise;
     assert.equal(dialog.type(), 'confirm');
@@ -216,8 +232,8 @@ async function main() {
         for (const targetChange of [false, true]) {
             const c = await setup(); await stale(c);
             if (targetChange) await c.page.getByRole('button', { name: 'PostgreSQL', exact: true }).click();
-            else await c.page.locator('#project-name').fill('New saved name');
-            await c.page.locator('#project-save').click(); await c.page.waitForFunction(() => projectWorkspace.snapshot().revision === 2);
+            else await enterName(c.page, 'New saved name');
+            await saveDialog(c.page); await c.page.waitForFunction(() => projectWorkspace.snapshot().revision === 2);
             await refused(c); await choose(c.page, 'refresh'); await refused(c);
             assert(!await c.page.locator('#persistent-stop').isDisabled()); await choose(c.page, 'stop');
         }
@@ -230,7 +246,7 @@ async function main() {
     });
     await test('unsaved editor edits never mutate deployment; Stop still targets exact held session', async () => {
         const c = await setup(); await running(c);
-        const before = [...c.f.calls]; await c.page.locator('#dsl-editor').fill('invalid unsaved draft');
+        const before = [...c.f.calls]; await enterSource(c.page, 'invalid unsaved draft');
         assert.deepEqual(c.f.calls, before); await refused(c); await choose(c.page, 'stop');
         assert.equal(c.f.calls.at(-1).kind, 'stop');
         assert.deepEqual(c.f.calls.find(call => call.kind === 'start').input, { projectId: c.project.id, target: 'mysql', expectedRevision: 1 });
@@ -293,7 +309,9 @@ async function main() {
     });
     await test('desktop/mobile long names, labels, keyboard focus and disclosure cancellation preserve compiler dimensions/tabs', async () => {
         const c = await setup(); await stale(c); const page = c.page;
+        await workspace(page, 'editor');
         const before = await page.locator('#dsl-editor').boundingBox();
+        await workspace(page, 'persistent');
         await page.locator('#persistent-stop').focus(); await page.keyboard.press('Tab');
         assert(await page.locator('#persistent-forget').evaluate(value => value === document.activeElement && value.matches(':focus-visible') && getComputedStyle(value).outlineStyle !== 'none'));
         assert.equal(await page.getByRole('button', { name: 'Forget Stale Browser Session', exact: true }).count(), 1);
@@ -303,7 +321,10 @@ async function main() {
         const calls = [...c.server.calls], owned = await page.locator('#persistent-owned').textContent();
         await page.locator('#persistent-disclosure').focus(); await page.keyboard.press('Space'); assert(!await page.locator('#persistent-panel').isVisible());
         await page.keyboard.press('Enter'); assert(await page.locator('#persistent-panel').isVisible()); assert.deepEqual(c.server.calls, calls);
-        assert.equal(await page.locator('#persistent-owned').textContent(), owned); assert.deepEqual(await page.locator('#dsl-editor').boundingBox(), before);
+        assert.equal(await page.locator('#persistent-owned').textContent(), owned);
+        await workspace(page, 'editor');
+        assert.deepEqual(await page.locator('#dsl-editor').boundingBox(), before);
+        await workspace(page, 'inspector');
         assert.deepEqual(await page.getByRole('tab').evaluateAll(tabs => tabs.map(tab => tab.dataset.tab)), TABS);
         await page.locator('#tab-tokens').focus(); await page.keyboard.press('End'); assert.equal(await page.locator('#tab-swagger').getAttribute('aria-selected'), 'true');
         await page.keyboard.press('Home'); assert.equal(await page.locator('#tab-tokens').getAttribute('aria-selected'), 'true');
@@ -321,12 +342,12 @@ async function main() {
                 action === 'request' ? { status: 200, headers: { 'content-type': 'application/json' }, body: { data: 'disposable fixture' }, durationMs: 1 } : { stopped: true };
             await route.fulfill({ json: { success: true, ...data } });
         });
-        await page.locator('#compile-btn').click(); await page.waitForFunction(() => document.querySelector('#compilation-summary-content').textContent.includes('entity'));
-        await page.locator('#tab-live-api').click(); await page.locator('#live-start').click();
+        await clickIn(page, 'editor', page.locator('#compile-btn')); await page.waitForFunction(() => document.querySelector('#compilation-summary-content').textContent.includes('entity'));
+        await clickIn(page, 'inspector', page.locator('#tab-live-api')); await clickIn(page, 'inspector', page.locator('#live-start'));
         await page.waitForFunction(() => document.querySelector('#live-status').textContent === 'Running');
         await confirmForget(c, true); assert.deepEqual(liveCalls, ['start']); assert.equal(f.count('stop'), 0);
-        await page.locator('#live-send').click(); await page.waitForFunction(() => document.querySelector('#live-response').textContent.includes('disposable fixture'));
-        await page.locator('#live-stop').click(); await page.waitForFunction(() => document.querySelector('#live-status').textContent === 'Stopped / expired');
+        await clickIn(page, 'inspector', page.locator('#live-send')); await page.waitForFunction(() => document.querySelector('#live-response').textContent.includes('disposable fixture'));
+        await clickIn(page, 'inspector', page.locator('#live-stop')); await page.waitForFunction(() => document.querySelector('#live-status').textContent === 'Stopped / expired');
         assert.deepEqual(liveCalls, ['start', 'request', 'stop']); assert(await page.locator('#persistent-run').isDisabled());
     });
     await test('offline invalidates in-flight reconnect; late connection success cannot restore eligibility', async () => {
@@ -350,7 +371,7 @@ async function main() {
         await c.page.route('**/api/projects/' + c.project.id, async route => {
             if (route.request().method() === 'PUT') await wait.promise; await route.continue();
         });
-        await c.page.locator('#project-name').fill('New saved revision'); await c.page.locator('#project-save').click();
+        await enterName(c.page, 'New saved revision'); await saveDialog(c.page);
         await c.page.waitForFunction(() => document.querySelector('#project-workspace').getAttribute('aria-busy') === 'true');
         await refused(c); assert(!await c.page.locator('#persistent-stop').isDisabled());
         wait.release(); await c.page.waitForFunction(() => projectWorkspace.snapshot().revision === 2);
@@ -358,7 +379,7 @@ async function main() {
     });
     await test('Open dialog cancellation invalidates proof despite unchanged saved identity', async () => {
         const c = await setup(); await stale(c); const saved = await c.page.evaluate(() => projectWorkspace.snapshot());
-        await c.page.locator('#project-open').click(); await c.page.waitForFunction(() => document.querySelector('#project-dialog').open);
+        await clickIn(c.page, 'projects', c.page.locator('#project-open')); await c.page.waitForFunction(() => document.querySelector('#project-dialog').open);
         assert(await c.page.locator('#persistent-forget').isDisabled()); await c.page.keyboard.press('Escape');
         await c.page.waitForFunction(() => !document.querySelector('#project-dialog').open);
         assert.deepEqual(await c.page.evaluate(() => projectWorkspace.snapshot()), saved); await refused(c);
@@ -367,14 +388,14 @@ async function main() {
     await test('late Status during a newer Project API reconnect cannot restore old proof', async () => {
         const c = await setup(); await stale(c); const wait = gate(); c.f.hooks.status = () => wait.promise;
         await c.page.locator('#persistent-refresh').click(); await c.page.locator('#project-storage').evaluate(value => value.open = true);
-        await c.page.locator('#project-reconnect').click(); await c.page.waitForFunction(() => document.querySelector('#project-workspace').getAttribute('aria-busy') === 'false');
+        await clickIn(c.page, 'projects', c.page.locator('#project-reconnect')); await c.page.waitForFunction(() => document.querySelector('#project-workspace').getAttribute('aria-busy') === 'false');
         wait.release(); await idle(c.page); await refused(c); assert(!await c.page.locator('#persistent-stop').isDisabled());
         delete c.f.hooks.status; await choose(c.page, 'refresh'); assert(!await c.page.locator('#persistent-forget').isDisabled());
     });
     await test('unconfirmed Project Save preserves owned session and cannot enable forgetting from Status', async () => {
         const c = await setup(); await stale(c);
         await c.page.route('**/api/projects/' + c.project.id, route => route.request().method() === 'PUT' ? route.abort('failed') : route.continue());
-        await c.page.locator('#project-name').fill('Unconfirmed name'); await c.page.locator('#project-save').click();
+        await enterName(c.page, 'Unconfirmed name'); await saveDialog(c.page);
         await c.page.waitForFunction(() => document.querySelector('#project-status').dataset.state === 'uncertain');
         await refused(c); await choose(c.page, 'refresh'); await refused(c); assert(!await c.page.locator('#persistent-stop').isDisabled());
         assert.equal(c.f.count('start'), 1); assert.equal(c.f.count('stop'), 0);

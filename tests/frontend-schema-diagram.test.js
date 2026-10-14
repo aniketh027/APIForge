@@ -2,6 +2,14 @@
 // Or set APIFORGE_BROWSER_EXECUTABLE to a local Chromium/Chrome executable.
 'use strict';
 const assert = require('node:assert/strict');
+// Use the same visible workspace controls as a user; never reveal hidden panels.
+async function workspace(page, view) {
+    await page.locator('.ide-sidebar [data-workspace="' + view + '"]').click();
+    await page.locator('.ide-sidebar [data-workspace="' + view + '"][aria-current="page"]').waitFor();
+}
+async function clickIn(page, view, control) { await workspace(page, view); await control.click(); }
+async function enterSource(page, source) { await workspace(page, 'editor'); await page.locator('#dsl-editor').fill(source); }
+
 const path = require('node:path');
 const os = require('node:os');
 const { chromium } = require('playwright');
@@ -37,10 +45,10 @@ async function main() {
         await page.goto(`http://127.0.0.1:${server.address().port}`);
         const pane = page.locator('#output-diagram');
         const tab = page.getByRole('tab', { name: 'Diagram', exact: true });
-        const editor = page.getByRole('textbox', { name: 'APIForge DSL source' });
+        const editor = page.locator('#dsl-editor');
         const compile = page.locator('#compile-btn');
-        const enterProfessor = { click: () => editor.fill(PROFESSOR_SOURCE) };
-        const enterLibrary = { click: () => editor.fill(LIBRARY_SOURCE) };
+        const enterProfessor = { click: () => enterSource(page, PROFESSOR_SOURCE) };
+        const enterLibrary = { click: () => enterSource(page, LIBRARY_SOURCE) };
         const clear = page.getByRole('button', { name: 'Clear', exact: true });
         const target = name => page.getByRole('button', { name, exact: true });
         async function reset(title) {
@@ -48,19 +56,20 @@ async function main() {
             assert.equal(await pane.locator('.empty-state strong').textContent(), title);
         }
         async function compileSource(source) {
-            if (source !== undefined) await editor.fill(source);
+            if (source !== undefined) await enterSource(page, source);
             const pending = page.waitForResponse(response => response.url().endsWith('/api/compile'));
-            await compile.click();
+            await clickIn(page, 'editor', compile);
             const response = await pending;
             const data = await response.json();
             assert.equal(response.status(), 200);
             assert.equal(data.success, true);
             await page.waitForFunction(() => !document.getElementById('compile-btn').disabled);
             assert.equal(await page.locator('#tab-tokens').getAttribute('aria-selected'), 'true', 'Success still returns to Tokens');
+            await workspace(page, 'inspector');
             return data;
         }
         async function matchesAST(data) {
-            await tab.click();
+            await clickIn(page, 'inspector', tab);
             assert.equal(await tab.getAttribute('aria-selected'), 'true');
             assert.equal(await tab.getAttribute('tabindex'), '0');
             assert.equal(await pane.isVisible(), true);
@@ -109,10 +118,11 @@ async function main() {
             }, data.ast.relations), 'Arrow starts at source card and points into target card');
         }
 
+        await workspace(page, 'inspector');
         assert.deepEqual(await page.getByRole('tab').evaluateAll(tabs => tabs.map(button => button.dataset.tab)), TABS);
         assert.equal(await tab.getAttribute('aria-controls'), 'output-diagram');
         assert.equal(await pane.getAttribute('aria-labelledby'), 'tab-diagram');
-        await tab.click();
+        await clickIn(page, 'inspector', tab);
         await reset('No compilation yet');
         await page.locator('#tab-ast').focus();
         await page.keyboard.press('ArrowRight');
@@ -125,9 +135,9 @@ async function main() {
         assert.equal(await page.locator('#tab-tokens').getAttribute('aria-selected'), 'true');
         await page.keyboard.press('End');
         assert.equal(await page.locator('#tab-swagger').getAttribute('aria-selected'), 'true');
-        await page.locator('#status-parser').click();
+        await clickIn(page, 'editor', page.locator('#status-parser'));
         assert.equal(await page.locator('#tab-ast').getAttribute('aria-selected'), 'true');
-        await page.locator('#status-semantic').click();
+        await clickIn(page, 'editor', page.locator('#status-semantic'));
         assert.equal(await page.locator('#tab-symboltable').getAttribute('aria-selected'), 'true');
         console.log('PASS: Diagram tab, mouse/keyboard navigation, reset state and unchanged pipeline mapping');
 
@@ -163,7 +173,7 @@ async function main() {
 
         for (const width of [1440, 900, 390]) {
             await page.setViewportSize({ width, height: 1000 });
-            await tab.click();
+            await clickIn(page, 'inspector', tab);
             assert.equal(await tab.isVisible(), true);
             await tab.focus();
             assert.ok(await tab.evaluate(element => {
@@ -192,21 +202,21 @@ async function main() {
 
         for (const [button, title] of [[enterProfessor, 'Source changed'], [enterLibrary, 'Source changed'], [clear, 'No compilation yet']]) {
             await compileSource(SIMPLE);
-            await button.click();
+            await workspace(page, 'editor'); await button.click();
             await reset(title);
         }
         await compileSource(SIMPLE);
-        await editor.fill('ENTITY Broken\nvalue UNKNOWN');
+        await enterSource(page, 'ENTITY Broken\nvalue UNKNOWN');
         const failure = page.waitForResponse(response => response.url().endsWith('/api/compile'));
-        await compile.click();
+        await clickIn(page, 'editor', compile);
         assert.equal((await (await failure).json()).success, false);
         await page.waitForFunction(() => !document.getElementById('compile-btn').disabled);
         assert.equal(await pane.locator('.schema-entity, .schema-relation').count(), 0);
         assert.match(await pane.locator('.empty-state strong').textContent(), /failure/);
         // Semantic failures return a partial AST, which must not publish a diagram.
-        await editor.fill('ENTITY Broken\nid INT PRIMARY KEY\nRELATION Broken USES Missing ONE_TO_MANY');
+        await enterSource(page, 'ENTITY Broken\nid INT PRIMARY KEY\nRELATION Broken USES Missing ONE_TO_MANY');
         const semanticFailure = page.waitForResponse(response => response.url().endsWith('/api/compile'));
-        await compile.click();
+        await clickIn(page, 'editor', compile);
         const partial = await (await semanticFailure).json();
         assert.equal(partial.success, false);
         assert.ok(partial.ast);
@@ -225,10 +235,10 @@ async function main() {
                 await released;
                 await route.fulfill({ response });
             });
-            await compile.click();
+            await clickIn(page, 'editor', compile);
             await ready;
             await reset('Compilation running');
-            await button.click();
+            await workspace(page, 'editor'); await button.click();
             await reset(title);
             releaseResponse();
             await page.waitForFunction(() => !document.getElementById('compile-btn').disabled);

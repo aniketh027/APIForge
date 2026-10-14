@@ -1,6 +1,14 @@
 // Clean checkout: npm ci && npx playwright install chromium
 'use strict';
 const assert = require('node:assert/strict');
+// Use the same visible workspace controls as a user; never reveal hidden panels.
+async function workspace(page, view) {
+    await page.locator('.ide-sidebar [data-workspace="' + view + '"]').click();
+    await page.locator('.ide-sidebar [data-workspace="' + view + '"][aria-current="page"]').waitFor();
+}
+async function clickIn(page, view, control) { await workspace(page, view); await control.click(); }
+async function enterSource(page, source) { await workspace(page, 'editor'); await page.locator('#dsl-editor').fill(source); }
+
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
@@ -27,11 +35,12 @@ async function main() {
         await page.route('**/favicon.ico', route => route.fulfill({ status: 204 }));
         await page.goto('http://127.0.0.1:' + server.address().port);
         const compile = page.locator('#compile-btn');
-        const editor = page.getByRole('textbox', { name: 'APIForge DSL source' });
+        const editor = page.locator('#dsl-editor');
         const clear = page.getByRole('button', { name: 'Clear', exact: true });
         const targetButtons = { mysql: page.getByRole('button', { name: 'MySQL', exact: true }),
             postgres: page.getByRole('button', { name: 'PostgreSQL', exact: true }) };
         async function assertInvalidated(title) {
+            await workspace(page, 'inspector');
             assert.equal(await page.locator('#compilation-summary').isVisible(), false);
             assert.equal(await page.locator('#compilation-summary-content').textContent(), '');
             assert.equal(await page.locator('#download-btn').isVisible(), false);
@@ -65,7 +74,7 @@ async function main() {
 
         // Empty source reaches the unchanged server validation, without a client guard.
         const emptyResponse = page.waitForResponse(response => response.url().endsWith('/api/compile'));
-        await compile.click();
+        await clickIn(page, 'editor', compile);
         const empty = await emptyResponse;
         assert.deepEqual(empty.request().postDataJSON(), { source: '', target: 'mysql' });
         const directEmpty = await page.request.post('http://127.0.0.1:' + server.address().port + '/api/compile', { data: { source: '', target: 'mysql' } });
@@ -73,19 +82,20 @@ async function main() {
         assert.deepEqual(await empty.json(), await directEmpty.json());
         assert.equal((await empty.json()).success, false);
         await page.waitForFunction(() => !document.getElementById('compile-btn').disabled);
+        await workspace(page, 'inspector');
         assert.equal(await page.locator('#error-panel').isVisible(), true);
         assert.equal(await page.locator('#download-btn').isVisible(), false);
-        await clear.click(); await assertInvalidated('No compilation yet');
+        await clickIn(page, 'editor', clear); await assertInvalidated('No compilation yet');
         console.log('PASS: empty submission preserves compiler API validation and Clear removes its diagnostics');
         async function compileSource(target) {
             const responsePromise = page.waitForResponse(response => response.url().endsWith('/api/compile'));
-            await compile.click();
+            await clickIn(page, 'editor', compile);
             const response = await responsePromise;
             const data = await response.json();
             assert.equal(response.status(), 200);
             assert.equal(data.success, true);
             assert.deepEqual(response.request().postDataJSON(), { source: await editor.inputValue(), target });
-            await page.locator('#compilation-summary.visible').waitFor();
+            await workspace(page, 'inspector'); await page.locator('#compilation-summary.visible').waitFor();
             await page.waitForFunction(() => !document.getElementById('compile-btn').disabled);
             assert.equal(await page.locator('#download-btn').isVisible(), true);
             assert.equal(await page.locator('.status-icon.success').count(), 6);
@@ -148,12 +158,12 @@ async function main() {
             assert.ok(swagger.paths['/users/{id}/projects'].get);
             assert.ok(swagger.paths['/projects/{id}/tasks'].get);
             // Check that the real server results reach each corresponding inspector.
-            await page.locator('#tab-ast').click();
+            await clickIn(page, 'inspector', page.locator('#tab-ast'));
             const astText = await page.locator('#output-ast').textContent();
             for (const text of ['User', 'Project', 'Task', 'OWNS', 'HAS', 'ONE_TO_MANY']) assert.ok(astText.includes(text));
-            await page.locator('#tab-sql').click();
+            await clickIn(page, 'inspector', page.locator('#tab-sql'));
             assert.equal(await page.locator('#output-sql pre').textContent(), sql);
-            await page.locator('#tab-api').click();
+            await clickIn(page, 'inspector', page.locator('#tab-api'));
             const apiFiles = data.generatedFiles.filter(file => file.path !== 'database/schema.sql' && file.path !== 'swagger.json');
             assert.equal(await page.locator('#output-api .api-file').count(), apiFiles.length);
             assert.deepEqual(await page.locator('#output-api .api-file-header > span:first-child').allTextContents(), apiFiles.map(file => file.path));
@@ -161,7 +171,7 @@ async function main() {
             // response/download payload is checked above without normalization.
             assert.deepEqual(await page.locator('#output-api pre').allTextContents(),
                 apiFiles.map(file => file.content.replace(/\r\n/g, '\n')));
-            await page.locator('#tab-swagger').click();
+            await clickIn(page, 'inspector', page.locator('#tab-swagger'));
             assert.deepEqual(JSON.parse(await page.locator('#output-swagger pre').textContent()), swagger);
             console.log(`PASS: ${TARGET_LABELS[target]} demo, six phases, three entities, both relationships, real SQL/driver/API files/OpenAPI`);
             return data;
@@ -170,12 +180,12 @@ async function main() {
 
         for (const target of ['mysql', 'postgres']) {
             await targetButtons[target].click();
-            await editor.fill(DEMO_SOURCE);
+            await enterSource(page, DEMO_SOURCE);
             await assertInvalidated('Source changed');
             const data = await compileDemo(target);
             assert.equal(await page.locator('#output-diagram .schema-entity').count(), 3);
             assert.equal(await page.locator('#output-endpoints .endpoint-row').count(), 17);
-            await page.locator('#tab-live-api').click();
+            await clickIn(page, 'inspector', page.locator('#tab-live-api'));
             assert.equal(await page.locator('#live-start').isEnabled(), true);
             // Compare actual downloaded ZIP bytes to the frozen G28 implementation.
             const historical = execFileSync('git', ['show', '112a464ee4615c3956c686bfff59c9aa5d9f8497:frontend/app.js'], { encoding: 'utf8' });
@@ -188,7 +198,7 @@ async function main() {
             const chunks = []; for await (const chunk of await download.createReadStream()) chunks.push(chunk);
             assert.equal(await download.failure(), null);
             assert.deepEqual(Buffer.concat(chunks), expected, target + ' exact frozen ZIP bytes');
-            await editor.fill(LIBRARY_SOURCE);
+            await enterSource(page, LIBRARY_SOURCE);
             await assertInvalidated('Source changed');
             const library = await compileSource(target);
             assert.deepEqual(library.ast.entities.map(entity => entity.name), ['Author', 'Book']);
@@ -199,35 +209,36 @@ async function main() {
         }
 
         // Programmatic Tab insertion must invalidate just like ordinary typing.
-        await editor.focus(); await page.keyboard.press('Tab');
+        await workspace(page, 'editor'); await editor.focus(); await page.keyboard.press('Tab');
         await assertInvalidated('Source changed');
         assert.equal(await page.locator('#line-numbers > div').count(), (await editor.inputValue()).split('\n').length);
-        await editor.fill(LIBRARY_SOURCE); await editor.focus();
+        await enterSource(page, LIBRARY_SOURCE); await editor.focus();
         const shortcut = page.waitForResponse(response => response.url().endsWith('/api/compile'));
         await page.keyboard.press('Control+Enter'); assert.equal((await (await shortcut).json()).success, true);
         await page.waitForFunction(() => !document.getElementById('compile-btn').disabled);
+        await workspace(page, 'inspector');
         assert.equal(await page.locator('#download-btn').isVisible(), true);
-        await clear.click(); await assertInvalidated('No compilation yet');
+        await clickIn(page, 'editor', clear); await assertInvalidated('No compilation yet');
         assert.equal(await editor.inputValue(), '');
         assert.equal(await page.locator('#source-name').textContent(), 'Untitled source');
         assert.equal(await targetButtons.postgres.getAttribute('aria-pressed'), 'true');
 
         const actions = [
-            ['rapid edits away and back', async () => { await editor.fill(LIBRARY_SOURCE); await editor.fill(DEMO_SOURCE); }, 'Source changed'],
-            ['Clear', () => clear.click(), 'No compilation yet'],
+            ['rapid edits away and back', async () => { await enterSource(page, LIBRARY_SOURCE); await enterSource(page, DEMO_SOURCE); }, 'Source changed'],
+            ['Clear', () => clickIn(page, 'editor', clear), 'No compilation yet'],
             ['target away and back', async () => { const target = await page.evaluate(() => selectedTarget); await targetButtons[target === 'mysql' ? 'postgres' : 'mysql'].click(); await targetButtons[target].click(); }, 'Target changed'],
             ['new target', async () => { const target = await page.evaluate(() => selectedTarget); await targetButtons[target === 'mysql' ? 'postgres' : 'mysql'].click(); }, 'Target changed'],
             ['Tab insertion', async () => { await editor.focus(); await page.keyboard.press('Tab'); }, 'Source changed']
         ];
         for (const [name, action, title] of actions) {
-            await editor.fill(DEMO_SOURCE);
+            await enterSource(page, DEMO_SOURCE);
             let responseReady;
             const ready = new Promise(resolve => { responseReady = resolve; });
             const released = new Promise(resolve => { releaseResponse = resolve; });
             await page.route('**/api/compile', async route => {
                 const response = await route.fetch(); responseReady(); await released; await route.fulfill({ response });
             });
-            await compile.click(); await ready; await action();
+            await clickIn(page, 'editor', compile); await ready; await action();
             const source = await editor.inputValue();
             await assertInvalidated(title);
             releaseResponse();
@@ -236,7 +247,7 @@ async function main() {
             assert.equal(await editor.inputValue(), source, 'Old response never changes current source');
             await page.unroute('**/api/compile');
             // A later explicit compilation must publish the new current result.
-            await editor.fill(LIBRARY_SOURCE);
+            await enterSource(page, LIBRARY_SOURCE);
             const current = await compileSource(await page.evaluate(() => selectedTarget));
             assert.deepEqual(current.ast.entities.map(entity => entity.name), ['Author', 'Book']);
             assert.deepEqual(await page.evaluate(() => lastCompileResult.ast.entities.map(entity => entity.name)), ['Author', 'Book']);
@@ -244,7 +255,7 @@ async function main() {
         }
         // Ignore obsolete failure responses and network errors, including header state.
         for (const networkFailure of [false, true]) {
-            await editor.fill('ENTITY Broken\nvalue UNKNOWN');
+            await enterSource(page, 'ENTITY Broken\nvalue UNKNOWN');
             let responseReady;
             const ready = new Promise(resolve => { responseReady = resolve; });
             const released = new Promise(resolve => { releaseResponse = resolve; });
@@ -253,7 +264,7 @@ async function main() {
                 responseReady(); await released;
                 if (networkFailure) await route.abort('failed'); else await route.fulfill({ response });
             });
-            await compile.click(); await ready; await editor.fill(LIBRARY_SOURCE);
+            await clickIn(page, 'editor', compile); await ready; await enterSource(page, LIBRARY_SOURCE);
             releaseResponse(); await page.waitForFunction(() => !document.getElementById('compile-btn').disabled);
             await assertInvalidated('Source changed');
             assert.equal(await page.locator('#header-status-text').textContent(), 'Compiler ready');
@@ -261,7 +272,7 @@ async function main() {
         }
         for (const width of [1440, 900, 390]) {
             await page.setViewportSize({ width, height: 1000 });
-            await editor.fill(LIBRARY_SOURCE); await compileSource(await page.evaluate(() => selectedTarget));
+            await enterSource(page, LIBRARY_SOURCE); await compileSource(await page.evaluate(() => selectedTarget));
             for (const control of [compile, clear, ...Object.values(targetButtons)]) {
                 assert.equal(await control.isVisible(), true); assert.equal(await control.isEnabled(), true);
                 await control.scrollIntoViewIfNeeded();

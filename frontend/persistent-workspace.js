@@ -164,6 +164,7 @@ window.APIForgePersistent = (() => {
         const launcher = document.getElementById('persistent-launcher');
         disclosure.addEventListener('toggle', () => launcher.setAttribute('aria-expanded', String(disclosure.open)));
         launcher.addEventListener('click', () => {
+            if (window.APIForgeIDE) { APIForgeIDE.navigate('persistent', true); return; }
             disclosure.open = !disclosure.open;
             launcher.setAttribute('aria-expanded', String(disclosure.open));
             if (disclosure.open) {

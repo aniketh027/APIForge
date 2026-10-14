@@ -2,6 +2,14 @@
 // Or set APIFORGE_BROWSER_EXECUTABLE to a local Chromium/Chrome executable.
 'use strict';
 const assert = require('node:assert/strict');
+// Use the same visible workspace controls as a user; never reveal hidden panels.
+async function workspace(page, view) {
+    await page.locator('.ide-sidebar [data-workspace="' + view + '"]').click();
+    await page.locator('.ide-sidebar [data-workspace="' + view + '"][aria-current="page"]').waitFor();
+}
+async function clickIn(page, view, control) { await workspace(page, view); await control.click(); }
+async function enterSource(page, source) { await workspace(page, 'editor'); await page.locator('#dsl-editor').fill(source); }
+
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
@@ -71,28 +79,29 @@ async function main() {
         await page.goto(`http://127.0.0.1:${server.address().port}`);
         const summary = page.locator('#compilation-summary');
         const content = page.locator('#compilation-summary-content');
-        const editor = page.getByRole('textbox', { name: 'APIForge DSL source' });
+        const editor = page.locator('#dsl-editor');
         const compile = page.locator('#compile-btn');
-        const enterProfessor = { click: () => editor.fill(PROFESSOR_SOURCE) };
-        const enterLibrary = { click: () => editor.fill(LIBRARY_SOURCE) };
+        const enterProfessor = { click: () => enterSource(page, PROFESSOR_SOURCE) };
+        const enterLibrary = { click: () => enterSource(page, LIBRARY_SOURCE) };
         const clear = page.getByRole('button', { name: 'Clear', exact: true });
         const target = name => page.getByRole('button', { name: LABELS[name], exact: true });
         const metric = name => content.locator(`[data-summary-metric="${name}"]`);
         const normalized = locator => locator.textContent().then(text => text.trim().replace(/\s+/g, ' '));
         async function assertHidden() {
+            await workspace(page, 'inspector');
             assert.equal(await summary.isVisible(), false);
             assert.equal(await content.textContent(), '', 'Invalidated summary has no stale live-region text');
             assert.equal(await page.locator('#download-btn').isVisible(), false);
         }
         async function compileSource(selected) {
             const responsePromise = page.waitForResponse(response => response.url().endsWith('/api/compile'));
-            await compile.click();
+            await clickIn(page, 'editor', compile);
             const response = await responsePromise;
             assert.deepEqual(response.request().postDataJSON(), { source: await editor.inputValue(), target: selected });
             assert.equal(response.status(), 200);
             const data = await response.json();
             assert.equal(data.success, true);
-            await summary.waitFor({ state: 'visible' });
+            await workspace(page, 'inspector'); await summary.waitFor({ state: 'visible' });
             await page.waitForFunction(() => !document.getElementById('compile-btn').disabled);
             return data;
         }
@@ -109,7 +118,7 @@ async function main() {
             assert.equal(await content.getAttribute('role'), 'status');
             assert.equal(await content.getAttribute('aria-live'), 'polite');
             assert.equal(await content.locator('.summary-icon').getAttribute('aria-hidden'), 'true');
-            await page.locator('#tab-endpoints').click();
+            await clickIn(page, 'inspector', page.locator('#tab-endpoints'));
             assert.equal(await page.locator('#output-endpoints .endpoint-row').count(), expected.endpoints);
             assert.equal(await page.locator('#output-endpoints .endpoint-count').textContent(),
                 `${expected.endpoints} generated ${expected.endpoints === 1 ? 'endpoint' : 'endpoints'}`);
@@ -163,7 +172,7 @@ async function main() {
             }
         }
         await assertHidden();
-        await editor.fill(SIMPLE);
+        await enterSource(page, SIMPLE);
         const simple = await compileSource('mysql');
         await assertMetrics(simple, 'mysql');
         await assertWarnings(simple);
@@ -202,7 +211,7 @@ async function main() {
 
         for (const width of [1440, 900, 390]) {
             await page.setViewportSize({ width, height: 1000 });
-            await editor.fill(SIMPLE);
+            await enterSource(page, SIMPLE);
             const data = await compileSource('postgres');
             await assertWarnings(data);
             await assertLayout(width);
@@ -211,32 +220,32 @@ async function main() {
         await page.setViewportSize({ width: 1440, height: 1000 });
 
         for (const control of [target('mysql'), enterProfessor, enterLibrary, clear]) {
-            await editor.fill(SIMPLE);
+            await enterSource(page, SIMPLE);
             await compileSource(await page.evaluate(() => selectedTarget));
-            await control.click();
+            await workspace(page, 'editor'); await control.click();
             await assertHidden();
         }
-        await editor.fill(SIMPLE);
+        await enterSource(page, SIMPLE);
         await compileSource('mysql');
-        await editor.fill('ENTITY Broken\nvalue UNKNOWN');
+        await enterSource(page, 'ENTITY Broken\nvalue UNKNOWN');
         const failurePromise = page.waitForResponse(response => response.url().endsWith('/api/compile'));
-        await compile.click();
+        await clickIn(page, 'editor', compile);
         assert.equal((await (await failurePromise).json()).success, false);
-        await page.locator('#error-panel.visible').waitFor();
+        await workspace(page, 'inspector'); await page.locator('#error-panel.visible').waitFor();
         await page.waitForFunction(() => !document.getElementById('compile-btn').disabled);
         await assertHidden();
-        await editor.fill(SIMPLE);
+        await enterSource(page, SIMPLE);
         await compileSource('mysql');
         await page.route('**/api/compile', route => route.abort('failed'));
-        await compile.click();
-        await page.locator('#error-panel.visible').waitFor();
+        await clickIn(page, 'editor', compile);
+        await workspace(page, 'inspector'); await page.locator('#error-panel.visible').waitFor();
         await page.waitForFunction(() => !document.getElementById('compile-btn').disabled);
         await assertHidden();
         await page.unroute('**/api/compile');
         console.log('PASS: target/source edits/Clear/compiler failure/network failure clear old success');
 
         for (const control of [target('postgres'), enterProfessor, enterLibrary, clear]) {
-            await editor.fill(SIMPLE);
+            await enterSource(page, SIMPLE);
             await compileSource(await page.evaluate(() => selectedTarget));
             let responseReady;
             const ready = new Promise(resolve => { responseReady = resolve; });
@@ -247,10 +256,10 @@ async function main() {
                 await released;
                 await route.fulfill({ response });
             });
-            await compile.click();
+            await clickIn(page, 'editor', compile);
             await ready;
             await assertHidden();
-            await control.click();
+            await workspace(page, 'editor'); await control.click();
             await assertHidden();
             releaseResponse();
             await page.waitForFunction(() => !document.getElementById('compile-btn').disabled);

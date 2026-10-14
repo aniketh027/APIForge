@@ -2,6 +2,14 @@
 // Or set APIFORGE_BROWSER_EXECUTABLE to a local Chromium/Chrome executable.
 'use strict';
 const assert = require('node:assert/strict');
+// Use the same visible workspace controls as a user; never reveal hidden panels.
+async function workspace(page, view) {
+    await page.locator('.ide-sidebar [data-workspace="' + view + '"]').click();
+    await page.locator('.ide-sidebar [data-workspace="' + view + '"][aria-current="page"]').waitFor();
+}
+async function clickIn(page, view, control) { await workspace(page, view); await control.click(); }
+async function enterSource(page, source) { await workspace(page, 'editor'); await page.locator('#dsl-editor').fill(source); }
+
 const { chromium } = require('playwright');
 const app = require('../server');
 const { STUDENT_SOURCE, LIBRARY_SOURCE } = require('./frontend-source-fixtures');
@@ -37,7 +45,7 @@ async function main() {
         const postgres = page.getByRole('button', { name: 'PostgreSQL', exact: true });
         const editor = page.locator('#dsl-editor');
         assert.equal(await editor.inputValue(), '');
-        await editor.fill(STUDENT_SOURCE);
+        await enterSource(page, STUDENT_SOURCE);
         const source = STUDENT_SOURCE;
         const sourceName = await page.locator('#source-name').textContent();
 
@@ -46,6 +54,7 @@ async function main() {
             assert.equal(await postgres.getAttribute('aria-pressed'), String(target === 'postgres'));
         }
         async function assertInvalidated(target) {
+            await workspace(page, 'inspector');
             assert.equal(await page.locator('#compilation-summary').isVisible(), false);
             assert.equal(await page.locator('#compilation-summary-content').textContent(), '');
             assert.equal(await page.locator('#download-btn').isVisible(), false);
@@ -66,19 +75,19 @@ async function main() {
         }
         async function compileAndCheck(target) {
             const responsePromise = page.waitForResponse(response => response.url().endsWith('/api/compile'));
-            await page.locator('#compile-btn').click();
+            await clickIn(page, 'editor', page.locator('#compile-btn'));
             const response = await responsePromise;
             const data = await response.json();
             assert.equal(response.status(), 200);
             assert.equal(data.success, true);
             assert.deepEqual(response.request().postDataJSON(), { source: await editor.inputValue(), target });
-            await page.locator('#compilation-summary.visible').waitFor();
+            await workspace(page, 'inspector'); await page.locator('#compilation-summary.visible').waitFor();
             assert.equal(await page.locator('#download-btn').isVisible(), true);
             const summary = await page.locator('#compilation-summary-content').textContent();
             assert.match(summary, /Compiled successfully/);
             assert.match(summary, target === 'mysql' ? /MySQL\s*target/ : /PostgreSQL\s*target/);
             assert.equal(await page.locator('.status-icon.success').count(), 6);
-            await page.locator('#tab-sql').click();
+            await clickIn(page, 'inspector', page.locator('#tab-sql'));
             const sql = data.generatedFiles.find(file => file.path === 'database/schema.sql').content;
             assert.equal(await page.locator('#output-sql pre').textContent(), sql);
             // Integer primary-key allocation and the runtime driver are target contracts.
@@ -118,26 +127,26 @@ async function main() {
         console.log('PASS: default MySQL, explicit requests, target SQL/driver, summary, keyboard switching and stale-output invalidation');
 
         // Target changes also clear a real compiler failure and its partial results.
-        await editor.fill('ENTITY Broken\nvalue UNKNOWN');
+        await enterSource(page, 'ENTITY Broken\nvalue UNKNOWN');
         expectingCompilerFailure = true;
         const failure = page.waitForResponse(response => response.url().endsWith('/api/compile'));
-        await page.locator('#compile-btn').click();
+        await clickIn(page, 'editor', page.locator('#compile-btn'));
         assert.equal((await (await failure).json()).success, false);
-        await page.locator('#error-panel.visible').waitFor();
+        await workspace(page, 'inspector'); await page.locator('#error-panel.visible').waitFor();
         expectingCompilerFailure = false;
         await postgres.click();
         await assertInvalidated('postgres');
         assert.equal(await editor.inputValue(), 'ENTITY Broken\nvalue UNKNOWN');
         assert.equal(await page.locator('#source-name').textContent(), 'Modified source');
-        await editor.fill(LIBRARY_SOURCE);
+        await enterSource(page, LIBRARY_SOURCE);
         await assertSelected('postgres');
         assert.notEqual(await editor.inputValue(), source);
         await compileAndCheck('postgres');
-        await page.locator('#clear-btn').click();
+        await clickIn(page, 'editor', page.locator('#clear-btn'));
         await assertSelected('postgres');
         assert.equal(await editor.inputValue(), '');
         assert.equal(await page.locator('#download-btn').isVisible(), false);
-        await editor.fill(LIBRARY_SOURCE);
+        await enterSource(page, LIBRARY_SOURCE);
         await assertSelected('postgres');
         console.log('PASS: failure invalidation and target persistence across user-entered source and Clear');
 
@@ -152,7 +161,7 @@ async function main() {
             await route.fulfill({ response });
         });
         const countBefore = requests.length;
-        await page.locator('#compile-btn').click();
+        await clickIn(page, 'editor', page.locator('#compile-btn'));
         await ready;
         await mysql.click();
         await postgres.click();

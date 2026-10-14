@@ -2,6 +2,14 @@
 // Or set APIFORGE_BROWSER_EXECUTABLE to a local Chromium/Chrome executable.
 'use strict';
 const assert = require('node:assert/strict');
+// Use the same visible workspace controls as a user; never reveal hidden panels.
+async function workspace(page, view) {
+    await page.locator('.ide-sidebar [data-workspace="' + view + '"]').click();
+    await page.locator('.ide-sidebar [data-workspace="' + view + '"][aria-current="page"]').waitFor();
+}
+async function clickIn(page, view, control) { await workspace(page, view); await control.click(); }
+async function enterSource(page, source) { await workspace(page, 'editor'); await page.locator('#dsl-editor').fill(source); }
+
 const { chromium } = require('playwright');
 const app = require('../server');
 const { PROFESSOR_SOURCE, LIBRARY_SOURCE } = require('./frontend-source-fixtures');
@@ -52,10 +60,10 @@ async function main() {
         await page.goto(`http://127.0.0.1:${server.address().port}`);
         const tab = page.getByRole('tab', { name: 'Endpoints', exact: true });
         const pane = page.locator('#output-endpoints');
-        const editor = page.getByRole('textbox', { name: 'APIForge DSL source' });
+        const editor = page.locator('#dsl-editor');
         const compile = page.locator('#compile-btn');
-        const enterProfessor = { click: () => editor.fill(PROFESSOR_SOURCE) };
-        const enterLibrary = { click: () => editor.fill(LIBRARY_SOURCE) };
+        const enterProfessor = { click: () => enterSource(page, PROFESSOR_SOURCE) };
+        const enterLibrary = { click: () => enterSource(page, LIBRARY_SOURCE) };
         const clear = page.getByRole('button', { name: 'Clear', exact: true });
         const target = name => page.getByRole('button', { name, exact: true });
         const rows = () => pane.locator('.endpoint-row').evaluateAll(elements => elements.map(element => [
@@ -69,19 +77,19 @@ async function main() {
         }
         async function compileSource() {
             const responsePromise = page.waitForResponse(response => response.url().endsWith('/api/compile'));
-            await compile.click();
+            await clickIn(page, 'editor', compile);
             const response = await responsePromise;
             const data = await response.json();
             assert.equal(response.status(), 200);
             assert.equal(data.success, true);
             await page.waitForFunction(() => !document.getElementById('compile-btn').disabled);
-            await page.locator('#compilation-summary.visible').waitFor();
+            await workspace(page, 'inspector'); await page.locator('#compilation-summary.visible').waitFor();
             return data;
         }
         async function assertEndpoints(data) {
             const spec = swaggerFrom(data);
             const expected = operations(spec);
-            await tab.click();
+            await clickIn(page, 'inspector', tab);
             assert.equal(await tab.getAttribute('aria-selected'), 'true');
             assert.equal(await tab.getAttribute('tabindex'), '0');
             assert.equal(await pane.isVisible(), true);
@@ -121,21 +129,22 @@ async function main() {
             assert.equal(operations(spec).length, 17);
         }
         async function assertOtherPanes(data) {
-            await page.locator('#tab-sql').click();
+            await clickIn(page, 'inspector', page.locator('#tab-sql'));
             assert.equal(await page.locator('#output-sql pre').textContent(),
                 data.generatedFiles.find(file => file.path === 'database/schema.sql').content);
-            await page.locator('#tab-api').click();
+            await clickIn(page, 'inspector', page.locator('#tab-api'));
             const files = data.generatedFiles.filter(file => !['database/schema.sql', 'swagger.json'].includes(file.path));
             assert.deepEqual(await page.locator('#output-api .api-file-header > span:first-child').allTextContents(), files.map(file => file.path));
             assert.deepEqual(await page.locator('#output-api pre').allTextContents(), files.map(file => file.content.replace(/\r\n/g, '\n')));
-            await page.locator('#tab-swagger').click();
+            await clickIn(page, 'inspector', page.locator('#tab-swagger'));
             assert.deepEqual(JSON.parse(await page.locator('#output-swagger pre').textContent()), swaggerFrom(data));
-            await page.locator('#status-codegen').click();
+            await clickIn(page, 'editor', page.locator('#status-codegen'));
             assert.equal(await page.locator('#tab-sql').getAttribute('aria-selected'), 'true', 'CodeGen still opens SQL');
         }
 
+        await workspace(page, 'inspector');
         assert.deepEqual(await page.getByRole('tab').evaluateAll(tabs => tabs.map(tab => tab.dataset.tab)), TABS);
-        await tab.click();
+        await clickIn(page, 'inspector', tab);
         await assertReset('No compilation yet');
         assert.equal(await pane.getAttribute('aria-labelledby'), 'tab-endpoints');
         assert.equal(await tab.getAttribute('aria-controls'), 'output-endpoints');
@@ -153,7 +162,7 @@ async function main() {
         assert.equal(await page.locator('#tab-swagger').getAttribute('aria-selected'), 'true');
         console.log('PASS: Endpoints tab order, accessible selection, ArrowLeft/Right, Home/End and initial reset');
 
-        await editor.fill(SIMPLE);
+        await enterSource(page, SIMPLE);
         const simpleData = await compileSource();
         const simpleSpec = await assertEndpoints(simpleData);
         assertCRUD(simpleSpec, ['User']);
@@ -178,17 +187,17 @@ async function main() {
 
         for (const [control, title] of [[enterProfessor, 'Source changed'], [enterLibrary, 'Source changed'], [clear, 'No compilation yet']]) {
             await assertEndpoints(await compileSource());
-            await control.click();
+            await workspace(page, 'editor'); await control.click();
             await assertReset(title);
-            await editor.fill(SIMPLE);
+            await enterSource(page, SIMPLE);
         }
         await assertEndpoints(await compileSource());
-        await editor.fill('ENTITY Broken\nvalue UNKNOWN');
+        await enterSource(page, 'ENTITY Broken\nvalue UNKNOWN');
         expectingFailure = true;
         const failure = page.waitForResponse(response => response.url().endsWith('/api/compile'));
-        await compile.click();
+        await clickIn(page, 'editor', compile);
         assert.equal((await (await failure).json()).success, false);
-        await page.locator('#error-panel.visible').waitFor();
+        await workspace(page, 'inspector'); await page.locator('#error-panel.visible').waitFor();
         await page.waitForFunction(() => !document.getElementById('compile-btn').disabled);
         expectingFailure = false;
         assert.equal(await pane.locator('.endpoint-row').count(), 0);
@@ -198,7 +207,7 @@ async function main() {
         // Hold a real server response to observe running state and invalidation races.
         for (const [control, title] of [[target('MySQL'), 'Target changed'], [enterProfessor, 'Source changed'],
             [enterLibrary, 'Source changed'], [clear, 'No compilation yet']]) {
-            await editor.fill(SIMPLE);
+            await enterSource(page, SIMPLE);
             await assertEndpoints(await compileSource());
             let responseReady;
             const ready = new Promise(resolve => { responseReady = resolve; });
@@ -209,10 +218,10 @@ async function main() {
                 await released;
                 await route.fulfill({ response });
             });
-            await compile.click();
+            await clickIn(page, 'editor', compile);
             await ready;
             await assertReset('Compilation running');
-            await control.click();
+            await workspace(page, 'editor'); await control.click();
             await assertReset(title);
             releaseResponse();
             await page.waitForFunction(() => !document.getElementById('compile-btn').disabled);
@@ -258,9 +267,9 @@ async function main() {
             data.generatedFiles.find(file => file.path === 'swagger.json').content = '{broken';
             await route.fulfill({ response, json: data });
         });
-        await editor.fill(SIMPLE);
+        await enterSource(page, SIMPLE);
         await compileSource();
-        await tab.click();
+        await clickIn(page, 'inspector', tab);
         assert.equal((await pane.textContent()).trim(), 'Unable to read generated endpoints.');
         await page.unroute('**/api/compile');
         console.log('PASS: absent/empty/malformed spec, invalid operations, non-operation keys, eight methods, order, singular grammar and HTML escaping');

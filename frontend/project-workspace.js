@@ -230,7 +230,10 @@ window.APIForgeProjects = (() => {
             element('project-dialog-description').textContent = description;
             element('project-dialog-status').textContent = 'Loading…';
             list.replaceChildren(); preview = null; element('project-preview').hidden = true;
-            if (!dialog.open) dialog.showModal();
+            if (!dialog.open) {
+                if (window.APIForgeIDE) APIForgeIDE.openProjectList();
+                else dialog.showModal();
+            }
         }
         async function loadProject(projectId, inspect = false) {
             if (!inspect && !confirmDiscard()) return;
@@ -272,7 +275,14 @@ window.APIForgeProjects = (() => {
                     const meta = document.createElement('span'); meta.textContent = (summary.target === 'mysql' ? 'MySQL' : 'PostgreSQL') + ' · Revision ' + summary.revision + ' · ' + summary.id;
                     button.append(title, meta); button.dataset.projectId = summary.id;
                     button.addEventListener('click', () => { if (!operation) loadProject(summary.id); });
-                    row.append(button); list.append(row);
+                    row.append(button);
+                    if (window.APIForgeIDE) {
+                        const inspect = document.createElement('button'); inspect.type = 'button'; inspect.className = 'btn btn-quiet';
+                        inspect.textContent = 'Preview'; inspect.setAttribute('aria-label', 'Preview ' + summary.name);
+                        inspect.addEventListener('click', () => { if (!operation) loadProject(summary.id, true); });
+                        row.prepend(inspect);
+                    }
+                    list.append(row);
                 }
             } catch (error) {
                 if (valid(ticket)) { report(error, 'list'); element('project-dialog-status').textContent = notice; }
@@ -306,16 +316,19 @@ window.APIForgeProjects = (() => {
         element('project-initialize').addEventListener('click', initialize);
         element('project-reconnect').addEventListener('click', reconnect);
         element('project-inspect').addEventListener('click', inspectSaved);
-        element('project-keep').addEventListener('click', () => editor.focus());
+        element('project-keep').addEventListener('click', () => { window.APIForgeIDE?.navigate('editor'); editor.focus(); });
         element('project-dialog-close').addEventListener('click', closeDialog);
         element('project-load-snapshot').addEventListener('click', () => {
             if (!preview || !confirmDiscard()) return;
             ++generation; operation = null; install(preview); closeDialog(); tell('Loaded saved revision ' + revision + '.');
         });
         dialog.addEventListener('close', () => {
+            // A queued close from the previous opening must not cancel a new list/load.
+            if (dialog.open) return;
             if (['list', 'load'].includes(operation?.kind)) { ++generation; operation = null; }
+            element('project-preview').hidden = true;
             preview = null; render();
-            if (opener?.isConnected && !opener.disabled) opener.focus();
+            if ((document.activeElement === document.body || dialog.contains(document.activeElement)) && opener?.isConnected && !opener.disabled) opener.focus();
         });
         dialog.addEventListener('keydown', event => {
             if (event.key !== 'Tab') return;

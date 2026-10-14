@@ -1,5 +1,13 @@
 'use strict';
 const assert = require('node:assert/strict');
+// Use the same visible workspace controls as a user; never reveal hidden panels.
+async function workspace(page, view) {
+    await page.locator('.ide-sidebar [data-workspace="' + view + '"]').click();
+    await page.locator('.ide-sidebar [data-workspace="' + view + '"][aria-current="page"]').waitFor();
+}
+async function clickIn(page, view, control) { await workspace(page, view); await control.click(); }
+async function enterSource(page, source) { await workspace(page, 'editor'); await page.locator('#dsl-editor').fill(source); }
+
 const path = require('node:path');
 const fs = require('node:fs');
 const { chromium } = require('playwright');
@@ -34,16 +42,16 @@ async function main() {
         });
         await page.route('**/favicon.ico', route => route.fulfill({ status: 204 }));
         await page.goto('http://127.0.0.1:' + server.address().port);
-        const editor = page.getByRole('textbox', { name: 'APIForge DSL source' });
+        const editor = page.locator('#dsl-editor');
         const tab = page.getByRole('tab', { name: 'Live API', exact: true });
         const pane = page.locator('#output-live-api');
         const liveCount = action => calls.filter(call => call.action === action).length;
         async function until(predicate) { for (let i = 0; i < 100; i++) { if (await predicate()) return; await wait(20); } assert.fail('Browser condition timed out'); }
         async function compile() {
             const pending = page.waitForResponse(response => response.url().endsWith('/api/compile'));
-            await page.locator('#compile-btn').click(); const data = await (await pending).json();
+            await clickIn(page, 'editor', page.locator('#compile-btn')); const data = await (await pending).json();
             await page.waitForFunction(() => !document.getElementById('compile-btn').disabled);
-            await tab.click(); return data;
+            await clickIn(page, 'inspector', tab); return data;
         }
         async function start() { await page.getByRole('button', { name: 'Start live API', exact: true }).click(); await until(async () => await pane.locator('#live-status').textContent() === 'Running'); }
         async function stop() { await page.getByRole('button', { name: 'Stop live API', exact: true }).click(); await until(async () => await pane.locator('#live-status').textContent() === 'Stopped / expired'); }
@@ -57,12 +65,12 @@ async function main() {
             await until(() => liveCount('request') > count);
             await until(async () => !await pane.locator('#live-send').isDisabled());
         }
-        await tab.click(); assert.match(await pane.textContent(), /Compile successfully/); assert.equal(liveCount('start'), 0);
+        await clickIn(page, 'inspector', tab); assert.match(await pane.textContent(), /Compile successfully/); assert.equal(liveCount('start'), 0);
         assert.equal(await tab.getAttribute('aria-controls'), 'output-live-api');
         assert.equal(await pane.getAttribute('aria-labelledby'), 'tab-live-api');
         await page.locator('#tab-endpoints').focus(); await page.keyboard.press('ArrowRight'); assert.equal(await tab.getAttribute('aria-selected'), 'true');
-        await editor.fill('ENTITY Bad\nx UNKNOWN'); assert.equal((await compile()).success, false); assert.match(await pane.textContent(), /Compile successfully/);
-        await editor.fill(SIMPLE); const data = await compile();
+        await enterSource(page, 'ENTITY Bad\nx UNKNOWN'); assert.equal((await compile()).success, false); assert.match(await pane.textContent(), /Compile successfully/);
+        await enterSource(page, SIMPLE); const data = await compile();
         assert.equal(data.success, true); assert.match(await pane.textContent(), /MySQL · 5 generated endpoints/); assert.equal(liveCount('start'), 0);
         startError = 'LIVE_DISABLED'; await pane.locator('#live-start').click(); await until(async () => (await pane.textContent()).includes('Live API runner is disabled.'));
         startError = 'LIVE_START_FAILED'; await pane.locator('#live-start').click(); await until(async () => (await pane.textContent()).includes('could not start'));
@@ -94,31 +102,31 @@ async function main() {
         requestError = 'LIVE_SESSION_INVALID'; await pane.locator('#live-send').click(); await until(async () => !await pane.locator('#live-stop').count());
         assert.match(await pane.locator('#live-status').textContent(), /expired/); requestError = null;
         await start(); await stop();
-        await start(); let stops = liveCount('stop'); await editor.fill(SIMPLE + '\nemail STRING'); await until(() => liveCount('stop') > stops);
-        await tab.click(); assert.equal(await pane.locator('#live-start').count(), 0); assert.match(await pane.textContent(), /Compile successfully/);
+        await start(); let stops = liveCount('stop'); await enterSource(page, SIMPLE + '\nemail STRING'); await until(() => liveCount('stop') > stops);
+        await clickIn(page, 'inspector', tab); assert.equal(await pane.locator('#live-start').count(), 0); assert.match(await pane.textContent(), /Compile successfully/);
         await compile(); await start(); stops = liveCount('stop'); await page.getByRole('button', { name: 'PostgreSQL', exact: true }).click(); await until(() => liveCount('stop') > stops);
-        await tab.click(); assert.match(await pane.textContent(), /Compile successfully/); assert.equal(await pane.locator('#live-start').count(), 0);
+        await clickIn(page, 'inspector', tab); assert.match(await pane.textContent(), /Compile successfully/); assert.equal(await pane.locator('#live-start').count(), 0);
         await compile(); await start(); stops = liveCount('stop'); await compile(); await until(() => liveCount('stop') > stops);
         await start(); stops = liveCount('stop');
-        await page.getByRole('button', { name: 'Clear', exact: true }).click();
+        await clickIn(page, 'editor', page.getByRole('button', { name: 'Clear', exact: true }));
         await until(() => liveCount('stop') > stops);
-        await tab.click(); assert.match(await pane.textContent(), /Compile successfully/);
-        await editor.fill(SIMPLE); await compile(); holdStart = true; releaseStart = null;
+        await clickIn(page, 'inspector', tab); assert.match(await pane.textContent(), /Compile successfully/);
+        await enterSource(page, SIMPLE); await compile(); holdStart = true; releaseStart = null;
         await pane.locator('#live-start').click(); await until(() => releaseStart);
-        await editor.fill(SIMPLE + '\nemail STRING'); stops = liveCount('stop'); releaseStart();
+        await enterSource(page, SIMPLE + '\nemail STRING'); stops = liveCount('stop'); releaseStart();
         await until(() => liveCount('stop') > stops); assert.equal(await pane.locator('#live-stop').count(), 0); assert.equal(await pane.locator('#live-start').count(), 0);
         // Editing while compilation is pending must never enable Live against stale source.
         let releaseCompile;
         await page.route('**/api/compile', async route => { const response = await route.fetch(); await new Promise(resolve => { releaseCompile = resolve; }); await route.fulfill({ response }); });
-        await page.locator('#compile-btn').click(); await until(() => releaseCompile); await editor.fill(SIMPLE + '\nchanged INT'); releaseCompile();
-        await page.waitForFunction(() => !document.getElementById('compile-btn').disabled); await tab.click(); assert.equal(await pane.locator('#live-start').count(), 0);
+        await clickIn(page, 'editor', page.locator('#compile-btn')); await until(() => releaseCompile); await enterSource(page, SIMPLE + '\nchanged INT'); releaseCompile();
+        await page.waitForFunction(() => !document.getElementById('compile-btn').disabled); await clickIn(page, 'inspector', tab); assert.equal(await pane.locator('#live-start').count(), 0);
         await page.unroute('**/api/compile');
-        await editor.fill(PROFESSOR_SOURCE); await compile(); await start();
+        await enterSource(page, PROFESSOR_SOURCE); await compile(); await start();
         assert.equal(await pane.locator('#live-endpoint option').count(), 17);
         await choose('POST', '/users'); await pane.locator('#live-body').fill('{"name":"Demo User","email":"live@example.test","joinedAt":"2026-10-06"}');
         responseBody = { data: [{ name: 'x'.repeat(2000) }] }; await send();
         for (const width of [1440, 900, 390]) {
-            await page.setViewportSize({ width, height: 1000 }); await tab.click();
+            await page.setViewportSize({ width, height: 1000 }); await clickIn(page, 'inspector', tab);
             assert(await pane.locator('#live-endpoint').isVisible()); assert(await pane.locator('#live-body').isVisible());
             assert(await pane.locator('#live-send').isVisible()); assert(await pane.locator('#live-stop').isVisible());
             for (const control of ['#live-stop', '#live-endpoint', '#live-body', '#live-send', '.live-response-body']) {
@@ -135,7 +143,7 @@ async function main() {
         }
         for (const id of ['diagram', 'endpoints', 'api', 'swagger']) { await page.locator('#tab-' + id).click(); assert(await page.locator('#output-' + id).isVisible()); }
         assert(await page.locator('#compilation-summary').isVisible());
-        await tab.click(); stops = liveCount('stop'); await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent('pagehide'))); await until(() => liveCount('stop') > stops);
+        await clickIn(page, 'inspector', tab); stops = liveCount('stop'); await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent('pagehide'))); await until(() => liveCount('stop') > stops);
         assert.deepEqual(errors, []);
         console.log('PASS Live API browser: compiler/OpenAPI oracle, explicit start, all request controls/statuses, pagination, JSON/XSS, invalidation/races/pagehide, 1440/900/390 containment and existing panes.');
     } finally { if (browser) await browser.close(); await new Promise(resolve => server.close(resolve)); }

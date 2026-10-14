@@ -1,5 +1,20 @@
 'use strict';
 const assert = require('node:assert/strict');
+// Use the same visible workspace controls as a user; never reveal hidden panels.
+async function workspace(page, view) {
+    if (await page.locator('dialog:modal').count() && await page.locator('.ide-sidebar [data-workspace="' + view + '"]').getAttribute('aria-current') === 'page') return;
+    await page.locator('.ide-sidebar [data-workspace="' + view + '"]').click();
+    await page.locator('.ide-sidebar [data-workspace="' + view + '"][aria-current="page"]').waitFor();
+}
+async function clickIn(page, view, control) { await workspace(page, view); await control.click(); }
+async function enterSource(page, source) { await workspace(page, 'editor'); await page.locator('#dsl-editor').fill(source); }
+async function enterName(page, value) { await workspace(page, 'projects'); await page.locator('#project-name').fill(value); }
+async function saveDialog(page) {
+    await page.locator('#ide-save').click();
+    await page.locator('#ide-save-dialog').waitFor();
+    await page.locator('#ide-save-form button[type="submit"]').click();
+}
+
 const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -63,12 +78,12 @@ async function setup({ target = 'mysql', saved = true, enabled = true } = {}) {
 }
 async function idle(page) { await page.waitForFunction(() => document.querySelector('.persistent-card')?.getAttribute('aria-busy') === 'false'); }
 async function openPersistent(page) {
-    if (!await page.locator('#persistent-workspace').evaluate(value => value.open)) await page.locator('#persistent-launcher').click();
+    await workspace(page, 'persistent');
     assert(await page.locator('#persistent-panel').isVisible());
 }
-async function choose(page, action) { await page.locator('#persistent-' + action).click(); await idle(page); }
+async function choose(page, action) { await workspace(page, 'persistent'); await page.locator('#persistent-' + action).click(); await idle(page); }
 async function open(page, id) {
-    await page.locator('#project-open').click();
+    await clickIn(page, 'projects', page.locator('#project-open'));
     const button = page.locator('#project-list button[data-project-id="' + id + '"]'); await button.click();
     await page.waitForFunction(() => !document.querySelector('#project-dialog').open);
 }
@@ -95,6 +110,7 @@ async function main() {
     browser = await chromium.launch({ headless: true });
     await test('exact eleven published tabs and panels retain order, relationships and keyboard activation', async () => {
         const { page, f } = await setup({ saved: false });
+        await workspace(page, 'inspector');
         const tabs = page.getByRole('tab');
         assert.deepEqual(await tabs.evaluateAll(values => values.map(value => value.dataset.tab)), TABS);
         assert.deepEqual(await page.getByRole('tabpanel', { includeHidden: true }).evaluateAll(values => values.map(value => value.id)), TABS.map(id => 'output-' + id));
@@ -116,26 +132,29 @@ async function main() {
     });
     await test('independent disclosure is keyboard accessible; opening and closing issue no API calls or implicit Stop', async () => {
         const c = await setup(), { page, server, f } = c;
-        await page.locator('#persistent-launcher').click();
+        await page.locator('#persistent-disclosure').click();
         assert(!await page.locator('#persistent-panel').isVisible());
+        await page.waitForFunction(() => document.querySelector('#persistent-launcher').getAttribute('aria-expanded') === 'false');
         assert.equal(await page.locator('#persistent-launcher').getAttribute('aria-expanded'), 'false');
         const initialCalls = [...server.calls];
         await page.locator('#persistent-disclosure').focus(); await page.keyboard.press('Enter');
         assert(await page.locator('#persistent-panel').isVisible());
         await page.waitForFunction(() => document.querySelector('#persistent-launcher').getAttribute('aria-expanded') === 'true');
         assert.equal(await page.getByRole('region', { name: /Persistent API/ }).count(), 1);
+        await page.locator('[data-workspace="projects"]').focus(); await page.keyboard.press('Enter');
         assert.match(await page.locator('#persistent-launcher').ariaSnapshot(), /button .*Persistent API.*expanded/);
+        await page.locator('[data-workspace="persistent"]').focus(); await page.keyboard.press('Enter');
         assert.equal(await page.locator('#persistent-disclosure').evaluate(value => value.tagName), 'SUMMARY');
         assert(await page.locator('#persistent-disclosure').evaluate(value => value.matches(':focus-visible') && getComputedStyle(value).outlineStyle !== 'none'));
         await screenshot(page, 'disclosure-keyboard-focus');
         await page.keyboard.press('Space'); assert(!await page.locator('#persistent-panel').isVisible());
-        await page.locator('#persistent-launcher').focus(); await page.keyboard.press('Enter');
+        await workspace(page, 'projects'); await page.locator('#persistent-launcher').focus(); await page.keyboard.press('Enter');
         assert(await page.locator('#persistent-panel').isVisible());
         assert(await page.locator('#persistent-disclosure').evaluate(value => value === document.activeElement && value.matches(':focus-visible') && getComputedStyle(value).outlineStyle !== 'none'));
         assert.deepEqual(server.calls, initialCalls);
         await running(c); const runningCalls = [...server.calls], ownedText = await page.locator('#persistent-owned').textContent();
         await page.locator('#persistent-disclosure').click(); assert(!await page.locator('#persistent-panel').isVisible());
-        await page.locator('#tab-endpoints').click(); await openPersistent(page);
+        await clickIn(page, 'inspector', page.locator('#tab-endpoints')); await openPersistent(page);
         assert.deepEqual(server.calls, runningCalls); assert.equal(f.count('stop'), 0);
         assert.equal(await page.locator('#persistent-owned').textContent(), ownedText);
         assert.match(await page.locator('#persistent-status').textContent(), /Database\/runtime: running/);
@@ -153,21 +172,21 @@ async function main() {
             assert(!await page.locator('#compile-btn').isDisabled());
             assert(!await page.locator('#clear-btn').isDisabled());
         }
-        await page.locator('#compile-btn').click();
+        await clickIn(page, 'editor', page.locator('#compile-btn'));
         await page.waitForFunction(() => document.querySelector('#compilation-summary-content').textContent.includes('entity'));
-        await page.locator('#tab-endpoints').click(); assert.match(await page.locator('#output-endpoints').textContent(), /GET.*\/items/s);
+        await clickIn(page, 'inspector', page.locator('#tab-endpoints')); assert.match(await page.locator('#output-endpoints').textContent(), /GET.*\/items/s);
         assert.equal(f.calls.length, 0); await screenshot(page, 'short-desktop-independent-panel');
     });
     await test('empty workspace editable; no status or mutation on load; reload remains explicit', async () => {
         const { page, f } = await setup({ saved: false });
-        assert.equal(await page.locator('#dsl-editor').inputValue(), ''); await page.locator('#dsl-editor').fill(SOURCE);
+        assert.equal(await page.locator('#dsl-editor').inputValue(), ''); await enterSource(page, SOURCE);
         assert.equal(f.calls.length, 0); assert(await page.locator('#persistent-run').isDisabled()); assert(await page.locator('#persistent-initialize').isDisabled());
         await screenshot(page, 'empty-desktop'); await page.reload(); await idle(page); assert.equal(f.calls.length, 0);
     });
     await test('disabled backend guidance leaves compiler and project UX operational', async () => {
         const { page, f } = await setup({ enabled: false, saved: false });
         assert.match(await page.locator('#persistent-message').textContent(), /APIFORGE_PERSISTENT_RUNNER=1/);
-        await page.locator('#dsl-editor').fill(SOURCE); await page.locator('#compile-btn').click();
+        await enterSource(page, SOURCE); await clickIn(page, 'editor', page.locator('#compile-btn'));
         await page.waitForFunction(() => document.querySelector('#compilation-summary-content').textContent.includes('entity'));
         await openPersistent(page); await screenshot(page, 'disabled'); assert.equal(f.calls.length, 0);
     });
@@ -194,7 +213,7 @@ async function main() {
             await choose(page, 'send'); assert.equal(f.calls.at(-1).input.method, method); assert.match(await page.locator('#persistent-response').textContent(), /HTTP (200|201).*12 ms/);
         }
         await screenshot(page, target + '-crud'); const sessionId = f.calls.at(-1).input.sessionId;
-        await page.locator('#dsl-editor').fill('invalid unsaved source');
+        await enterSource(page, 'invalid unsaved source');
         assert.match(await page.locator('#persistent-draft').textContent(), /acknowledged saved revision/);
         await choose(page, 'stop'); assert.deepEqual(f.calls.at(-1).input, { sessionId }); assert.match(await page.locator('#persistent-message').textContent(), /records are retained/);
         assert.equal(f.count('initialize'), 1); await choose(page, 'run'); assert.equal(f.count('start'), 2);
@@ -215,14 +234,14 @@ async function main() {
     });
     await test('saved-source operations ignore unrelated compiler output and unsaved draft target', async () => {
         const c = await setup(); const { page, f, project } = c;
-        await page.locator('#dsl-editor').fill('ENTITY Other\nid INT PRIMARY KEY'); await page.getByRole('button', { name: 'PostgreSQL', exact: true }).click();
-        await page.locator('#compile-btn').click(); await openPersistent(page); await running(c);
+        await enterSource(page, 'ENTITY Other\nid INT PRIMARY KEY'); await page.getByRole('button', { name: 'PostgreSQL', exact: true }).click();
+        await clickIn(page, 'editor', page.locator('#compile-btn')); await openPersistent(page); await running(c);
         assert.deepEqual(f.calls.find(call => call.kind === 'start').input, { projectId: project.id, target: 'mysql', expectedRevision: 1 });
         assert((await page.locator('#persistent-endpoint option').allTextContents()).every(text => text.includes('/items'))); assert.equal(f.count('initialize'), 0);
     });
     await test('saving a new revision invalidates status; revision mismatch refuses migration; old Stop survives', async () => {
         const c = await setup(); await running(c); const { page, f } = c;
-        await page.locator('#project-name').fill('Renamed'); await page.locator('#project-save').click();
+        await enterName(page, 'Renamed'); await saveDialog(page);
         await page.waitForFunction(() => document.querySelector('#project-revision').textContent === 'Revision 2');
         assert(await page.locator('#persistent-run').isDisabled()); assert(await page.locator('#persistent-send').isDisabled()); assert(!await page.locator('#persistent-stop').isDisabled());
         f.errors.status = 'PERSISTENT_REVISION_MISMATCH'; await choose(page, 'refresh');
@@ -305,11 +324,11 @@ async function main() {
             const snapshot = projectWorkspace.snapshot();
             return { keys: Object.keys(snapshot).sort(), frozen: Object.isFrozen(snapshot), saved: snapshot.projectId };
         }), { keys: ['dirty','name','projectId','revision','target'], frozen: true, saved: null });
-        await page.locator('#project-new').click(); await page.locator('#project-name').fill('New acknowledged'); await page.locator('#dsl-editor').fill(SOURCE);
-        await page.locator('#project-save').click(); await page.waitForFunction(() => document.querySelector('#project-status').textContent === 'Saved');
+        await clickIn(page, 'projects', page.locator('#project-new')); await enterName(page, 'New acknowledged'); await enterSource(page, SOURCE);
+        await saveDialog(page); await page.waitForFunction(() => document.querySelector('#project-status').textContent === 'Saved');
         assert.match(await page.locator('#persistent-project').textContent(), /New acknowledged/);
         assert.equal(await page.evaluate(() => projectWorkspace.snapshot().revision), 1);
-        await page.locator('#dsl-editor').fill(SOURCE + '\n'); assert.equal(await page.evaluate(() => projectWorkspace.snapshot().dirty), true);
+        await enterSource(page, SOURCE + '\n'); assert.equal(await page.evaluate(() => projectWorkspace.snapshot().dirty), true);
     });
     await test('invalid acknowledgments, UTF-8, headers and unavailable saved OpenAPI fail closed', async () => {
         const c = await setup(); await choose(c.page, 'refresh'); c.f.states.set(c.project.id, 'stopped'); await choose(c.page, 'refresh');
@@ -344,11 +363,11 @@ async function main() {
     await test('Persistent API state survives compiler reset; existing output panels remain usable', async () => {
         const c = await setup(); await running(c); const { page } = c;
         const compilation = page.waitForResponse(response => response.url().endsWith('/api/compile'));
-        await page.locator('#compile-btn').click(); await compilation;
-        await page.locator('#tab-endpoints').click(); assert.match(await page.locator('#output-endpoints').textContent(), /GET.*\/items/s);
-        await page.locator('#tab-diagram').click(); assert.match(await page.locator('#output-diagram').textContent(), /Item/);
+        await clickIn(page, 'editor', page.locator('#compile-btn')); await compilation;
+        await clickIn(page, 'inspector', page.locator('#tab-endpoints')); assert.match(await page.locator('#output-endpoints').textContent(), /GET.*\/items/s);
+        await clickIn(page, 'inspector', page.locator('#tab-diagram')); assert.match(await page.locator('#output-diagram').textContent(), /Item/);
         await openPersistent(page); assert.match(await page.locator('#persistent-status').textContent(), /running/);
-        await page.locator('#dsl-editor').fill('bad source'); assert.match(await page.locator('#persistent-status').textContent(), /running/);
+        await enterSource(page, 'bad source'); assert.match(await page.locator('#persistent-status').textContent(), /running/);
         assert(!await page.locator('#persistent-stop').isDisabled());
     });
     await test('disposable Live API controls stay independent of the persistent disclosure and owned session', async () => {
@@ -360,13 +379,13 @@ async function main() {
                 action === 'request' ? { status: 200, headers: { 'content-type': 'application/json' }, body: { data: 'disposable fixture' }, durationMs: 1 } : { stopped: true };
             await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, ...data }) });
         });
-        await page.locator('#compile-btn').click(); await page.waitForFunction(() => document.querySelector('#compilation-summary-content').textContent.includes('entity'));
-        await page.locator('#tab-live-api').click(); await page.locator('#live-start').click();
+        await clickIn(page, 'editor', page.locator('#compile-btn')); await page.waitForFunction(() => document.querySelector('#compilation-summary-content').textContent.includes('entity'));
+        await clickIn(page, 'inspector', page.locator('#tab-live-api')); await clickIn(page, 'inspector', page.locator('#live-start'));
         await page.waitForFunction(() => document.querySelector('#live-status').textContent === 'Running');
-        await page.locator('#persistent-disclosure').click(); await openPersistent(page);
+        await clickIn(page, 'persistent', page.locator('#persistent-disclosure')); await openPersistent(page);
         assert.deepEqual(liveCalls, ['start']); assert.equal(f.count('stop'), 0);
-        await page.locator('#live-send').click(); await page.waitForFunction(() => document.querySelector('#live-response').textContent.includes('disposable fixture'));
-        await page.locator('#live-stop').click(); await page.waitForFunction(() => document.querySelector('#live-status').textContent === 'Stopped / expired');
+        await clickIn(page, 'inspector', page.locator('#live-send')); await page.waitForFunction(() => document.querySelector('#live-response').textContent.includes('disposable fixture'));
+        await clickIn(page, 'inspector', page.locator('#live-stop')); await page.waitForFunction(() => document.querySelector('#live-status').textContent === 'Stopped / expired');
         assert.deepEqual(liveCalls, ['start', 'request', 'stop']);
         assert.match(await page.locator('#persistent-status').textContent(), /Database\/runtime: running/);
         await choose(page, 'stop'); assert.equal(f.count('stop'), 1);

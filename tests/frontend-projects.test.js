@@ -1,5 +1,20 @@
 'use strict';
 const assert = require('node:assert/strict');
+// Use the same visible workspace controls as a user; never reveal hidden panels.
+async function workspace(page, view) {
+    if (await page.locator('dialog:modal').count() && await page.locator('.ide-sidebar [data-workspace="' + view + '"]').getAttribute('aria-current') === 'page') return;
+    await page.locator('.ide-sidebar [data-workspace="' + view + '"]').click();
+    await page.locator('.ide-sidebar [data-workspace="' + view + '"][aria-current="page"]').waitFor();
+}
+async function clickIn(page, view, control) { await workspace(page, view); await control.click(); }
+async function enterSource(page, source) { await workspace(page, 'editor'); await page.locator('#dsl-editor').fill(source); }
+async function enterName(page, value) { await workspace(page, 'projects'); await page.locator('#project-name').fill(value); }
+async function saveDialog(page) {
+    await page.locator('#ide-save').click();
+    await page.locator('#ide-save-dialog').waitFor();
+    await page.locator('#ide-save-form button[type="submit"]').click();
+}
+
 const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
@@ -51,7 +66,11 @@ const editor = page => page.locator('#dsl-editor');
 const name = page => page.getByLabel('Project name', { exact: true });
 const status = page => page.locator('#project-status');
 async function ready(page) { await page.waitForFunction(() => document.querySelector('#project-workspace').getAttribute('aria-busy') === 'false'); }
-async function choose(page, button) { await page.locator('#project-' + button).click(); await ready(page); }
+async function choose(page, button) {
+    if (button === 'save') await saveDialog(page);
+    else await clickIn(page, 'projects', page.locator('#project-' + button));
+    await ready(page);
+}
 async function message(page, code) { await page.waitForFunction(code => document.querySelector('#project-message').textContent.includes(code), code); }
 async function saved(page, revision) {
     await page.waitForFunction(revision => document.querySelector('#project-revision').textContent === 'Revision ' + revision &&
@@ -100,9 +119,10 @@ function fakeStore() {
 }
 async function compile(page) {
     const pending = page.waitForResponse(response => response.url().endsWith('/api/compile'));
-    await page.locator('#compile-btn').click(); const response = await pending;
+    await clickIn(page, 'editor', page.locator('#compile-btn')); const response = await pending;
     await page.waitForFunction(() => !document.querySelector('#compile-btn').disabled);
     assert.equal((await response.json()).success, true);
+    await workspace(page, 'inspector');
 }
 async function request(page, method, pathname, body) {
     return page.evaluate(async ({ method, pathname, body }) => {
@@ -123,15 +143,15 @@ async function startupAndDisabled() {
         assert.equal(await editor(page).inputValue(), ''); assert(await editor(page).isEditable());
         assert.equal((await state(page)).target, 'mysql'); assert.equal(await page.locator('#source-name').textContent(), 'Untitled source');
         assert.equal(value.calls.length, 0); assert.equal(await page.locator('.status-icon.pending').count(), 6);
-        await name(page).fill('Temporary name'); await name(page).fill('');
+        await enterName(page, 'Temporary name'); await enterName(page, '');
         assert.equal(await page.locator('#source-name').textContent(), 'Untitled source');
-        await choose(page, 'new'); await name(page).fill('Draft'); await editor(page).fill(STUDENT_SOURCE);
+        await choose(page, 'new'); await enterName(page, 'Draft'); await enterSource(page, STUDENT_SOURCE);
         await page.getByRole('button', { name: 'PostgreSQL', exact: true }).click();
         assert.equal((await state(page)).id, ''); assert.equal(await status(page).textContent(), 'Not saved'); assert.equal(value.calls.length, 0);
         await choose(page, 'save'); await message(page, 'PROJECT_API_DISABLED'); assert.equal((await state(page)).source, STUDENT_SOURCE);
         await compile(page); assert(await page.locator('#download-btn').isVisible());
         assert.equal(await page.locator('#header-status-text').textContent(), 'Compiler ready');
-        const before = await state(page); await confirm(page, false, () => page.locator('#project-new').click()); assert.deepEqual(await state(page), before);
+        const before = await state(page); await confirm(page, false, () => clickIn(page, 'projects', page.locator('#project-new'))); assert.deepEqual(await state(page), before);
         assert.deepEqual(calls, []); assert.deepEqual(page.runtimeErrors, []);
         assert(page.consoleErrors.every(error => error.url.endsWith('/api/projects/session') && /403/.test(error.text)));
     } finally { await page.close(); await stop(value); }
@@ -145,17 +165,17 @@ async function nativeWorkflow() {
     try {
         assert.equal(fs.existsSync(root), false);
         await choose(page, 'open'); await message(page, 'PROJECT_STORE_MISSING');
-        assert.equal(fs.existsSync(root), false); await page.locator('#project-dialog-close').click();
-        await confirm(page, false, () => page.locator('#project-initialize').click());
+        assert.equal(fs.existsSync(root), false); await clickIn(page, 'projects', page.locator('#project-dialog-close'));
+        await confirm(page, false, () => clickIn(page, 'projects', page.locator('#project-initialize')));
         assert.equal(value.calls.filter(call => call.path.endsWith('/initialize')).length, 0);
-        await confirm(page, true, () => page.locator('#project-initialize').click()); await ready(page);
+        await confirm(page, true, () => clickIn(page, 'projects', page.locator('#project-initialize'))); await ready(page);
         assert.match(await page.locator('#project-message').textContent(), /Storage initialized/);
         const initialization = value.calls.find(call => call.path.endsWith('/initialize'));
         assert.deepEqual(initialization.body, {}); assert.equal(initialization.status, 201);
         assert.equal(value.calls.filter(call => call.method === 'POST' && call.path === '/api/projects').length, 0);
-        await confirm(page, true, () => page.locator('#project-initialize').click()); await ready(page); await message(page, 'PROJECT_STORE_EXISTS');
-        await choose(page, 'open'); assert.match(await page.locator('#project-dialog-status').textContent(), /No saved projects/); await page.locator('#project-dialog-close').click();
-        await name(page).fill('  Unicode 项目 🧪  '); await editor(page).fill('incomplete DSL\n\tΩ 😀 \u0000\ufeff\n');
+        await confirm(page, true, () => clickIn(page, 'projects', page.locator('#project-initialize'))); await ready(page); await message(page, 'PROJECT_STORE_EXISTS');
+        await choose(page, 'open'); assert.match(await page.locator('#project-dialog-status').textContent(), /No saved projects/); await clickIn(page, 'projects', page.locator('#project-dialog-close'));
+        await enterName(page, '  Unicode 项目 🧪  '); await enterSource(page, 'incomplete DSL\n\tΩ 😀 \u0000\ufeff\n');
         await page.getByRole('button', { name: 'PostgreSQL', exact: true }).click();
         const before = await state(page);
         await choose(page, 'save'); await saved(page, 1); first = (await state(page)).id;
@@ -165,35 +185,35 @@ async function nativeWorkflow() {
         const record = (await request(page, 'GET', '/' + first)).body.data;
         assert.equal(record.source, before.source); assert.equal(record.name, before.name);
         for (const field of ['name', 'target', 'source']) {
-            if (field === 'name') await name(page).fill('Changed name');
+            if (field === 'name') await enterName(page, 'Changed name');
             if (field === 'target') await page.getByRole('button', { name: 'MySQL', exact: true }).click();
-            if (field === 'source') await editor(page).fill('changed source');
+            if (field === 'source') await enterSource(page, 'changed source');
             assert.equal(await status(page).textContent(), 'Unsaved changes');
-            if (field === 'name') await name(page).fill(before.name);
+            if (field === 'name') await enterName(page, before.name);
             if (field === 'target') await page.getByRole('button', { name: 'PostgreSQL', exact: true }).click();
-            if (field === 'source') await editor(page).fill(before.source);
+            if (field === 'source') await enterSource(page, before.source);
             assert.equal(await status(page).textContent(), 'Saved');
         }
-        await name(page).fill('Renamed project'); await choose(page, 'save'); await saved(page, 2);
+        await enterName(page, 'Renamed project'); await choose(page, 'save'); await saved(page, 2);
         assert.deepEqual(value.calls.find(call => call.method === 'PUT').body, { expectedRevision: 1, changes: { name: 'Renamed project' } });
-        await page.locator('#clear-btn').click(); assert.equal((await state(page)).id, first); assert.equal(await status(page).textContent(), 'Unsaved changes');
+        await clickIn(page, 'editor', page.locator('#clear-btn')); assert.equal((await state(page)).id, first); assert.equal(await status(page).textContent(), 'Unsaved changes');
         await choose(page, 'save'); await saved(page, 3); assert.equal((await request(page, 'GET', '/' + first)).body.data.source, '');
         await choose(page, 'new'); assert.equal((await state(page)).target, 'mysql'); assert.equal((await state(page)).id, '');
-        await name(page).fill('Second independent project'); await editor(page).fill(STUDENT_SOURCE); await choose(page, 'save'); await saved(page, 1); second = (await state(page)).id;
+        await enterName(page, 'Second independent project'); await enterSource(page, STUDENT_SOURCE); await choose(page, 'save'); await saved(page, 1); second = (await state(page)).id;
         const summaries = (await request(page, 'GET', '')).body.data;
         assert.deepEqual(summaries.map(item => item.id), [first, second].sort()); assert(summaries.every(item => !Object.hasOwn(item, 'source')));
         const getsBefore = value.calls.filter(call => call.method === 'GET' && /^\/api\/projects\/[0-9a-f-]{36}$/.test(call.path)).length;
         await choose(page, 'open');
-        assert.deepEqual(await page.locator('#project-list button').evaluateAll(buttons => buttons.map(button => button.dataset.projectId)), summaries.map(item => item.id));
+        assert.deepEqual(await page.locator('#project-list button[data-project-id]').evaluateAll(buttons => buttons.map(button => button.dataset.projectId)), summaries.map(item => item.id));
         assert.equal(value.calls.filter(call => call.method === 'GET' && /^\/api\/projects\/[0-9a-f-]{36}$/.test(call.path)).length, getsBefore);
         await page.locator('#project-list button[data-project-id="' + first + '"]').click(); await ready(page);
         assert.deepEqual(await state(page), { id: first, revision: 'Revision 3', source: '', name: 'Renamed project', target: 'postgres' });
         assert.equal(await page.locator('#compilation-summary').isVisible(), false); assert.equal(await page.locator('#error-panel').textContent(), '');
         assert.equal(value.calls.filter(call => call.path === '/api/compile').length, 0);
-        await editor(page).fill('keep this local draft'); const dirty = await state(page);
-        await open(page, second, false); assert.deepEqual(await state(page), dirty); await page.locator('#project-dialog-close').click();
-        await confirm(page, false, () => page.locator('#clear-btn').click()); assert.deepEqual(await state(page), dirty);
-        await confirm(page, false, () => page.locator('#project-new').click()); assert.deepEqual(await state(page), dirty);
+        await enterSource(page, 'keep this local draft'); const dirty = await state(page);
+        await open(page, second, false); assert.deepEqual(await state(page), dirty); await clickIn(page, 'projects', page.locator('#project-dialog-close'));
+        await confirm(page, false, () => clickIn(page, 'editor', page.locator('#clear-btn'))); assert.deepEqual(await state(page), dirty);
+        await confirm(page, false, () => clickIn(page, 'projects', page.locator('#project-new'))); assert.deepEqual(await state(page), dirty);
         await open(page, second, true); assert.equal((await state(page)).source, STUDENT_SOURCE); assert.equal((await state(page)).id, second);
         await compile(page); const downloaded = page.waitForEvent('download'); await page.locator('#download-btn').click(); assert.equal(await (await downloaded).failure(), null);
         assert.deepEqual(page.runtimeErrors, []);
@@ -202,9 +222,9 @@ async function nativeWorkflow() {
         const exact = '\ufeffENTITY ByteTest\r\nid INT PRIMARY KEY\r\n// Ω 😀\r\u0000\t \n';
         const seeded = (await request(page, 'POST', '', { name: 'Exact bytes', target: 'mysql', source: exact })).body.data;
         await open(page, seeded.id); assert.equal((await state(page)).source, normalize(exact));
-        await name(page).fill('Exact renamed'); await choose(page, 'save'); await saved(page, 2);
+        await enterName(page, 'Exact renamed'); await choose(page, 'save'); await saved(page, 2);
         assert.equal((await request(page, 'GET', '/' + seeded.id)).body.data.source, exact);
-        await editor(page).fill('changed'); await editor(page).fill(normalize(exact)); assert.equal(await status(page).textContent(), 'Saved');
+        await enterSource(page, 'changed'); await enterSource(page, normalize(exact)); assert.equal(await status(page).textContent(), 'Saved');
         await stop(value);
         // Independent real server process reopens the same disposable native store.
         const worker = await startWorker(root);
@@ -239,12 +259,12 @@ async function nativeConflictAndRestart() {
     let worker = await startWorker(root);
     const a = await pageAt(worker), b = await pageAt(worker);
     try {
-        await a.locator('#project-storage summary').click();
-        await confirm(a, true, () => a.locator('#project-initialize').click()); await ready(a);
-        await name(a).fill('Shared project'); await editor(a).fill('initial'); await choose(a, 'save'); await saved(a, 1);
+        await clickIn(a, 'projects', a.locator('#project-storage summary'));
+        await confirm(a, true, () => clickIn(a, 'projects', a.locator('#project-initialize'))); await ready(a);
+        await enterName(a, 'Shared project'); await enterSource(a, 'initial'); await choose(a, 'save'); await saved(a, 1);
         const id = (await state(a)).id;
-        await open(b, id); await name(a).fill('Winner'); await editor(a).fill('winner'); await choose(a, 'save'); await saved(a, 2);
-        await name(b).fill('Losing local name'); await editor(b).fill('losing local source');
+        await open(b, id); await enterName(a, 'Winner'); await enterSource(a, 'winner'); await choose(a, 'save'); await saved(a, 2);
+        await enterName(b, 'Losing local name'); await enterSource(b, 'losing local source');
         await b.getByRole('button', { name: 'PostgreSQL', exact: true }).click();
         const loser = await state(b), mutations = [];
         b.on('request', request => { if (request.method() === 'PUT') mutations.push(request.postDataJSON()); });
@@ -254,16 +274,16 @@ async function nativeConflictAndRestart() {
         assert.equal(mutations.length, 1); assert.equal(mutations[0].expectedRevision, 1);
         assert(await b.locator('#project-save').isDisabled());
         assert.equal((await request(a, 'GET', '/' + id)).body.data.source, 'winner');
-        await b.locator('#project-keep').click(); assert.equal(await editor(b).evaluate(node => document.activeElement === node), true);
+        await clickIn(b, 'projects', b.locator('#project-keep')); assert.equal(await editor(b).evaluate(node => document.activeElement === node), true);
         await choose(b, 'inspect'); assert.equal(await b.locator('#project-preview-source').textContent(), 'winner');
         assert.deepEqual(await state(b), loser);
-        await confirm(b, false, () => b.locator('#project-load-snapshot').click()); assert.deepEqual(await state(b), loser);
-        await confirm(b, true, () => b.locator('#project-load-snapshot').click());
+        await confirm(b, false, () => clickIn(b, 'projects', b.locator('#project-load-snapshot'))); assert.deepEqual(await state(b), loser);
+        await confirm(b, true, () => clickIn(b, 'projects', b.locator('#project-load-snapshot')));
         assert.equal((await state(b)).revision, 'Revision 2'); assert.equal((await state(b)).name, 'Winner');
-        await editor(b).fill('reconciled'); await choose(b, 'save'); await saved(b, 3);
+        await enterSource(b, 'reconciled'); await choose(b, 'save'); await saved(b, 3);
         assert.equal(mutations.at(-1).expectedRevision, 2);
         const port = worker.port; await stopWorker(worker); worker = await startWorker(root, port);
-        await editor(b).fill('after restart'); const before = await state(b);
+        await enterSource(b, 'after restart'); const before = await state(b);
         await choose(b, 'save'); await message(b, 'PROJECT_API_TOKEN_INVALID'); assert.deepEqual(await state(b), before);
         assert.equal(mutations.length, 3); assert(await b.locator('#project-save').isDisabled());
         await choose(b, 'reconnect'); assert.equal(mutations.length, 3);
@@ -276,12 +296,15 @@ async function asyncSafety() {
     const fake = fakeStore(), value = await server({ storeApi: fake.storeApi }), page = await pageAt(value);
     try {
         const saveGate = gate(); fake.hooks.create = () => saveGate.promise;
-        await name(page).fill('Submitted'); await editor(page).fill('submitted source');
-        await page.locator('#project-save').evaluate(button => { button.click(); button.click(); button.click(); });
+        await enterName(page, 'Submitted'); await enterSource(page, 'submitted source');
+        await page.locator('#ide-save').click();
+        await page.locator('#ide-save-form button[type="submit"]').click();
+        await workspace(page, 'projects');
+        await page.locator('#project-save').evaluate(button => { button.click(); button.click(); });
         await page.waitForFunction(() => document.querySelector('#project-status').textContent === 'Saving…');
         assert(await page.locator('#project-new').isDisabled()); assert(await page.locator('#project-open').isDisabled());
         assert(await editor(page).isEditable());
-        await name(page).fill('Newer local name'); await editor(page).fill('newer local source');
+        await enterName(page, 'Newer local name'); await enterSource(page, 'newer local source');
         await page.getByRole('button', { name: 'PostgreSQL', exact: true }).click();
         saveGate.release(); await saved(page, 1);
         assert.equal(fake.calls.filter(call => call === 'create').length, 1);
@@ -291,8 +314,8 @@ async function asyncSafety() {
         delete fake.hooks.create; await choose(page, 'save'); await saved(page, 2);
         const second = fake.make({ name: '<img src=x onerror="throw Error(1)">', target: 'mysql', source: 'second' });
         const listGate = gate(); fake.hooks.list = () => listGate.promise;
-        await page.locator('#project-open').click(); await page.locator('#project-dialog-close').click();
-        await choose(page, 'new'); await name(page).fill('New workspace'); const afterNew = await state(page);
+        await clickIn(page, 'projects', page.locator('#project-open')); await clickIn(page, 'projects', page.locator('#project-dialog-close'));
+        await choose(page, 'new'); await enterName(page, 'New workspace'); const afterNew = await state(page);
         listGate.release(); await page.waitForLoadState('networkidle'); assert.deepEqual(await state(page), afterNew);
         assert.equal(await page.locator('#project-dialog').isVisible(), false); assert.equal(await page.locator('#project-list button').count(), 0);
         delete fake.hooks.list;
@@ -300,8 +323,8 @@ async function asyncSafety() {
         assert((await page.locator('#project-list').textContent()).includes(second.name));
         const loadGate = gate(); fake.hooks.get = () => loadGate.promise;
         await confirm(page, true, () => page.locator('#project-list button[data-project-id="' + first + '"]').click());
-        await page.locator('#project-dialog-close').click(); await confirm(page, true, () => page.locator('#project-new').click());
-        await name(page).fill('Latest workspace'); await editor(page).fill('latest source'); const latest = await state(page);
+        await clickIn(page, 'projects', page.locator('#project-dialog-close')); await confirm(page, true, () => clickIn(page, 'projects', page.locator('#project-new')));
+        await enterName(page, 'Latest workspace'); await enterSource(page, 'latest source'); const latest = await state(page);
         loadGate.release(); await page.waitForLoadState('networkidle'); assert.deepEqual(await state(page), latest);
         delete fake.hooks.get;
         // Programmatic edits during a pending Open must also prevent replacement.
@@ -310,13 +333,13 @@ async function asyncSafety() {
         await editor(page).evaluate(node => { node.value = 'edited during open'; node.dispatchEvent(new Event('input')); });
         editGate.release(); await ready(page); assert.equal((await state(page)).source, 'edited during open');
         assert.match(await page.locator('#project-dialog-status').textContent(), /Workspace changed/);
-        await page.locator('#project-dialog-close').click(); delete fake.hooks.get;
+        await clickIn(page, 'projects', page.locator('#project-dialog-close')); delete fake.hooks.get;
         // Lazy session response and list cannot revive an abandoned dialog.
         const sessionGate = gate();
         await page.reload();
         await page.route('**/api/projects/session', async route => { const response = await route.fetch(); await sessionGate.promise; await route.fulfill({ response }); });
-        await page.locator('#project-open').click(); await page.locator('#project-dialog-close').click();
-        await choose(page, 'new'); await editor(page).fill('session-safe draft');
+        await clickIn(page, 'projects', page.locator('#project-open')); await clickIn(page, 'projects', page.locator('#project-dialog-close'));
+        await choose(page, 'new'); await enterSource(page, 'session-safe draft');
         sessionGate.release(); await page.waitForLoadState('networkidle'); assert.equal((await state(page)).source, 'session-safe draft');
         assert.equal(await page.locator('#project-dialog').isVisible(), false); await page.unroute('**/api/projects/session');
         assert.deepEqual(page.runtimeErrors, []);
@@ -326,16 +349,16 @@ async function failuresAndUncertainty() {
     const fake = fakeStore(), value = await server({ storeApi: fake.storeApi }), page = await pageAt(value);
     try {
         const seed = fake.make({ name: 'Saved', target: 'mysql', source: 'saved' }); await open(page, seed.id);
-        await editor(page).fill('local uncertain'); const before = await state(page);
+        await enterSource(page, 'local uncertain'); const before = await state(page);
         fake.hooks.save = () => { throw new ProjectStoreError('PROJECT_COMMIT_UNCERTAIN'); };
         await choose(page, 'save'); await message(page, 'PROJECT_COMMIT_UNCERTAIN');
         assert.deepEqual(await state(page), before); assert.equal(await status(page).textContent(), 'Save unconfirmed');
         assert(await page.locator('#project-save').isDisabled()); assert.equal(fake.calls.filter(call => call === 'save').length, 1);
         await choose(page, 'inspect'); assert.equal(await page.locator('#project-preview-source').textContent(), 'saved');
-        await confirm(page, false, () => page.locator('#project-load-snapshot').click()); assert.deepEqual(await state(page), before);
-        await confirm(page, true, () => page.locator('#project-load-snapshot').click()); delete fake.hooks.save;
+        await confirm(page, false, () => clickIn(page, 'projects', page.locator('#project-load-snapshot'))); assert.deepEqual(await state(page), before);
+        await confirm(page, true, () => clickIn(page, 'projects', page.locator('#project-load-snapshot'))); delete fake.hooks.save;
         // A real HTTP mutation commits, but Playwright drops its acknowledgement.
-        await choose(page, 'new'); await name(page).fill('Unacknowledged first save'); await editor(page).fill('preserve me');
+        await choose(page, 'new'); await enterName(page, 'Unacknowledged first save'); await enterSource(page, 'preserve me');
         await page.route('**/api/projects', async route => {
             if (route.request().method() !== 'POST') return route.continue();
             await route.fetch(); await route.abort('connectionreset');
@@ -346,8 +369,8 @@ async function failuresAndUncertainty() {
         assert.match(await page.locator('#project-message').textContent(), /UUID was not acknowledged/);
         assert(await page.locator('#project-save').isDisabled()); await page.unroute('**/api/projects');
         await choose(page, 'inspect'); assert((await page.locator('#project-list').textContent()).includes('Unacknowledged first save'));
-        await page.locator('#project-dialog-close').click();
-        await confirm(page, true, () => page.locator('#project-new').click()); await name(page).fill('Error draft'); await editor(page).fill('invalid DSL is saveable');
+        await clickIn(page, 'projects', page.locator('#project-dialog-close'));
+        await confirm(page, true, () => clickIn(page, 'projects', page.locator('#project-new'))); await enterName(page, 'Error draft'); await enterSource(page, 'invalid DSL is saveable');
         const draft = await state(page);
         for (const code of ['PROJECT_STORE_MISSING', 'PROJECT_STORE_UNSAFE', 'PROJECT_STORE_INCOMPATIBLE', 'PROJECT_STORE_RUNTIME_UNSUPPORTED',
             'PROJECT_STORE_PLATFORM_UNSUPPORTED', 'PROJECT_STORE_BUSY', 'PROJECT_NOT_FOUND', 'PROJECT_INVALID_NAME', 'PROJECT_INVALID_TARGET', 'PROJECT_INVALID_SOURCE', 'PROJECT_INVALID_REVISION']) {
@@ -361,21 +384,22 @@ async function failuresAndUncertainty() {
         await page.route('**/api/projects', route => route.fulfill({ status: 201, json: { success: true, data: { id: 'bad', source: 'PRIVATE' } } }));
         await choose(page, 'save'); await message(page, 'PROJECT_CLIENT_RESPONSE_INVALID'); assert.deepEqual(await state(page), draft);
         assert.equal(await status(page).textContent(), 'Save unconfirmed'); await page.unroute('**/api/projects');
-        await confirm(page, true, () => page.locator('#project-new').click());
+        await confirm(page, true, () => clickIn(page, 'projects', page.locator('#project-new')));
         await page.route('**/api/projects', route => route.fulfill({ status: 500, json: { success: false, error: { code: 'UNKNOWN_SERVER_ERROR', message: 'PRIVATE C:\\secret' } } }));
         await choose(page, 'open'); await message(page, 'PROJECT_CLIENT_SERVER_ERROR');
         assert.doesNotMatch(await page.locator('#project-dialog-status').textContent(), /PRIVATE|UNKNOWN_SERVER_ERROR/);
-        await page.locator('#project-dialog-close').click(); await page.unroute('**/api/projects');
+        await clickIn(page, 'projects', page.locator('#project-dialog-close')); await page.unroute('**/api/projects');
         await page.route('**/api/projects', route => route.fulfill({ status: 500, json: { success: false, error: { code: 'UNKNOWN_SERVER_ERROR', message: 'PRIVATE C:\\secret', stack: 'PRIVATE' } } }));
         await choose(page, 'open'); await message(page, 'PROJECT_CLIENT_RESPONSE_INVALID');
         assert.doesNotMatch(await page.locator('#project-dialog-status').textContent(), /PRIVATE|UNKNOWN_SERVER_ERROR/);
-        await page.locator('#project-dialog-close').click(); await page.unroute('**/api/projects');
+        await clickIn(page, 'projects', page.locator('#project-dialog-close')); await page.unroute('**/api/projects');
         // Rapid initializer clicks are guarded even while the factory is delayed.
         const initFake = fakeStore(), initValue = await server({ storeApi: initFake.storeApi }), initPage = await pageAt(initValue);
         try {
-            await initPage.locator('#project-storage summary').click();
+            await clickIn(initPage, 'projects', initPage.locator('#project-storage summary'));
             const initGate = gate(); initFake.hooks.initialize = () => initGate.promise;
             initPage.on('dialog', dialog => dialog.accept());
+            await workspace(initPage, 'projects');
             await initPage.locator('#project-initialize').evaluate(button => { button.click(); button.click(); button.click(); });
             await initPage.waitForFunction(() => document.querySelector('#project-workspace').getAttribute('aria-busy') === 'true');
             initGate.release(); await ready(initPage); assert.equal(initFake.calls.filter(call => call === 'initialize').length, 1);
@@ -391,9 +415,9 @@ async function layoutKeyboardAndCompilerRace() {
         const seed = fake.make({ name: 'Saved project', target: 'postgres', source: STUDENT_SOURCE });
         for (const width of [1440, 900, 390]) {
             await page.setViewportSize({ width, height: 1000 });
-            await page.locator('#project-open').focus(); await page.keyboard.press('Enter'); await ready(page);
+            await workspace(page, 'projects'); await page.locator('#project-open').focus(); await page.keyboard.press('Enter'); await ready(page);
             assert.equal(await page.locator('#project-dialog-close').evaluate(node => document.activeElement === node), true);
-            await page.keyboard.press('Shift+Tab'); assert.equal(await page.locator('#project-list button').evaluate(node => document.activeElement === node), true);
+            await page.keyboard.press('Shift+Tab'); assert.equal(await page.locator('#project-list button[data-project-id]').evaluate(node => document.activeElement === node), true);
             await page.keyboard.press('Tab'); assert.equal(await page.locator('#project-dialog-close').evaluate(node => document.activeElement === node), true);
             assert(await page.locator('#project-dialog').evaluate(node => node.scrollWidth <= node.clientWidth + 1));
             await page.screenshot({ path: path.join(fixtures, 'project-open-' + width + '.png'), fullPage: true });
@@ -407,10 +431,10 @@ async function layoutKeyboardAndCompilerRace() {
             await page.screenshot({ path: path.join(fixtures, 'project-ui-' + width + '.png'), fullPage: true });
         }
         await page.setViewportSize({ width: 1440, height: 1000 });
-        await editor(page).fill(STUDENT_SOURCE); await compile(page);
+        await enterSource(page, STUDENT_SOURCE); await compile(page);
         const compileGate = gate();
         await page.route('**/api/compile', async route => { const response = await route.fetch(); await compileGate.promise; await route.fulfill({ response }); });
-        await page.locator('#compile-btn').click();
+        await clickIn(page, 'editor', page.locator('#compile-btn'));
         await open(page, seed.id, true); const current = await state(page);
         assert.equal(current.target, 'postgres'); assert.equal(current.source, STUDENT_SOURCE);
         compileGate.release(); await page.waitForFunction(() => !document.querySelector('#compile-btn').disabled);

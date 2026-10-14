@@ -268,6 +268,7 @@ function setCompilerAvailability(isAvailable) {
 // ═════════════════════════════════════════════════════════════
 
 function updateLineNumbers() {
+    if (window.APIForgeEditor) { APIForgeEditor.render(errorLines); return; }
     const lines = editor.value.split('\n');
     lineNumbers.innerHTML = lines.map((_, i) => {
         const lineNum = i + 1;
@@ -278,6 +279,7 @@ function updateLineNumbers() {
 }
 
 function updateEditorHighlights() {
+    if (window.APIForgeEditor) { APIForgeEditor.render(errorLines); return; }
     if (!editorHighlights) return;
     const lines = editor.value.split('\n');
     editorHighlights.innerHTML = lines.map((_, i) => {
@@ -401,6 +403,7 @@ function setupPhaseClickHandlers() {
         item.addEventListener('click', () => {
             const phase = item.getAttribute('data-phase');
             if (phase && PHASE_TAB_MAP[phase]) {
+                window.APIForgeIDE?.navigate('inspector', true);
                 switchTab(PHASE_TAB_MAP[phase]);
             }
             if (errorPanel.classList.contains('visible')) {
@@ -1178,6 +1181,7 @@ async function compile() {
             document.getElementById('output-optimized-ir').innerHTML = renderOptimizedIR(data);
             document.getElementById('output-sql').innerHTML = renderSQL(data.generatedFiles);
             document.getElementById('output-endpoints').innerHTML = renderEndpoints(data.generatedFiles);
+            window.APIForgeIDE?.endpoints(data.generatedFiles);
             document.getElementById('output-api').innerHTML = renderAPIFiles(data.generatedFiles);
             document.getElementById('output-swagger').innerHTML = renderSwagger(data.generatedFiles);
 
@@ -1445,6 +1449,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
     APIForgePersistent.start(projectWorkspace);
+    window.APIForgeIDE?.start();
 
     // Initial rendering
     updateLineNumbers();

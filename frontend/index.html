@@ -175,6 +175,26 @@
         </div>
     </dialog>
 
+    <dialog id="ide-settings-dialog" class="ide-dialog" aria-labelledby="ide-settings-title">
+        <div class="ide-dialog-heading"><div><p class="ide-eyebrow">MAKE IT YOURS</p><h2 id="ide-settings-title">Settings</h2></div><button class="btn btn-quiet" data-close aria-label="Close Settings">✕</button></div>
+        <p class="panel-meta">Appearance settings apply to this browser session.</p>
+        <div class="ide-setting"><label for="ide-theme">Color theme<span>A focused palette for your workspace</span></label><select id="ide-theme"><option value="default">Dark Default</option><option value="one">One Dark-inspired</option><option value="dracula">Dracula-inspired</option></select></div>
+        <div class="ide-setting"><label for="ide-font">Editor font size<span id="ide-font-value">14 px</span></label><input id="ide-font" type="range" min="12" max="24" value="14"></div>
+        <div class="ide-setting"><label for="ide-wrap">Word wrap<span>Fit long lines within the editor</span></label><input id="ide-wrap" type="checkbox"></div>
+        <div class="ide-setting"><label for="ide-numbers">Line numbers<span>Show source line references</span></label><input id="ide-numbers" type="checkbox" checked></div>
+        <div class="ide-dialog-actions"><button id="ide-reset-panels" class="btn">Reset panel sizes</button><button id="ide-reset-all" class="btn btn-quiet">Reset all appearance</button></div>
+    </dialog>
+    <dialog id="ide-save-dialog" class="ide-dialog" aria-labelledby="ide-save-title">
+        <form id="ide-save-form">
+            <div class="ide-dialog-heading"><div><p class="ide-eyebrow">LOCAL PROJECT</p><h2 id="ide-save-title">Save Project</h2></div><button class="btn btn-quiet" type="button" data-close>Cancel</button></div>
+            <p id="ide-save-meta"></p><label for="ide-save-name">Save project name</label><input id="ide-save-name" autocomplete="off" placeholder="Name your project" required>
+            <p class="panel-meta">Target follows the editor selector. Saving records this source as a project revision.</p>
+            <div class="ide-dialog-actions"><button class="btn btn-primary" type="submit">Save Project</button></div>
+        </form>
+    </dialog>
+    <script src="split-pane.js"></script>
+    <script src="editor-presentation.js"></script>
+    <script src="ide-shell.js"></script>
     <script src="source-frame.js"></script>
     <script src="project-workspace.js"></script>
     <script src="persistent-workspace.js"></script>

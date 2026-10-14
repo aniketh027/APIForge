@@ -6,6 +6,14 @@
 // Alternatively, skip the browser download and set APIFORGE_BROWSER_EXECUTABLE
 // to an absolute local Chromium/Chrome executable path before running the test.
 const assert = require('node:assert/strict');
+// Use the same visible workspace controls as a user; never reveal hidden panels.
+async function workspace(page, view) {
+    await page.locator('.ide-sidebar [data-workspace="' + view + '"]').click();
+    await page.locator('.ide-sidebar [data-workspace="' + view + '"][aria-current="page"]').waitFor();
+}
+async function clickIn(page, view, control) { await workspace(page, view); await control.click(); }
+async function enterSource(page, source) { await workspace(page, 'editor'); await page.locator('#dsl-editor').fill(source); }
+
 const { chromium } = require('playwright');
 const app = require('../server');
 
@@ -44,8 +52,8 @@ async function main() {
         // Chrome requests a favicon even though the frontend doesn't supply one.
         await page.route('**/favicon.ico', route => route.fulfill({ status: 204 }));
         await page.goto(`http://127.0.0.1:${server.address().port}`);
-        await page.locator('#dsl-editor').fill('ENTITY Document\nid INT PRIMARY KEY\ntitle STRING REQUIRED');
-        await page.locator('#compile-btn').click();
+        await enterSource(page, 'ENTITY Document\nid INT PRIMARY KEY\ntitle STRING REQUIRED');
+        await clickIn(page, 'editor', page.locator('#compile-btn'));
         await page.locator('#output-api .api-file').first().waitFor({ state: 'attached' });
 
         const longText = 'prose <tag> & "quoted" '.repeat(300) + 'x'.repeat(3000);
@@ -65,6 +73,7 @@ async function main() {
                 document.getElementById('output-api').innerHTML = renderAPIFiles(files);
                 switchTab('api');
             }, files);
+            await workspace(page, 'inspector');
             const cards = page.locator('#output-api .api-file');
             for (let i = 0; i < files.length; i++) {
                 const card = cards.nth(i);
