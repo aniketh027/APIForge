@@ -1703,8 +1703,8 @@ button.error-location:hover { text-decoration-color: currentColor; }
     .persistent-panel { max-height: min(420px, 38dvh); }
 }
 @media (min-width: 1051px) and (max-height: 740px) {
-    body:has(.persistent-workspace[open]) { overflow: auto; }
-    .app-shell:has(.persistent-workspace[open]) { height: auto; grid-template-rows: 52px 480px auto 74px; }
+    html:not(.ide-enabled) body:has(.persistent-workspace[open]) { overflow: auto; }
+    html:not(.ide-enabled) .app-shell:has(.persistent-workspace[open]) { height: auto; grid-template-rows: 52px 480px auto 74px; }
 }
 .persistent-card { max-width: 100%; min-width: 0; padding: 16px; }
 .persistent-card h3 { margin: 0 0 12px; }
