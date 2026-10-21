@@ -6,6 +6,15 @@
 
 ---
 
+## Documentation shortcuts
+
+- [Language syntax and examples](docs/APIForge-Language-Guide.md)
+- [PostgreSQL target](docs/postgres-target.md)
+- [Multi-file imports](docs/modules.md)
+- [Saved-project workflow](docs/project-ui.md)
+- [Disposable Live API runner](docs/live-api-runner.md)
+- [Persistent API configuration and recovery](docs/persistent-runtime.md)
+
 ## 📌 What is APIForge?
 
 APIForge is a **custom 6-phase compiler** that takes a simple Domain-Specific
