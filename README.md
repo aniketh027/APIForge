@@ -11,7 +11,7 @@
 APIForge is a **custom 6-phase compiler** that takes a simple Domain-Specific
 Language (DSL) as input and generates a complete, runnable backend:
 
-1. **MySQL database schema** — `CREATE TABLE` statements, foreign keys, and junction tables
+1. **MySQL or PostgreSQL database schema** — `CREATE TABLE` statements, foreign keys, and junction tables (MySQL is the default; select PostgreSQL explicitly)
 2. **Express.js REST API** — models, controllers, CRUD routes, and a ready-to-run server
 3. **OpenAPI / Swagger specification** — `swagger.json` describing every endpoint
 
@@ -692,7 +692,8 @@ MySQL/PostgreSQL acceptance and manual screen-reader certification are separate.
 | Node.js       | Compiler runtime                 |
 | JavaScript    | Implementation language          |
 | Express.js    | Web playground + generated API   |
-| MySQL (mysql2)| Target database for generated code |
+| MySQL (mysql2)| Default database target for generated code |
+| PostgreSQL (pg)| Explicit PostgreSQL database target |
 | HTML/CSS/JS   | Frontend playground editor       |
 
 ---
@@ -712,7 +713,8 @@ MySQL/PostgreSQL acceptance and manual screen-reader certification are separate.
 - [x] Position-aware errors + "did you mean?" suggestions
 - [x] Local filesystem imports and whole-program module compilation
 - [ ] Advanced IR optimizations
-- [ ] Additional database targets (PostgreSQL, SQLite)
+- [x] Explicit PostgreSQL target
+- [ ] Additional database targets (SQLite)
 - [ ] Authentication scaffolding in generated APIs
 
 ---
