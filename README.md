@@ -730,7 +730,8 @@ MySQL/PostgreSQL acceptance and manual screen-reader certification are separate.
 
 ## 👥 Authors
 
-*Compiler Design Course Project*
+*Compiler Design Course Project* 
+
 
 ---
 
