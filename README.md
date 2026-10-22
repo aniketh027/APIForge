@@ -460,7 +460,7 @@ ENTITY Student
   - Generates input validation logic in Express controllers (`validateStudent(data)`).
 - **`MIN_LENGTH <integer>`** & **`MAX_LENGTH <integer>`**:
   - Allowed only for `STRING` fields; values must be non-negative integers.
-  - May be used independently or together; when combined, `MIN_LENGTH <= MAX_LENGTH` is required.
+  - May be used independently or together and when combined, `MIN_LENGTH <= MAX_LENGTH` is required.
   - Generates MySQL `CHAR_LENGTH` checks (and widens `VARCHAR` capacity when a bound exceeds 255), Unicode-aware Express validation, and OpenAPI `minLength` / `maxLength` metadata.
   - STRING defaults are checked against the declared length bounds during semantic analysis.
 - **`DEFAULT <literal>`**:
