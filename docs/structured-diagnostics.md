@@ -189,8 +189,11 @@ using the shared source-frame utility. Zero-warning success appearance is unchan
 | Condition | Status |
 |---|---:|
 | Missing body/source or non-string source | 400 |
+| Invalid target (anything other than exact `mysql` or `postgres`) | 400 |
+| Filesystem imports supplied to the HTTP compiler (`INP010`) | 400 |
 | Lexer or parser diagnostic | 400 |
 | Semantic diagnostic, including empty/comment-only source | 422 |
+| Recognized code-generation target-admission refusal (`GEN001`) | 422 |
 | Unexpected exception in any compiler phase | 500 |
 | Malformed JSON body | 500 (existing server behavior preserved) |
 | Successful compilation | 200 |
