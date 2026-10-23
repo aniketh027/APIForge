@@ -511,7 +511,18 @@ per-phase output, generated files, and inline error carets.
 npm run dev
 ```
 
-Then open **http://localhost:3001**.
+Then open **http://localhost:3001**. The playground server reads `DEV_PORT`
+when you need a different port. For example, in PowerShell:
+
+```powershell
+$env:DEV_PORT = "3002"
+npm run dev
+```
+
+With that override, open <http://localhost:3002> and check
+<http://localhost:3002/api/health>. `DEV_PORT` configures the playground
+server; generated backend startup is documented separately in the generated
+`output/README.md`.
 
 The server exposes a small JSON API:
 
