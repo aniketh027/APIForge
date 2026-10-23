@@ -80,6 +80,19 @@ See [G24 verification and limitations](docs/date-timestamp-verification.md).
 
 ---
 
+## Choose a workflow
+
+| Goal | Entry point | Output and lifecycle |
+| --- | --- | --- |
+| Generate a backend on disk | `node index.js file.apiforge` | Publishes generated files into `output/` |
+| Inspect a compilation | Playground or `POST /api/compile` | Returns generated files in memory |
+| Try a disposable local API | [Live API runner](docs/live-api-runner.md) | Creates a temporary runtime and database; Stop attempts their cleanup |
+| Keep a saved project API and its records | [Persistent API](docs/persistent-runtime.md) | Uses an acknowledged saved revision; Stop preserves the database |
+
+The two runtime workflows require explicit server-side enablement and
+database configuration. Compiling DSL alone does not start a generated API
+or initialize its database.
+
 ## 📝 DSL Syntax Example
 
 **Entities:**
