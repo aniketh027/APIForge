@@ -535,6 +535,27 @@ The server exposes a small JSON API:
 The compile API returns generated files in memory. Downloading a project builds
 the ZIP in your browser; neither action writes to the repository's `output/`.
 
+### Compile through HTTP
+
+With the playground running on its default port, open a second PowerShell
+terminal in the repository directory:
+
+```powershell
+$body = @{
+    source = Get-Content -LiteralPath "samples/student.apiforge" -Raw
+    target = "mysql"
+} | ConvertTo-Json
+$result = Invoke-RestMethod -Uri "http://localhost:3001/api/compile" `
+    -Method Post -ContentType "application/json" -Body $body
+$result.success
+$result.generatedFiles | Select-Object path
+```
+
+A successful response has `success: true` and an ordered `generatedFiles`
+array of `{ path, content }` objects. Change `target` to `postgres` for the
+PostgreSQL target, or omit it to use MySQL. Adjust the request URL if you
+configured `DEV_PORT`.
+
 ---
 
 ## 🚀 How to Run
