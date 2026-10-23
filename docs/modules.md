@@ -88,6 +88,33 @@ by the filesystem adapter at invocation. An explicit root must canonicalize to
 an accessible directory; the entry must be contained in it. Containment uses
 Node path operations and physical directory ancestry, never string prefixes.
 
+### Example: entry and models in sibling directories
+
+For your own project with `project/src/main.apiforge` and
+`project/models/student.apiforge`, put this in the entry file:
+
+```apiforge
+IMPORT "../models/student.apiforge"
+```
+
+The model file can contain:
+
+```apiforge
+ENTITY Student
+  id INT PRIMARY KEY
+  name STRING REQUIRED
+```
+
+From the directory containing `project/`, compile with:
+
+```bash
+node index.js project/src/main.apiforge --root project
+```
+
+Without `--root project`, the default root is `project/src/`, so the sibling
+model import escapes that root and is refused with `INP006`. The explicit
+root admits both directories while preserving containment within `project/`.
+
 ## Identity, aliases and stable reads
 
 The adapter uses `fs.realpathSync.native(..., { encoding: 'utf8' })` without
