@@ -541,6 +541,16 @@ playground and requires explicit initialization. Its default is the OS user
 profile's `.apiforge-projects`; it admits narrowly specified SQLite filesystem
 entries without creating or validating a database.
 
+### Clone the Repository
+
+```bash
+git clone https://github.com/aniketh027/APIForge.git
+cd APIForge
+```
+
+Run the installation, compilation, and playground commands below from this
+directory.
+
 ### Install Dependencies
 ```bash
 npm install
