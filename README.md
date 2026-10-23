@@ -570,6 +570,20 @@ node index.js samples/student_course_rel.apiforge
 Run these commands from the APIForge repository directory. The CLI writes to
 `output/` in the current working directory, regardless of the input file's location.
 
+### Choose a Database Target
+
+MySQL is the default. To select a target explicitly, use one of these commands:
+
+```bash
+node index.js samples/student.apiforge --target mysql
+node index.js samples/student.apiforge --target postgres
+```
+
+The target names are exactly `mysql` and `postgres`. Each command generates
+into the same `output/` directory, so the later compilation replaces the
+generator-owned artifacts from the earlier one. See the
+[PostgreSQL target contract](docs/postgres-target.md) for target-specific behavior.
+
 ### Launch the Web Playground
 ```bash
 npm run dev
