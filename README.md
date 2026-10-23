@@ -588,6 +588,12 @@ directory.
 npm install
 ```
 
+For a clean installation using the checked-in `package-lock.json`, use
+`npm ci` instead. It replaces the current `node_modules/` installation
+with the locked dependencies and fails if the package manifest and lockfile
+disagree. Use `npm install` when intentionally updating dependencies, then
+review the resulting manifest and lockfile changes.
+
 ### Compile the Sample File
 ```bash
 npm run compile
