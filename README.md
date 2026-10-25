@@ -613,6 +613,20 @@ npm run compile
 ```
 This compiles `samples/student.apiforge` and writes the generated backend to `output/`.
 
+### Choose a Sample
+
+| Sample | What it demonstrates |
+| --- | --- |
+| [`student.apiforge`](samples/student.apiforge) | Basic entity and field types |
+| [`enum_account.apiforge`](samples/enum_account.apiforge) | Ordered, case-sensitive ENUM members and defaults |
+| [`uuid.apiforge`](samples/uuid.apiforge) | UUID fields, keys, defaults, and a many-to-many relationship |
+| [`invalid_rel.apiforge`](samples/invalid_rel.apiforge) | Intentional error: relation references an undeclared Course entity |
+| [`dup_rel.apiforge`](samples/dup_rel.apiforge) | Intentional error: duplicate relationship declaration |
+
+For example, run `node index.js samples/enum_account.apiforge` from the
+repository root. The last two files are negative examples: semantic failure
+is their expected result, rather than a successful backend generation.
+
 ### Compile Any File
 ```bash
 node index.js samples/student_course_rel.apiforge
