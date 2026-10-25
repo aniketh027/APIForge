@@ -515,6 +515,19 @@ Hint: MIN must not exceed MAX.
 
 ---
 
+### Reading a failed HTTP compilation
+
+A failed `POST /api/compile` response includes `success: false`, the failing
+`phase`, a primary `diagnostic`, and a `diagnostics` array. Use `phaseStates`
+to distinguish `succeeded`, `failed`, and `skipped`; a skipped phase has not
+been evaluated. Earlier tokens or AST output may still be present.
+
+Invalid input and lexer/parser diagnostics normally return HTTP 400;
+semantic diagnostics return 422. Unexpected exceptions return a sanitized
+500 response. Malformed JSON currently also returns 500 with `INP002`, as
+recorded in the [HTTP status contract](docs/structured-diagnostics.md#http-statuses).
+Warnings alone do not make a successful compilation fail.
+
 ## 🌐 Web Playground
 
 A browser-based editor lets you write DSL and watch the compiler run live —
