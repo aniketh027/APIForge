@@ -682,6 +682,22 @@ npm run test:disk-generation
 
 These tests use temporary directories and do not need a MySQL server.
 
+The default `npm test` script does not invoke every named test group.
+For changes involving target selection or filesystem imports, also use
+the relevant focused group:
+
+| Area | Command |
+| --- | --- |
+| MySQL compatibility and explicit PostgreSQL target selection | `npm run test:g27` |
+| Module parsing, resolution, cycles, equivalence, and boundaries | `npm run test:g28` |
+| Diagnostic codes, ranges, and HTTP behavior | `node tests/diagnostics.test.js` |
+| Non-fatal compiler warnings | `npm run test:warnings` |
+
+These groups are distinct from native database acceptance. Consult the
+[PostgreSQL verification](docs/postgres-target-verification.md) and
+[module verification](docs/modules-verification.md) records before choosing
+an infrastructure-dependent test command.
+
 To verify a generated backend as a standalone consumer project, run the opt-in integration harness:
 
 ```bash
