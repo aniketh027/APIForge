@@ -558,6 +558,12 @@ The server exposes a small JSON API:
 | `POST /api/compile`  | Runs the full pipeline on posted DSL source |
 | `GET  /api/health`   | Health check                                |
 
+`GET /api/health` returns `{ "status": "ok", "version": "1.0.0" }`. This
+confirms the compiler HTTP router is reachable. It does not compile a
+program, connect to a generated database, or verify a Live or Persistent
+API session. Use a compilation request and the relevant runtime controls
+to inspect those separate operations.
+
 The compile API returns generated files in memory. Downloading a project builds
 the ZIP in your browser; neither action writes to the repository's `output/`.
 
