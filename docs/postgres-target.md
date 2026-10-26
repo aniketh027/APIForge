@@ -1,6 +1,6 @@
 # PostgreSQL target (G27)
 
-MySQL remains APIForge's default. PostgreSQL is selected explicitly; source syntax and the six compiler phases are unchanged. The browser continues to omit target and generates MySQL. G26 snapshots and migrations remain exclusively `mysql-8.4-v1`.
+MySQL remains APIForge's default. PostgreSQL is selected explicitly; source syntax and the six compiler phases are unchanged. The playground starts with MySQL selected and provides MySQL and PostgreSQL target buttons. It sends the selected target with the source in `POST /api/compile`; choose PostgreSQL and compile again to inspect that target's generated files. G26 snapshots and migrations remain exclusively `mysql-8.4-v1`.
 
 ```powershell
 node index.js samples/student.apiforge --target postgres
