@@ -244,7 +244,12 @@ resource paths, including Student/student and Category/Categorie. Prototype-sens
 identifiers remain supported through own-key registries. See
 [naming verification](docs/generated-naming-collision-verification.md).
 
-Compiling a `.apiforge` file writes a complete backend into `output/`:
+Compiling a `.apiforge` file through the CLI writes a complete backend into
+`output/`. The table below describes the default MySQL target. With
+`--target postgres`, the same artifact paths contain PostgreSQL DDL and a
+`pg` connection pool in `config/db.js`; the generated package uses `pg`
+instead of `mysql2`. Use the generated README for that project's setup, and
+see the [PostgreSQL runtime contract](docs/postgres-target.md#generated-runtime-and-setup).
 
 | File | Description |
 |------|-------------|
