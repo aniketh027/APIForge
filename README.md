@@ -412,8 +412,16 @@ CREATE TABLE Student_Course (
 | `STRING`  | `VARCHAR(255)` by default | Text strings; widened when a declared length bound exceeds 255 |
 | `FLOAT`   | `FLOAT`           | Decimal numbers          |
 | `BOOLEAN` | `BOOLEAN`         | True/false values        |
+| `DATE` | `DATE` | Canonical Gregorian `YYYY-MM-DD` strings |
+| `TIMESTAMP` | `TIMESTAMP` | Canonical UTC `YYYY-MM-DDTHH:mm:ssZ` strings at second precision |
 | `UUID` | `CHAR(36) CHARACTER SET ascii COLLATE ascii_bin` | Canonical lowercase UUID text; ordinary field or explicit primary key |
 | `ENUM("a", "b")` | `ENUM('a', 'b')` | Finite set of case-sensitive strings |
+
+DATE is limited to `1000-01-01` through `9999-12-31`. TIMESTAMP is limited
+to `1970-01-01T00:00:01Z` through `2038-01-19T03:14:07Z`. Defaults must be
+quoted canonical literals; offsets, fractional seconds, dynamic defaults,
+and temporal bounds are unavailable. See
+[temporal verification and limitations](docs/date-timestamp-verification.md).
 
 ENUM fields declare one or more quoted strings in source order:
 
