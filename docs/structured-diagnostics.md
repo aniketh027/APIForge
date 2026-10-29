@@ -23,9 +23,11 @@ G24 appends SEM038 / INVALID_TEMPORAL_DEFAULT. G25 appends SEM039 /
 INVALID_UUID_DEFAULT for malformed/noncanonical quoted UUID defaults, at the
 DEFAULT literal. Wrong primitive UUID defaults retain SEM021.
 
-There are now 68 public error assignments. All original 62 and WRN001–WRN005
-retain their mapping. Target errors are semantic HTTP 422/CLI exit 1; no artifacts
-are generated. Raw numeric source metadata is non-enumerable and never enters IR.
+The current registry contains 83 public error assignments plus the separate
+WRN001–WRN005 warning namespace. Earlier assignments retain their mappings.
+PostgreSQL admission uses SEM040 or, at the direct code-generation boundary,
+GEN001. Module diagnostics add PAR023 and INP004–INP014. See the complete
+registry below. Raw numeric source metadata is non-enumerable and never enters IR.
 
 APIForge exposes errors and non-fatal warnings through one JSON contract, implemented in
 `src/utils/diagnostics.js`. The six compiler phases and DSL rules are unchanged.
@@ -211,10 +213,11 @@ This changes positions only, not accepted programs or compiler semantics.
 
 Codes use a phase prefix and three digits. Numeric assignments are explicit in
 the central registry; append new entries without renumbering or reusing codes.
-`symbol` retains the meaningful condition name. The 62 codes comprise 4 lexical,
-22 parser, 33 semantic, 2 input, and 1 internal code. The original 61 assignments
-are unchanged. `INT001` uses the actual
-failed phase in its `phase` field and has no invented source location.
+`symbol` retains the meaningful condition name. The 83 current error codes
+comprise 4 lexical, 23 parser, 40 semantic, 14 input, 1 code-generation,
+and 1 internal assignment. Warning codes use their own namespace.
+`INT001` uses the actual failed phase in its `phase` field and has no
+invented source location.
 
 | Phase | Code | Symbol |
 |---|---|---|
@@ -244,6 +247,7 @@ failed phase in its `phase` field and has no invented source location.
 | parser | PAR020 | MISSING_DEFAULT_VALUE |
 | parser | PAR021 | UNKNOWN_MODIFIER |
 | parser | PAR022 | EXPECTED_ENUM_DELIMITER |
+| parser | PAR023 | IMPORT_AFTER_DECLARATION |
 | semantic | SEM001 | MISSING_ENTITY_DECLARATION |
 | semantic | SEM002 | DUPLICATE_ENTITY |
 | semantic | SEM003 | RESERVED_ENTITY_NAME |
@@ -277,6 +281,26 @@ failed phase in its `phase` field and has no invented source location.
 | semantic | SEM031 | DUPLICATE_ENUM_VALUE |
 | semantic | SEM032 | INVALID_ENUM_DEFAULT |
 | semantic | SEM033 | IMPLICIT_PRIMARY_KEY_COLLISION |
+| semantic | SEM034 | GENERATED_NAME_COLLISION |
+| semantic | SEM035 | UNSAFE_NUMERIC_LITERAL |
+| semantic | SEM036 | ENUM_TRAILING_SPACE |
+| semantic | SEM037 | MYSQL_TARGET_LIMIT |
+| semantic | SEM038 | INVALID_TEMPORAL_DEFAULT |
+| semantic | SEM039 | INVALID_UUID_DEFAULT |
+| semantic | SEM040 | POSTGRES_TARGET_LIMIT |
 | input | INP001 | INVALID_SOURCE |
 | input | INP002 | MALFORMED_JSON |
+| input | INP003 | INVALID_TARGET |
+| input | INP004 | INVALID_IMPORT_PATH |
+| input | INP005 | IMPORT_NOT_FOUND |
+| input | INP006 | IMPORT_OUTSIDE_ROOT |
+| input | INP007 | IMPORT_NOT_FILE |
+| input | INP008 | IMPORT_READ_FAILED |
+| input | INP009 | IMPORT_CYCLE |
+| input | INP010 | IMPORT_CONTEXT_UNSUPPORTED |
+| input | INP011 | IMPORT_RESOURCE_LIMIT |
+| input | INP012 | IMPORT_SOURCE_CHANGED |
+| input | INP013 | INVALID_COMPILATION_ROOT |
+| input | INP014 | IMPORT_IDENTITY_AMBIGUOUS |
+| codegen | GEN001 | POSTGRES_ADMISSION_FAILURE |
 | internal | INT001 | FAILURE |
