@@ -112,6 +112,20 @@ Inspection/loading after conflict or uncertainty intentionally discards local
 changes only with the user's confirmation. The user may keep editing or explicitly
 start another draft after acknowledging discard/duplicate risks.
 
+### Choose a conflict-recovery action
+
+| Choice | Effect on the current draft |
+| --- | --- |
+| Keep editing locally | Preserves draft and acknowledged revision; does not resolve the blocked Save |
+| Inspect latest saved version | Reads a preview while preserving the draft |
+| Load saved version | Replaces the draft only after discard confirmation and acknowledges the loaded revision |
+| Reconnect Project API | Acquires a new connection token; does not replay Save or advance a revision |
+
+Before choosing replacement, retain any source changes you still need.
+A lost first-save response needs deliberate saved-project inspection
+because the created UUID may be unknown and repeating a first save can
+create a second project with the same name.
+
 An invalid restart token is cleared from memory and displayed as
 `PROJECT_API_TOKEN_INVALID`. Use **Reconnect Project API** to request a new session,
 then choose the desired action explicitly. Reconnection never replays a mutation.
