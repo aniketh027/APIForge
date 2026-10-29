@@ -47,6 +47,18 @@ New, Open, Save, Compile and missing-store errors never initialize storage.
 An established missing store requires manual resolution; initialization cannot
 be used to adopt or repair it.
 
+## Names and project identity
+
+A project name is a preserved label, not a unique lookup key. Two saved
+projects may have the same name and different backend UUIDs. Saving a
+new draft with an existing name creates a separate project; it does not
+select or overwrite the older one.
+
+To edit a saved project, choose Open and deliberately select its record.
+The workspace then retains that UUID and acknowledged revision for later
+saves. Renaming that workspace changes the existing project's label rather
+than creating another identity. New remains an in-memory draft until Save.
+
 ## Local state and asynchronous behavior
 
 The module keeps the backend UUID, acknowledged revision and last acknowledged
