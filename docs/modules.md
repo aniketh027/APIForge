@@ -115,6 +115,18 @@ Without `--root project`, the default root is `project/src/`, so the sibling
 model import escapes that root and is refused with `INP006`. The explicit
 root admits both directories while preserving containment within `project/`.
 
+### Compilation root versus generated output
+
+`--root` controls which source files the resolver may admit. It does not
+choose an output directory. The ordinary CLI still publishes `output/`
+under the invocation working directory, even when the entry file is
+nested under another source root.
+
+For example, `node index.js project/src/main.apiforge --root project`
+run from the APIForge directory reads sources under `project/` and writes
+the generated backend to APIForge's `output/`. The file-aware library
+instead returns its generated array without publishing it.
+
 ## Identity, aliases and stable reads
 
 The adapter uses `fs.realpathSync.native(..., { encoding: 'utf8' })` without
