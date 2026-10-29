@@ -185,6 +185,21 @@ Publication acquires an exclusive `wx` writer lock, validates all history and ex
 
 The lock is a local cooperating-writer contract, not a distributed lock. Active, stale and malformed locks all fail closed. Neither lock age nor PID alone authorizes takeover. An operator may clear a stale lock only after establishing that no writer owns the workspace; inspect any remaining owned stage before removing it, then run `verify`. The implementation does not promise power-loss durability beyond the underlying filesystem's rename and flushed-file behavior.
 
+### Interpret an offline verify result
+
+From the repository directory, inspect an existing history with:
+
+```powershell
+node migrate.js verify --workspace .\schema-history
+```
+
+A successful JSON result includes `verified: true`, `revisions`,
+`headToken`, `snapshotSha256`, and `physicalSha256`. The hashes describe
+the validated local head snapshot. This result does not identify an
+applied production revision, compare live rows, or confirm that SQL has
+been executed. Preserve a rejected history for investigation rather than
+dropping an unexpected revision from its inventory.
+
 ## Library API and errors
 
 ```javascript
