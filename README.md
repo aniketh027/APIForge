@@ -411,16 +411,21 @@ CREATE TABLE Student_Course (
 
 ## 📊 Supported Data Types
 
-| Type      | Maps to MySQL     | Description              |
-|-----------|-------------------|--------------------------|
-| `INT`     | `INT`             | Integer numbers          |
-| `STRING`  | `VARCHAR(255)` by default | Text strings; widened when a declared length bound exceeds 255 |
-| `FLOAT`   | `FLOAT`           | Decimal numbers          |
-| `BOOLEAN` | `BOOLEAN`         | True/false values        |
-| `DATE` | `DATE` | Canonical Gregorian `YYYY-MM-DD` strings |
-| `TIMESTAMP` | `TIMESTAMP` | Canonical UTC `YYYY-MM-DDTHH:mm:ssZ` strings at second precision |
-| `UUID` | `CHAR(36) CHARACTER SET ascii COLLATE ascii_bin` | Canonical lowercase UUID text; ordinary field or explicit primary key |
-| `ENUM("a", "b")` | `ENUM('a', 'b')` | Finite set of case-sensitive strings |
+| APIForge type | MySQL | PostgreSQL | Public value |
+| --- | --- | --- | --- |
+| `INT` | `INT` | `INTEGER` | Integer number |
+| `STRING` | `VARCHAR(n)` | `VARCHAR(n) COLLATE "C"` | Text string; capacity starts at 255 and follows declared length bounds |
+| `FLOAT` | `FLOAT` | `REAL` with a finite-value check | Decimal number |
+| `BOOLEAN` | `BOOLEAN` | `BOOLEAN` | Boolean |
+| `DATE` | `DATE` | `DATE` with a logical-range check | Canonical `YYYY-MM-DD` string |
+| `TIMESTAMP` | `TIMESTAMP` | `TIMESTAMPTZ(0)` with a logical-range check | Canonical UTC string at second precision |
+| `UUID` | `CHAR(36) CHARACTER SET ascii COLLATE ascii_bin` | `UUID` | Canonical lowercase UUID text |
+| `ENUM("a", "b")` | Native `ENUM` | `TEXT COLLATE "C"` with a membership check | One declared string member |
+
+The same DSL types keep their public API representation across targets.
+Physical storage, collation, and admission constraints differ; consult the
+[PostgreSQL physical representation](docs/postgres-target.md#physical-representation)
+for target-specific details.
 
 DATE is limited to `1000-01-01` through `9999-12-31`. TIMESTAMP is limited
 to `1970-01-01T00:00:01Z` through `2038-01-19T03:14:07Z`. Defaults must be
