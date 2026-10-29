@@ -490,8 +490,9 @@ ENTITY Student
   - Generates MySQL `CHAR_LENGTH` checks (and widens `VARCHAR` capacity when a bound exceeds 255), Unicode-aware Express validation, and OpenAPI `minLength` / `maxLength` metadata.
   - STRING defaults are checked against the declared length bounds during semantic analysis.
 - **`DEFAULT <literal>`**:
-  - Type-checked against field data type (integers for `INT`, numbers for `FLOAT`, quoted strings for `STRING`, declared quoted members for `ENUM`, `TRUE`/`FALSE` for `BOOLEAN`).
+  - Type-checked against field data type (integers for `INT`, numbers for `FLOAT`, quoted strings for `STRING`, declared quoted members for `ENUM`, `TRUE`/`FALSE` for `BOOLEAN`, and quoted canonical strings for `UUID`, `DATE`, and `TIMESTAMP`).
   - Semantic analysis verifies default values satisfy applicable numeric or STRING-length boundaries.
+  - UUID and temporal defaults also pass their canonical-format and logical-range checks; they are static values, not generation expressions.
   - Generates SQL `DEFAULT` clauses and OpenAPI `default` properties.
 
 ---
