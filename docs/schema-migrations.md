@@ -122,6 +122,18 @@ Combined changes retain the strongest class and every requirement. Unique checks
 
 All six identity forms can be snapshotted: implicit INT, explicit generated INT, INT DEFAULT, STRING PK, runtime UUID, and UUID DEFAULT. Implicit/explicit identity can be metadata-only only when the physical column, order, PK, default and generation are identical. A relationship label change is metadata-only only when storage and endpoints remain identical. Metadata-only changes still get a plan and immutable new snapshot; no executable SQL is stored. A byte-identical complete snapshot creates no revision.
 
+### Publication outcomes
+
+| Comparison | Local publication result |
+| --- | --- |
+| Byte-identical complete snapshot | `noOp: true`, `committed: false`; no new revision |
+| Changed metadata with unchanged physical representation | New metadata revision and plan, with no SQL file |
+| Supported physical schema change | New migration revision with reviewed SQL |
+
+Equal physical hashes alone do not prove a complete-snapshot no-op.
+Metadata changes still matter to history. Even a no-op `create` requires
+an existing baseline and the exact expected head and plan tokens.
+
 ## Planning, simulation and SQL
 
 Format-1 plans contain stable fact-derived operation IDs, explicit dependencies and execution order. Stable Kahn sorting uses version-1 operation priorities, then bytewise table ID, object ID and operation ID; it never uses locale sorting. Drops release FKs, CHECKs, names, indexes and columns before dependent removals or growth. Endpoint tables and support precede FKs/junctions. Cyclic table deletion drops all cycle FKs first. Unresolved dependency cycles raise `MIGRATION_DEPENDENCY_CYCLE`.
