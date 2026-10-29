@@ -248,6 +248,33 @@ source/frame context. Failures throw with file-aware `diagnostic`/`diagnostics`
 and, after a unit exists, non-enumerable `compilationUnit`. Pure Lexer, Parser,
 SemanticAnalyzer, IRGenerator, Optimizer and Codegen APIs never resolve imports.
 
+### Handle file-aware compilation errors
+
+For an existing project, this CommonJS example runs from the APIForge
+repository directory and formats captured source locations when available:
+
+```js
+const { compileFile } = require('./src/compiler');
+
+try {
+  const result = compileFile('project/main.apiforge', { target: 'mysql' });
+  console.log(result.generatedFiles.map(file => file.path));
+} catch (error) {
+  const diagnostics = error.diagnostics || (error.diagnostic ? [error.diagnostic] : []);
+  if (!diagnostics.length) console.error(error.message);
+  for (const diagnostic of diagnostics) {
+    console.error(error.compilationUnit
+      ? error.compilationUnit.format(diagnostic)
+      : diagnostic.message);
+  }
+  process.exitCode = 1;
+}
+```
+
+`compileFile` returns generated files in memory; this example lists paths
+and does not publish an `output/` directory. Programmer errors without a
+compiler diagnostic still reach the ordinary message fallback.
+
 ## HTTP, browser and G26
 
 HTTP remains `{ source, target? }`. After successful module parsing, any imports
