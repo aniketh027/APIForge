@@ -265,6 +265,20 @@ read-only status proof describes the response at inspection time; it does not
 certify continuous server reachability or prevent another manager acquiring a
 claim afterward. Explicit Run revalidates ownership through the unchanged backend.
 
+### Choose the operation that matches the state
+
+| Operation | Scope |
+| --- | --- |
+| Reconnect Persistent API | Obtains a new connection token; does not run or stop a deployment |
+| Refresh Status | Inspects the selected acknowledged deployment; does not reconstruct lost session IDs |
+| Known-session Stop | Terminates the owned process and releases its claim after cleanup; preserves database records |
+| Forget Stale Browser Session | Clears only a held browser reference after a fresh matching stopped proof and confirmation |
+
+Forgetting sends no HTTP request and cannot stop a process or clear an
+occupied claim. After forgetting, obtain another explicit Status before
+an explicit Run. Running, occupied, incomplete, and uncertain states do
+not become stopped merely because a page was reloaded.
+
 ## Manual recovery boundary
 
 Preserve unknown/provisioning/occupied databases and all metadata. Before any
