@@ -202,6 +202,18 @@ The standalone server includes persistent cleanup in its existing single
 or cleanup force connection closure and exit 1 at the deadline. Hard termination
 or power loss cannot certify asynchronous cleanup.
 
+### Why a name-only save can cause revision refusal
+
+Persistent deployments pin the acknowledged saved revision as part of
+their provenance, not only the source text. A changed project name can
+advance that revision even when the generated schema would be identical.
+The deployment does not silently accept an equivalent newer snapshot.
+
+Saving does not migrate the database or replace the already running
+process. Preserve the known session so its owned Stop remains available.
+Do not repeat Initialize Database to bypass a revision mismatch; reopening,
+reconnecting, or recompiling does not upgrade deployment provenance.
+
 ## Browser memory and verified stopped deployments
 
 **Initialize Storage** prepares saved-project storage through the Project API.
