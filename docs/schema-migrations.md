@@ -4,6 +4,20 @@ G26 generates and records one-shot migration SQL locally. It does not connect to
 
 Before executing SQL outside APIForge, establish that the actual schema equals the previous physical snapshot, quiesce writes, verify every prerequisite, and review the complete ordered DDL. MySQL DDL can lock tables and commit implicitly. `SAFE` describes preservation of retained values and associations under these assumptions; it does not promise instant, online, inexpensive, or transactionally reversible execution.
 
+## Choose an offline operation
+
+| Command | Local effect |
+| --- | --- |
+| `snapshot --to ...` | Compiles a physical snapshot; prints JSON unless `--out` names a new file |
+| `baseline` | Creates the explicit first revision in a new history |
+| `diff` | Inspects the target change and reports its plan without publishing a revision |
+| `create` | Publishes an authorized immutable local revision, or reports a no-op |
+| `verify` | Reads and validates the complete existing local history |
+
+None of these commands applies SQL to a running database. Keep migration
+history outside ordinary compiler `output/`, where unrelated generated
+files would violate the closed workspace inventory.
+
 ## Certified profile
 
 The immutable profile is `src/migrations/profiles/mysql-8.4-v1.json`. G26 V1 certification covers MySQL 8.4, tested on 8.4.11, with InnoDB, DYNAMIC rows, 16 KiB pages, `lower_case_table_names=0`, strict SQL mode, and `NO_BACKSLASH_ESCAPES` disabled. Database and inherited table defaults are `utf8mb4` / `utf8mb4_unicode_ci`. UUID columns use `ascii` / `ascii_bin`; ENUM uses `utf8mb4` / `utf8mb4_bin`.
