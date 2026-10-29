@@ -49,6 +49,18 @@ node migrate.js create --workspace .\schema-history --to new.apiforge --expect-h
 node migrate.js verify --workspace .\schema-history
 ```
 
+### A successful diff is an inspection result
+
+A zero exit status from `diff` means inspection completed. It does not
+mean every reported operation is supported or authorized. Read the plan
+classifications, blockers, and prerequisites before considering `create`.
+An `UNSUPPORTED` operation cannot be enabled by a destructive permission.
+
+Use the exact head token and plan SHA from the latest reviewed diff. If
+the source or history changes, inspect again rather than copying tokens
+from a different plan. Data-check acknowledgments record the operator's
+assertion; they do not execute or validate the prerequisite queries.
+
 Repeat `--allow-destructive <operation-id>` for each destructive operation and `--acknowledge-data-check <operation-id>` for each operation with prerequisites. There is no global destructive switch. Unknown or inapplicable IDs fail. Both permissions bind to the full exact plan SHA, and `UNSUPPORTED` cannot be authorized. Expanded operations are visible individually before authorization.
 
 An acknowledgement means **the operator asserts that they verified the predicate**. APIForge never executes the prerequisite query. Each requirement includes its type, physical scope, and a deterministic `checkSpecification.checkSql`; success means that query returns zero rows against the previous physical schema, under the profile settings and with writes quiesced. SQL headers and manifests retain those facts and the acknowledged operation IDs prominently.
