@@ -93,6 +93,20 @@ The two runtime workflows require explicit server-side enablement and
 database configuration. Compiling DSL alone does not start a generated API
 or initialize its database.
 
+### Configuration belongs to the selected workflow
+
+| Workflow | Configuration source |
+| --- | --- |
+| Compiler CLI and in-memory HTTP compilation | No target database connection is needed to generate artifacts |
+| A generated backend started separately | Its generated `.env.example` and `DB_*` variables |
+| Disposable Live API | `APIFORGE_LIVE_MYSQL_*` or `APIFORGE_LIVE_PG_*` on the dev server |
+| Persistent API | `APIFORGE_PERSISTENT_MYSQL_*` or `APIFORGE_PERSISTENT_PG_*` on the dev server |
+| Native persistent-runtime tests | Guarded `APIFORGE_PERSISTENT_TEST_MYSQL_*` or `APIFORGE_PERSISTENT_TEST_PG_*` fixtures |
+
+The runtime namespaces are separate: configuring a generated project
+does not configure the dev server's Live or Persistent API managers.
+Follow the corresponding guide before enabling a runtime.
+
 ## 📝 DSL Syntax Example
 
 **Entities:**
