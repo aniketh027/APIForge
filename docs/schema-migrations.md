@@ -83,6 +83,18 @@ The validator rejects unknown versions/profiles, extra record keys, malformed ty
 
 Canonical JSON uses UTF-8, LF, bytewise sorted object keys, and exactly one final newline. Tables, relations, indexes, CHECKs, FKs and purpose annotations have defined sorted collection order. Column, ENUM-member and key-part order is preserved. Finite JSON numbers follow JSON's representation, including normalization of negative zero. Cycles, functions, Map/Set, non-JSON prototypes, sparse/extended arrays, accessors, hidden properties, symbols, and malformed Unicode are rejected. Canonical input rejects duplicate keys, BOM/noncanonical whitespace, invalid UTF-8, or missing final LF.
 
+### Move snapshots without reformatting
+
+Copy snapshot files as bytes when transferring or archiving them. The
+canonical reader rejects a BOM, changed whitespace, invalid UTF-8, or a
+missing final LF even if another JSON parser accepts the same values.
+Pretty-printing or resaving through a text editor can therefore change
+an otherwise valid input into a rejected file.
+
+Use the full recorded hash for identity checks; a shortened hash in an
+SQL filename is only a label. Do not repair a failed integrity check by
+editing the stored checksums to match altered bytes.
+
 `snapshotSha256` hashes the complete snapshot, including logical references, semantic defaults, identity intent and source-plan versions. `physicalSha256` hashes the observable physical projection under the fixed target envelope, excluding logical/provenance data, index purpose/implicit annotations and application-only identity intent. Effective FLOAT defaults are binary32 values; semantically different literals that store the same FLOAT share a physical fingerprint. BOOLEAN aliases and UTC TIMESTAMP default presentation are normalized deterministically.
 
 Snapshots contain no source locations, AST/IR objects, runtime counters, timestamps or Git state. Full SHA-256 values are authoritative; shortened hashes in filenames are labels.
