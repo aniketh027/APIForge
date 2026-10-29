@@ -409,6 +409,13 @@ CREATE TABLE Student_Course (
 | `MAX_LENGTH` | Maximum STRING length (`CHAR_LENGTH(col) <= val`) |
 | `DEFAULT`   | Default column value (`DEFAULT val`)          |
 
+`IMPORT "./models/item.apiforge"` is a contextual declaration supported
+by filesystem compilation. Place imports before entities and relations.
+`IMPORT` is still an identifier elsewhere, so it is not an unconditional
+reserved keyword in the table above. The browser and HTTP compiler reject
+parsed imports with `INP010`; use the
+[module guide](docs/modules.md) for file-based compilation.
+
 ## 📊 Supported Data Types
 
 | APIForge type | MySQL | PostgreSQL | Public value |
