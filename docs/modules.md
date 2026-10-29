@@ -310,6 +310,22 @@ values depend on physical schema, never source organization or coordinates.
 History/publication safeguards are unchanged. G26 remains offline and MySQL-only;
 native tests execute generated migration SQL separately.
 
+## Troubleshoot import failures
+
+| Diagnostic | Inspect first |
+| --- | --- |
+| `PAR023` | Move the import before the file's first entity or relation |
+| `INP004` | Check exact lowercase `.apiforge`, forward slashes, and the literal-path rules above |
+| `INP005` | Resolve the path relative to the importing file and confirm that file exists |
+| `INP006` | Check root containment, including the canonical destination of links |
+| `INP009` | Follow the reported cycle chain and remove the dependency cycle |
+| `INP010` | Use the file CLI or file-aware library instead of the single-source HTTP surface |
+| `INP011` | Check explicitly supplied library budgets and unique physical-module sizes |
+
+A root or path failure is resolved before whole-program semantic analysis.
+Fix that reported boundary first rather than interpreting skipped phases
+as additional source-language failures.
+
 ## Equivalence and deferred scope
 
 G28 preserves approved-main no-import behavior against commit
