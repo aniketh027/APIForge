@@ -72,6 +72,19 @@ COUNT(*) remains int8 text; the count helper checks nonnegative decimal represen
 
 ONE_TO_MANY and MANY_TO_ONE use nullable FKs with SET NULL; ONE_TO_ONE uses nullable UNIQUE with CASCADE; MANY_TO_MANY uses a composite-PK junction and two cascading FKs. All entity tables exist before FK additions, permitting cycles. Deterministic full B-tree indexes support FK referencing fields unless an existing full index supplies a leftmost prefix. ONE_TO_ONE reuses UNIQUE; a junction reuses its PK source prefix and adds target support.
 
+## Match schema import to the generated connection
+
+The generated `.env` configures the Node backend. The example `psql`
+command above uses its explicit `-h`, `-p`, `-U`, and `-d` arguments;
+editing `.env` does not rewrite those arguments. If you choose another
+database, port, or import account, adjust the import command deliberately
+and ensure the generated application's `DB_*` values select the intended
+database and application account.
+
+Run setup commands from the generated project directory, where
+`database/schema.sql`, `.env.example`, and `package.json` belong together.
+Compiling the parent APIForge project does not perform this import.
+
 ## Sanitized database errors
 
 | SQLSTATE / transport | Operation-sensitive result |
