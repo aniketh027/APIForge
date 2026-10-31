@@ -127,6 +127,20 @@ Compiling the parent APIForge project does not perform this import.
 
 G06's existing four fixed messages and `{success:false,error}` envelope are retained. No SQL, detail, constraints, schema/table/column internals, codes or credentials are exposed. 404 is model absence. Generic global Express errors do not gain DB provenance from a code; malformed JSON retains the existing sanitized 400. No retries occur.
 
+## Public value spelling examples
+
+Use canonical text even though native PostgreSQL accepts broader input:
+
+| Type | Accepted public example | Refused public spelling |
+| --- | --- | --- |
+| DATE | `2026-10-31` | A JavaScript `Date` object in a direct write |
+| TIMESTAMP | `2026-10-31T12:00:00Z` | `2026-10-31T12:00:00.000Z` or `2026-10-31T17:30:00+05:30` |
+| UUID | `123e4567-e89b-12d3-a456-426614174000` | Uppercase `123E4567-E89B-12D3-A456-426614174000` |
+
+These examples illustrate spelling only; the declared field's requiredness,
+defaults, and bounds also apply. Backend validation does not normalize
+uppercase UUIDs or offset timestamps into the canonical public form.
+
 ## Boundaries and verification
 
 G19 publishes a complete selected project atomically and preserves opaque user roots across MySQL/PG replacement. It does not switch a live installed project's database or reconcile its user-owned dependencies. G26 rejects an explicit PostgreSQL target before filesystem work.
