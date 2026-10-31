@@ -190,6 +190,29 @@ router mounts before the unrelated global 1 MiB compiler parser. Source text is
 never trimmed, normalized or rewritten: BOM, CRLF, Unicode, NUL, whitespace and
 empty strings round-trip exactly through the store's BLOB/hash representation.
 
+## Save from an acknowledged record
+
+Continuing with `$base` and `$headers` above, select the intended UUID
+from the listing before fetching its current revision. This example
+changes only the name and explicitly encodes the JSON body as UTF-8:
+
+```powershell
+$projectId = '<UUID selected from the listing>'
+$current = Invoke-RestMethod -Uri "$base/api/projects/$projectId" -Headers $headers
+$json = @{
+    expectedRevision = $current.data.revision
+    changes = @{ name = 'Student API' }
+} | ConvertTo-Json -Depth 3
+$bytes = [System.Text.Encoding]::UTF8.GetBytes($json)
+$saved = Invoke-RestMethod -Method Put -Uri "$base/api/projects/$projectId" `
+    -Headers $headers -ContentType 'application/json; charset=utf-8' -Body $bytes
+$saved.data.revision
+```
+
+Even the same supplied name creates a revision. A concurrent writer may
+make this request stale between GET and PUT. Inspect a conflict or a lost
+response before deciding on another mutation; do not automatically replay.
+
 ## Error contract and exhaustive status mapping
 
 Errors contain only fixed application codes/messages:
