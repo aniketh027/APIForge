@@ -199,6 +199,27 @@ The playground retains its green success summary and six successful phases,
 adds an inline warning count when nonzero, and shows compact amber warning items
 using the shared source-frame utility. Zero-warning success appearance is unchanged.
 
+## Consume warning objects
+
+An HTTP client receiving the decoded compiler response can show warnings
+without treating their presence as compilation failure:
+
+```js
+for (const warning of result.warnings || []) {
+  console.warn(`${warning.code}: ${warning.message}`);
+}
+if (!result.success) {
+  for (const diagnostic of result.diagnostics || []) {
+    console.error(`${diagnostic.code}: ${diagnostic.message}`);
+  }
+}
+```
+
+Here `result` is the parsed JSON response, not a Fetch `Response` object.
+Use `success` and the fatal diagnostics to decide whether generation
+completed. Warning entries are objects, so string consumers should read
+`.message`; do not concatenate an object and display `[object Object]`.
+
 ## HTTP statuses
 
 | Condition | Status |
