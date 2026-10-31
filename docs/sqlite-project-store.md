@@ -220,6 +220,21 @@ Lifecycle/content codes are `PROJECT_STORE_EXISTS`, `PROJECT_STORE_MISSING`,
 Parameters are bound to prepared statements. Only fixed application-owned SQL
 identifiers are used.
 
+### Two writers holding the same revision
+
+Suppose two callers both read revision 4 of one UUID:
+
+1. Caller A saves with `expectedRevision: 4` and receives revision 5.
+2. Caller B saves with `expectedRevision: 4` and receives
+   `PROJECT_REVISION_CONFLICT`; it appends no revision.
+3. Caller B reads revision 5 and deliberately reconciles its intended
+   changes before submitting another save with the acknowledged revision.
+
+A SQLite busy result is different from a stale revision: the caller may
+retry a busy operation with its original expected revision. It can then
+still encounter a conflict if another writer has committed in the meantime.
+Neither outcome grants permission to overwrite with an unreviewed new token.
+
 ## Verification and boundary
 
 Run `npm run test:project-store` explicitly with a supported runtime. The dedicated
