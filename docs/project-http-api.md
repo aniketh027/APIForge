@@ -345,6 +345,19 @@ this JS-only seam is absent from HTTP/environment configuration. Test roots live
 under UUID-named M2B fixtures in the OS profile. Tests never operate against the
 real default storage directory or change published store/bootstrap code or ACLs.
 
+## First connection versus first initialization
+
+For an already initialized store, enable the API, obtain a session token,
+and list or open projects. No initialization request is needed on restart.
+For deliberate first use, obtain the token and send exactly `{}` as JSON
+to `POST /api/projects/initialize` before creating a project.
+
+If initialization reports that the store exists, switch to ordinary reads.
+Missing, unsafe, incompatible, or partially initialized storage needs the
+documented manual resolution; repeated initialization is not a repair
+procedure. The server's queue serializes its own operations, while saves
+from other server processes still require the expected-revision check.
+
 ## Verification
 
 ```powershell
