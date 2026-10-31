@@ -243,6 +243,18 @@ One existing position defect was corrected: skipped comment characters now
 advance the column counter, so EOF after a comment identifies its true position.
 This changes positions only, not accepted programs or compiler semantics.
 
+## Interpret partial phase results
+
+When semantic analysis fails, earlier successful lexer/parser results may
+remain in the response, semantic is `failed`, and downstream IR,
+optimizer, and codegen states are `skipped`. A skipped phase was not
+executed; it is not evidence of another failure or a successful check.
+
+Input admission can refuse before any public compiler phase runs. In
+that case all six phase states can be `skipped` while the diagnostic's
+phase is `input`. Read the diagnostic and `phaseStates` together instead
+of assuming that a false boolean alone identifies the failing phase.
+
 ## Stable code registry
 
 Codes use a phase prefix and three digits. Numeric assignments are explicit in
