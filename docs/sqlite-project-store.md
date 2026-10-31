@@ -82,6 +82,33 @@ creation/removal. Bootstrap's `contentValidated: false` is never used as a datab
 validity verdict. Missing, marker-only, corrupt, incompatible and unknown states
 are not initialized, repaired, replaced or migrated.
 
+### Close a reopened store after asynchronous work
+
+For subsequent startup, a CommonJS caller can keep ownership of the
+connection explicit. Run this from the repository directory on the
+supported storage runtime:
+
+```js
+const { openProjectStore } = require('./src/project-store');
+
+async function listSavedProjects() {
+  const store = await openProjectStore();
+  try {
+    return await store.listProjects();
+  } finally {
+    store.close();
+  }
+}
+
+listSavedProjects().then(console.log).catch(error => {
+  console.error(error.code, error.message);
+  process.exitCode = 1;
+});
+```
+
+The `await` keeps the connection open until listing settles. Reopen
+failure reaches the caller; this example never initializes a missing store.
+
 ## Schema, bytes and revisions
 
 The single database has application ID `0x41504653`, user/schema version 1 and
