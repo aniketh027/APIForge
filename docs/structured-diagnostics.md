@@ -64,6 +64,19 @@ Unknown `line` and `column` values are consistently `null`. Unavailable
 when actual token endpoints are available. Hints are optional deterministic
 guidance; existing message-level suggestions remain for compatibility.
 
+## Map a range to an editor selection
+
+For a single-line diagnostic at `line: 2, column: 9, endLine: 2,
+endColumn: 15`, a zero-based editor selects row 1, columns 8 through
+13 with an exclusive end offset of 14. Subtract one from the supplied
+coordinates; do not include an extra character at the end.
+
+Keep UTF-16 indexing when the source contains supplementary Unicode
+characters: one displayed character may occupy two code units. A missing
+range is a start location only, and a `null` location must not be turned
+into a fabricated first-line selection. Use the shared source-frame
+helper when rendering compiler-style excerpts.
+
 ## Consumers and compatibility
 
 - Thrown lexer/parser `Error` objects expose `.diagnostic`. Their original
