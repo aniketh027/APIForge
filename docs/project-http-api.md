@@ -258,6 +258,20 @@ tokens or native exceptions. Responses cannot expose native paths, SQL, SQLite
 messages, credentials, user SIDs or stacks. Malformed HTTP rejected by Node before
 Express may receive Node's generic 400 without this JSON envelope.
 
+## Diagnose request size and encoding refusals
+
+| Observation | Check |
+| --- | --- |
+| 415 `PROJECT_API_MEDIA_UNSUPPORTED` | Uncompressed JSON and the supported UTF-8 media declaration |
+| 400 `PROJECT_API_JSON_INVALID` | Valid UTF-8 bytes and valid JSON syntax |
+| 413 `PROJECT_API_BODY_TOO_LARGE` | Entire encoded request exceeds 6,299,648 bytes |
+| 400 `PROJECT_INVALID_SOURCE` | Decoded source violates the store's string or 1 MiB UTF-8 limit |
+
+These are separate bounds: a request below the transport cap can still
+contain too much decoded source, while escaping adds transport bytes. Measure
+source with UTF-8 byte length rather than JavaScript string length.
+Changing the compiler's unrelated parser limit does not change this API.
+
 ## Lifecycle and shutdown
 
 Router construction/import/session exchange do not open or initialize storage.
