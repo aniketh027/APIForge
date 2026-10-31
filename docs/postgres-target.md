@@ -63,6 +63,24 @@ UUID uses canonical lowercase 8-4-4-4-12 text of any version. No case normalizat
 
 DATE stays within 1000-01-01 through 9999-12-31. TIMESTAMP stays within 1970-01-01T00:00:01Z through 2038-01-19T03:14:07Z, at seconds precision. Writes bind canonical strings, never user Date objects. Offsets/fractions/non-Z public timestamps reject. Native range CHECKs exclude infinity and expanded ranges. Pool-local public `getTypeParser` handlers for OIDs 1082/1184/1114 validate DATE text and deterministically convert numeric-offset timestamp text to UTC; other OIDs delegate to `pg.types`, including int8. Host timezone does not shift DATE.
 
+### Integer identity request outcomes
+
+For an explicitly declared generated INT key, distinguish these HTTP
+create inputs from an ordinary INT field:
+
+| Supplied key value | Result |
+| --- | --- |
+| Omitted | Database identity generation |
+| `null` on an optional key | Private SQL payload omits the key and requests generation |
+| `null` on a REQUIRED key | HTTP validation refusal |
+| `0` | Stored as zero |
+| Positive representable integer | Stored as supplied; sequence is not advanced |
+| Negative integer | HTTP validation refusal |
+
+The resolved integer key comes from `INSERT RETURNING`. It is not
+calculated from the submitted value or a separate maximum-key query.
+An implicit `id` is still an unknown HTTP write field.
+
 ## Generated runtime and setup
 
 Projects retain seven fixed files plus three per entity, ordered as before. The generated package declares `dotenv`, `express`, `pg ^8.23.1`, Node >=18 and `npm start`; no lockfile is emitted. Set PORT, DB_HOST, DB_PORT (default 5432), DB_USER (default postgres), DB_PASSWORD and DB_NAME (default apiforge_db) using the environment template. Install dependencies, prepare a UTF8 database, then import and start:
