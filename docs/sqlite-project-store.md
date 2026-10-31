@@ -158,6 +158,22 @@ normalization occurs. `sourceHash` is lowercase SHA-256 hex. Current records als
 return `createdAt`/`updatedAt`; historical records return `savedAt`. Timestamps
 use canonical 24-character ISO UTC representation.
 
+### Compare returned source bytes
+
+For a record returned by `getProject` or `getProjectRevision`, recompute
+the source-only fingerprint without trimming or normalizing newlines:
+
+```js
+const { createHash } = require('node:crypto');
+const bytes = Buffer.from(record.source, 'utf8');
+const sourceHash = createHash('sha256').update(bytes).digest('hex');
+console.log(sourceHash === record.sourceHash);
+```
+
+Equal source hashes describe equal source bytes; they do not establish
+equal names, targets, UUIDs, or revision numbers. A name-only save can
+retain the source hash while advancing the project's revision.
+
 ## Transactions, validation and errors
 
 Each native connection enforces DELETE journal mode, synchronous=EXTRA,
