@@ -9,6 +9,19 @@ node index.js --target postgres samples/student.apiforge
 
 Library callers pass `{ target: 'postgres' }` to `SemanticAnalyzer.analyze(ast, options)`, `Codegen.prepareAdmittedGeneration(ir, options)` and `Codegen.generate(ir, false, options)`. Disk generation uses `true`. Omission or `target: undefined` selects MySQL; `mysql` and `postgres` are the only exact values. Null, empty, aliases, case changes and wrong types fail with `INP003 INVALID_TARGET`. The CLI rejects duplicate/missing target flags before compilation or publication. HTTP `POST /api/compile` accepts `{ "source": "...", "target": "postgres" }`; invalid targets return 400. Source validation retains precedence. PG semantic admission uses `SEM040`; recognized direct-IR PG admission failure uses `GEN001` (HTTP 422), while unexpected compiler failures remain 500.
 
+### Check target selection before investigating SQL
+
+| Input | Selection result |
+| --- | --- |
+| Omitted target or library `target: undefined` | MySQL |
+| Exact `postgres` | PostgreSQL |
+| `Postgres`, `pg`, empty string, or `null` | `INP003 INVALID_TARGET` |
+| Duplicate `--target` or a missing flag value | CLI input refusal |
+
+In the playground, select PostgreSQL and compile again before inspecting
+files. Changing the selection does not convert previously generated SQL,
+apply a schema, or switch the database of a running generated backend.
+
 ## Certified profile and architecture
 
 `postgresql-18-v1` requires PostgreSQL major 18, UTF8, stock 64-bit 8192-byte blocks, 63-byte identifiers, 32 index columns, the existing `public` schema, standard conforming strings, ISO/YMD dates and UTC application sessions. The application user needs public USAGE/CREATE and table SELECT/INSERT/UPDATE/DELETE privileges. No schemas or extensions are created automatically. Native verification records the exact tested minor release and image digest in [the verification report](postgres-target-verification.md).
