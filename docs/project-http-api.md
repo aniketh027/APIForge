@@ -87,6 +87,23 @@ unsupported: the socket identifies the proxy and cannot prove its original clien
 The unchanged Windows namespace guarantee also excludes hostile same-authority
 pathname substitution. No public-facing deployment claim is made.
 
+## PowerShell session and listing example
+
+Use the actual dev-server URL printed at startup. This example assumes
+`http://localhost:3000`; change it to match your listening port:
+
+```powershell
+$base = 'http://localhost:3000'
+$session = Invoke-RestMethod -Uri "$base/api/projects/session"
+$headers = @{ 'X-APIForge-Project-Token' = $session.data.token }
+$projects = Invoke-RestMethod -Uri "$base/api/projects" -Headers $headers
+$projects.data | Select-Object id, name, target, revision
+```
+
+Session exchange creates no store. Listing opens an existing store and
+can return `PROJECT_STORE_MISSING`; it does not initialize storage.
+Keep the token in memory and repeat the session exchange after restart.
+
 ## Endpoint contract
 
 All routes are literal, case-sensitive paths under `/api/projects`. There are no
