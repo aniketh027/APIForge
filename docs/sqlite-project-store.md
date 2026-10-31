@@ -36,7 +36,7 @@ const { initializeProjectStore, openProjectStore } = require('./src/project-stor
 // Explicit first use only. A second initialization always refuses.
 const store = await initializeProjectStore();
 const project = await store.createProject({ name: 'Example', target: 'mysql', source: '' });
-await store.saveProject(project.id, 1, { source: 'entity Example { id: UUID; }' });
+await store.saveProject(project.id, 1, { source: 'ENTITY Example\nid UUID PRIMARY KEY' });
 const current = await store.getProject(project.id);
 const first = await store.getProjectRevision(project.id, 1);
 const summaries = await store.listProjects();
