@@ -126,3 +126,17 @@ The JSON body remains `success/data`; metadata arrives in `X-Total-Count`,
 zero total pages. A page beyond the last has an empty data array. Data and
 count use separate SQL reads, so concurrent changes can affect agreement.
 Without either control, results are unbounded and no count query runs.
+
+## Encode typed filter values
+
+| Filter in this example | Accepted spelling | Refused spelling |
+| --- | --- | --- |
+| INT `age` | `age=21` or `age=021` | `age=21.0` or `age=2e1` |
+| FLOAT `score` | `score=.5`, `score=1e-3`, or `score=%2B3.2` | `score=NaN` |
+| BOOLEAN `active` | `active=true` or `active=false` | `active=TRUE` or `active=1` |
+| ENUM `status` | `status=active` | `status=ACTIVE` |
+
+Query values arrive as decoded strings. Encode a literal plus as `%2B`;
+an unescaped plus can decode as a space. This HTTP filter syntax is
+separate from DSL numeric literal syntax and JSON write types. For example,
+`{"age":"21"}` is not the numeric JSON input used by a generated INT write.
