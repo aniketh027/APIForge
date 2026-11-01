@@ -140,3 +140,20 @@ Query values arrive as decoded strings. Encode a literal plus as `%2B`;
 an unescaped plus can decode as a space. This HTTP filter syntax is
 separate from DSL numeric literal syntax and JSON write types. For example,
 `{"age":"21"}` is not the numeric JSON input used by a generated INT write.
+
+## Check a rejected collection query
+
+These examples return 400 before a database query:
+
+| Request suffix | Reason |
+| --- | --- |
+| `?unknown=1` | Field is not in the collection whitelist |
+| `?age=21&age=22` | Repeated parameter is not one string value |
+| `?order=desc` | Missing `sort` |
+| `?page=01` or `?page=0` | Page must be canonical positive decimal digits |
+| `?limit=101` | Maximum page size is 100 |
+
+Page, limit, and the computed offset must also be safe integers. The names
+`page`, `limit`, `sort`, and `order` are reserved controls; a declared field
+with one of those names can be sorted but cannot use equality filtering.
+Collection controls do not apply to item, write, or relationship routes.
