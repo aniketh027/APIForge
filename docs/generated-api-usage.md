@@ -24,3 +24,20 @@ Use the generated server's listening URL for the requests below. Resource
 routes start at `/students`, without an `/api` prefix. `GET /health` reports
 server availability; its handler does not query the database. Compiler
 playground `/api/compile` and saved-project `/api/projects` are different APIs.
+
+## Create a student
+
+Send an object with JSON numbers and booleans, rather than quoted scalar values:
+
+```http
+POST /students
+Content-Type: application/json
+
+{"name":"Mira","age":21,"score":8.5,"active":false,"status":"active"}
+```
+
+Success returns HTTP 201 and `{ "success": true, "data": ... }`. Use the
+resolved `data.id` for later item operations; do not assume the next key is 1.
+Omitting `id` requests integer identity generation. Omitted ordinary defaults
+can be stored without appearing in the create response, because create echoes
+supplied fields plus resolved identity rather than reloading the row.
