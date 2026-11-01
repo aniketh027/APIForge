@@ -55,3 +55,18 @@ Item success has one record in `data`; collection success has an array.
 An absent item returns 404. A collection with no matches returns 200 with
 `data: []`. A later item GET reads database defaults that were absent from
 the create echo. Neither request implicitly creates or initializes a schema.
+
+## Update only selected fields
+
+```http
+PUT /students/<student-id>
+Content-Type: application/json
+
+{"name":"Mira Rao","active":true}
+```
+
+PUT accepts partial declared-field changes; omitted fields retain their
+stored values. Success returns the refreshed record. A supplied `id` is
+refused as immutable, even if it equals the current key. `{}` performs an
+existing-record lookup instead of clearing fields; an absent record is 404.
+Use explicit `null` only for a field whose contract permits null.
