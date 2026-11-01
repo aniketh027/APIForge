@@ -157,3 +157,28 @@ Page, limit, and the computed offset must also be safe integers. The names
 `page`, `limit`, `sort`, and `order` are reserved controls; a declared field
 with one of those names can be sorted but cannot use equality filtering.
 Collection controls do not apply to item, write, or relationship routes.
+
+## Use a generated many-to-many relationship
+
+For a separate compilation, append these declarations to the example source:
+
+```apiforge
+ENTITY Course
+id INT PRIMARY KEY
+title STRING REQUIRED
+RELATION Student ENROLLS_IN Course MANY_TO_MANY
+```
+
+After setting up that generated schema and creating both endpoint rows:
+
+```text
+POST /students/<student-id>/courses/<course-id>
+GET /students/<student-id>/courses
+DELETE /students/<student-id>/courses/<course-id>
+```
+
+POST adds the association and returns 201; GET returns related rows in an
+array. DELETE removes the association and returns 200 with a message even
+if no association was found. It does not delete the Course entity. Synthetic
+FK fields are not ordinary declared HTTP write/filter fields. Recompilation
+alone does not migrate an already populated database; plan schema changes separately.
