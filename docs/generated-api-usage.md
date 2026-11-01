@@ -217,3 +217,17 @@ that file or Swagger UI automatically. Operation schemas have distinct roles:
 The generated server does not install an OpenAPI runtime validator. Use
 the emitted controller contract when investigating a response; a successful
 compile or schema document alone does not prove database deployment readiness.
+
+## Keep HTTP and direct-model boundaries distinct
+
+The examples above address generated HTTP endpoints. Their controllers
+accept declared fields and apply request validation before model access.
+Direct generated-model calls use trusted payloads and do not reproduce all
+HTTP field whitelists or ordinary scalar bounds. Declared UUID/temporal
+checks and identity-update refusal still apply at the model boundary.
+
+Use the HTTP endpoint when you depend on its validation contract. A
+successful direct-model call does not establish that the equivalent HTTP
+request is accepted. Database constraints remain authoritative for stored
+values. For complete role and relationship policy, consult the
+[Effective Schema Plan](effective-schema-plan.md).
