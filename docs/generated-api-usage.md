@@ -182,3 +182,22 @@ array. DELETE removes the association and returns 200 with a message even
 if no association was found. It does not delete the Course entity. Synthetic
 FK fields are not ordinary declared HTTP write/filter fields. Recompilation
 alone does not migrate an already populated database; plan schema changes separately.
+
+## Interpret generated API errors
+
+Generated handler errors use `{ "success": false, "error": "..." }`.
+This string-valued error differs from the saved-project API's code/message
+object and from compiler diagnostic arrays.
+
+| Status | Typical generated-handler meaning |
+| --- | --- |
+| 400 | Invalid write/query input, malformed JSON, or recognized database value refusal on a write |
+| 404 | Missing CRUD item or missing singular related record |
+| 409 | Recognized database uniqueness/FK conflict on a write, delete, or association |
+| 503 | Recognized temporary database connection, capacity, or lock failure |
+| 500 | Unexpected or operation-inapplicable database failure |
+
+Classification depends on the operation: a database code mapped to a write
+conflict does not become a read conflict. SQL, driver codes, credentials,
+and constraint details are withheld. Generated handlers do not retry failed
+database operations automatically.
