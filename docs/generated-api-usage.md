@@ -41,3 +41,17 @@ resolved `data.id` for later item operations; do not assume the next key is 1.
 Omitting `id` requests integer identity generation. Omitted ordinary defaults
 can be stored without appearing in the create response, because create echoes
 supplied fields plus resolved identity rather than reloading the row.
+
+## Read the stored row
+
+Replace `<student-id>` with the key acknowledged by the create response:
+
+```text
+GET /students/<student-id>
+GET /students
+```
+
+Item success has one record in `data`; collection success has an array.
+An absent item returns 404. A collection with no matches returns 200 with
+`data: []`. A later item GET reads database defaults that were absent from
+the create echo. Neither request implicitly creates or initializes a schema.
