@@ -201,3 +201,19 @@ Classification depends on the operation: a database code mapped to a write
 conflict does not become a read conflict. SQL, driver codes, credentials,
 and constraint details are withheld. Generated handlers do not retry failed
 database operations automatically.
+
+## Choose the operation's OpenAPI schema
+
+Inspect `swagger.json` in the generated project. The server does not serve
+that file or Swagger UI automatically. Operation schemas have distinct roles:
+
+| Role | Use |
+| --- | --- |
+| `Student.Create` | POST fields and required-on-create presence |
+| `Student.Update` | Partial PUT fields, excluding the immutable identity |
+| `Student.Read` | Stored record, including effective identity and applicable synthetic FKs |
+| `Student.CreateResult` | Create echo plus resolved identity, permitting omitted non-key defaults |
+
+The generated server does not install an OpenAPI runtime validator. Use
+the emitted controller contract when investigating a response; a successful
+compile or schema document alone does not prove database deployment readiness.
