@@ -97,3 +97,16 @@ comparison governed by the target column's collation. No contains, range,
 OR, nested relationship, or special SQL NULL syntax is provided. A STRING
 filter value `null` is literal text. Declared write bounds/defaults are not
 reapplied as filter rules; a filter is not a write operation.
+
+## Sort independently of pagination
+
+```text
+GET /students?sort=name&order=desc
+GET /students?sort=age&page=1&limit=10
+```
+
+`sort` must name a known collection field. `order` is exactly `asc` or
+`desc`, defaults to `asc`, and requires `sort`. Sorting alone leaves the
+result unpaginated. With pagination, sorting a non-key field adds primary
+key ASC as a tie-breaker; pagination without an explicit sort uses primary
+key ASC. No automatic ordering is added to an unsorted, unpaginated query.
