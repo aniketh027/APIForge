@@ -83,3 +83,17 @@ Relationship foreign keys can affect whether deletion succeeds and which
 related rows are changed; inspect the generated schema before deleting
 data you intend to retain. Sending the request again is another operation,
 not an acknowledgment lookup for an earlier lost response.
+
+## Filter collections by exact values
+
+```text
+GET /students?age=21
+GET /students?status=active&active=false
+GET /students?name=Mira%20Rao
+```
+
+Multiple filters combine with AND. These are equality filters, with STRING
+comparison governed by the target column's collation. No contains, range,
+OR, nested relationship, or special SQL NULL syntax is provided. A STRING
+filter value `null` is literal text. Declared write bounds/defaults are not
+reapplied as filter rules; a filter is not a write operation.
