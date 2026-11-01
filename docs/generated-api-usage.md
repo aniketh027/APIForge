@@ -70,3 +70,16 @@ stored values. Success returns the refreshed record. A supplied `id` is
 refused as immutable, even if it equals the current key. `{}` performs an
 existing-record lookup instead of clearing fields; an absent record is 404.
 Use explicit `null` only for a field whose contract permits null.
+
+## Delete an item deliberately
+
+```text
+DELETE /students/<student-id>
+```
+
+A successful delete returns HTTP 200 with `success` and `message`, rather
+than HTTP 204 or a `data` record. Deleting a missing entity returns 404.
+Relationship foreign keys can affect whether deletion succeeds and which
+related rows are changed; inspect the generated schema before deleting
+data you intend to retain. Sending the request again is another operation,
+not an acknowledgment lookup for an earlier lost response.
