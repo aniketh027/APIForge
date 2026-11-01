@@ -110,3 +110,19 @@ GET /students?sort=age&page=1&limit=10
 result unpaginated. With pagination, sorting a non-key field adds primary
 key ASC as a tie-breaker; pagination without an explicit sort uses primary
 key ASC. No automatic ordering is added to an unsorted, unpaginated query.
+
+## Read pagination headers
+
+Either `page` or `limit` enables pagination:
+
+| Request | Effective page and limit |
+| --- | --- |
+| `/students?page=2` | Page 2, limit 20 |
+| `/students?limit=5` | Page 1, limit 5 |
+| `/students?page=2&limit=10` | Page 2, limit 10 |
+
+The JSON body remains `success/data`; metadata arrives in `X-Total-Count`,
+`X-Page`, `X-Limit`, and `X-Total-Pages` response headers. No matches means
+zero total pages. A page beyond the last has an empty data array. Data and
+count use separate SQL reads, so concurrent changes can affect agreement.
+Without either control, results are unbounded and no count query runs.
