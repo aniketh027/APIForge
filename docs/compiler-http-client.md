@@ -129,3 +129,18 @@ if (openapiFile) console.log(JSON.parse(openapiFile.content).openapi);
 Compiling over HTTP does not update the repository's `output/` directory.
 Use the ordinary file CLI when disk publication is the goal. Returned
 JavaScript is artifact content to inspect; receiving it does not execute it.
+
+## Treat warnings as successful output when compilation succeeds
+
+This complete source has no explicit key:
+
+```apiforge
+ENTITY Item
+value STRING
+```
+
+It produces `WRN001` for the implicit integer identity while remaining a
+successful compilation. `warnings` contains diagnostic objects, not strings;
+display `warning.code`, `warning.message`, and available locations. Do not
+decide failure from a nonempty warnings array. Use `success`, fatal
+diagnostics, and phase states; warnings do not enter generated artifact bytes.
