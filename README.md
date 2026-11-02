@@ -10,6 +10,7 @@
 
 - [Language syntax and examples](docs/APIForge-Language-Guide.md)
 - [Generated API request walkthrough](docs/generated-api-usage.md)
+- [Compiler HTTP client examples](docs/compiler-http-client.md)
 - [PostgreSQL target](docs/postgres-target.md)
 - [Multi-file imports](docs/modules.md)
 - [Saved-project workflow](docs/project-ui.md)
