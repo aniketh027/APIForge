@@ -156,3 +156,17 @@ reported collection. Legacy `errors` entries remain available. Match stable
 public codes instead of parsing English message text. Locations are 1-based
 UTF-16 coordinates with exclusive ends; unavailable positions remain absent
 or null according to the shared contract, not fabricated at line one.
+
+## Investigate a semantic refusal
+
+```apiforge
+ENTITY Student
+age INT MIN 60 MAX 18
+```
+
+The contradictory bounds produce semantic 422 `SEM017`. Earlier tokens
+and AST may remain available, but no generated backend is returned from
+this failed request. Correct the source and submit a new request; partial
+phase artifacts are inspection results rather than a deployable project.
+Multiple semantic errors can be collected, unlike immediate lexer/parser
+failure. Consult the full diagnostic array rather than only the first card.
