@@ -96,3 +96,20 @@ runs. JSON escape support does not add escape syntax to DSL strings:
 backslashes inside a DSL string remain literal, and a quoted DSL string
 cannot contain an actual line feed. Inspect the decoded source when a
 transport-escaping mistake appears as a lexer/parser diagnostic.
+
+## Read a successful compilation
+
+HTTP 200 with `success: true` returns these existing fields:
+
+| Field | Content |
+| --- | --- |
+| `tokens`, `ast`, `symbolTable` | Lexer, parser, and semantic results |
+| `ir`, `optimizedIR` | IR generation and optimizer results |
+| `optimizations` | Reported optimization actions |
+| `phases`, `phaseStates` | Six successful phase flags and state strings |
+| `warnings` | Structured non-fatal diagnostics, possibly empty |
+| `generatedFiles` | Generated `{path, content}` records |
+
+Success certifies generation for this request. It does not mean dependencies
+were installed, SQL was imported, a backend was started, or a database was
+migrated. The compiler API calls generation with disk writing disabled.
