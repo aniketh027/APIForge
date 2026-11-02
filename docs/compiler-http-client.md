@@ -32,3 +32,24 @@ $result.generatedFiles | Select-Object path
 This success-path example leaves all returned files in memory. PowerShell
 reports non-success HTTP statuses as errors; use a client that retains
 their response bodies when investigating compiler diagnostics.
+
+## Retain non-success response bodies with Fetch
+
+For a Node 18+ client, parse the JSON body even when the HTTP status is
+not successful. This helper returns the status and compiler result together:
+
+```js
+async function compileSource(base, source, target = 'mysql') {
+  const response = await fetch(`${base}/api/compile`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ source, target })
+  });
+  const result = await response.json();
+  return { status: response.status, ok: response.ok, result };
+}
+```
+
+A network failure or non-JSON response still rejects this helper. Keep that
+transport failure distinct from a parsed `success: false` compiler result.
+The helper does not publish files, retry requests, or launch generated code.
