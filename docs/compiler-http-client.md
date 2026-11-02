@@ -68,3 +68,16 @@ Do not trim the source to decide whether to send it. An empty string is
 valid input to the HTTP surface even though the language requires an entity.
 Source type validation precedes target resolution, so a request with both
 an invalid source type and invalid target reports the source problem first.
+
+## Select a target explicitly
+
+```json
+{"source":"ENTITY Student\nid INT PRIMARY KEY","target":"postgres"}
+```
+
+Omitting `target` selects MySQL. Only exact lowercase `mysql` and
+`postgres` are accepted; `pg`, `Postgres`, empty text, numbers, and `null`
+return 400 `INP003` after source admission. Target selection changes the
+generated backend, not the DSL source or number of public compiler phases.
+It does not configure a database connection. See the
+[PostgreSQL target contract](postgres-target.md) before running its artifacts.
