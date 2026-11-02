@@ -81,3 +81,18 @@ return 400 `INP003` after source admission. Target selection changes the
 generated backend, not the DSL source or number of public compiler phases.
 It does not configure a database connection. See the
 [PostgreSQL target contract](postgres-target.md) before running its artifacts.
+
+## Keep JSON transport separate from DSL string syntax
+
+Use an encoder such as `JSON.stringify` or `ConvertTo-Json`, rather than
+building a request body by concatenating source into quoted JSON. For example:
+
+```json
+{"source":"ENTITY Message\ntext STRING DEFAULT \"ready\""}
+```
+
+The JSON decoder produces a newline and quoted DSL text before the lexer
+runs. JSON escape support does not add escape syntax to DSL strings:
+backslashes inside a DSL string remain literal, and a quoted DSL string
+cannot contain an actual line feed. Inspect the decoded source when a
+transport-escaping mistake appears as a lexer/parser diagnostic.
