@@ -53,3 +53,18 @@ async function compileSource(base, source, target = 'mysql') {
 A network failure or non-JSON response still rejects this helper. Keep that
 transport failure distinct from a parsed `success: false` compiler result.
 The helper does not publish files, retry requests, or launch generated code.
+
+## Distinguish missing source from an empty program
+
+| JSON body | Admission behavior |
+| --- | --- |
+| `{}` | 400 `INP001`: source is missing |
+| `{"source":null}` | 400 `INP001`: source is not a string |
+| `{"source":42}` | 400 `INP001`: source is not a string |
+| `{"source":""}` | Enters compilation; semantic 422 `SEM001` |
+| `{"source":"// only a comment"}` | Enters compilation; semantic 422 `SEM001` |
+
+Do not trim the source to decide whether to send it. An empty string is
+valid input to the HTTP surface even though the language requires an entity.
+Source type validation precedes target resolution, so a request with both
+an invalid source type and invalid target reports the source problem first.
