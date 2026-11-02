@@ -113,3 +113,19 @@ HTTP 200 with `success: true` returns these existing fields:
 Success certifies generation for this request. It does not mean dependencies
 were installed, SQL was imported, a backend was started, or a database was
 migrated. The compiler API calls generation with disk writing disabled.
+
+## Inspect one returned file
+
+After checking `result.success`, select artifacts by path rather than a
+hard-coded array index. For example, using the Fetch helper's parsed result:
+
+```js
+const schema = result.generatedFiles.find(file => file.path === 'database/schema.sql');
+const openapiFile = result.generatedFiles.find(file => file.path === 'swagger.json');
+if (schema) console.log(schema.content);
+if (openapiFile) console.log(JSON.parse(openapiFile.content).openapi);
+```
+
+Compiling over HTTP does not update the repository's `output/` directory.
+Use the ordinary file CLI when disk publication is the goal. Returned
+JavaScript is artifact content to inspect; receiving it does not execute it.
