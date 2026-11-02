@@ -170,3 +170,16 @@ this failed request. Correct the source and submit a new request; partial
 phase artifacts are inspection results rather than a deployable project.
 Multiple semantic errors can be collected, unlike immediate lexer/parser
 failure. Consult the full diagnostic array rather than only the first card.
+
+## Use the filesystem surface for imports
+
+The HTTP body supplies one source string, not an entry pathname or virtual
+filesystem. A parsed `IMPORT "./models/item.apiforge"` declaration returns
+400 `INP010`. The parser may have succeeded before that input-boundary refusal;
+semantic analysis and later phases are skipped.
+
+Do not place server-local paths in extra JSON fields expecting resolution.
+Use the file CLI or `compileFile` library for source projects with imports,
+following the [module guide](modules.md). The browser compiler shares this
+single-source limitation. A malformed import can fail parsing before the
+HTTP surface reaches its unsupported-import check.
