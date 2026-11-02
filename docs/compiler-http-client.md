@@ -198,3 +198,20 @@ Malformed JSON reports `INP002` through the dev server's preserved global
 uses the server's `express.json({limit: '1mb'})` middleware. Transport limits
 are separate from the saved-project API's larger dedicated parser. An input
 body rejected by middleware never enters the six-phase pipeline.
+
+## Inspect phase states explicitly
+
+For the Fetch helper's parsed `result`, print the named states rather than
+treating every false legacy flag as an additional failure:
+
+```js
+for (const phase of ['lexer', 'parser', 'semantic', 'ir', 'optimizer', 'codegen']) {
+  console.log(phase, result.phaseStates[phase]);
+}
+```
+
+`succeeded`, `failed`, and `skipped` are distinct. An early input refusal
+can leave all six public phases skipped. An import refusal can retain
+successful lexer/parser states while its diagnostic phase is `input`.
+Warnings already emitted by successful earlier phases may survive a later
+failure; their presence does not imply that generation completed.
