@@ -144,3 +144,15 @@ successful compilation. `warnings` contains diagnostic objects, not strings;
 display `warning.code`, `warning.message`, and available locations. Do not
 decide failure from a nonempty warnings array. Use `success`, fatal
 diagnostics, and phase states; warnings do not enter generated artifact bytes.
+
+## Investigate a syntax failure
+
+For source `ENTITY Item` followed by a newline and `value`, the field has
+no datatype at EOF. The parser reports 400 `PAR012`. The response can retain
+successful lexer tokens while the parser is failed and later phases skipped.
+
+Read `diagnostic` for the first shared error and `diagnostics` for the
+reported collection. Legacy `errors` entries remain available. Match stable
+public codes instead of parsing English message text. Locations are 1-based
+UTF-16 coordinates with exclusive ends; unavailable positions remain absent
+or null according to the shared contract, not fabricated at line one.
