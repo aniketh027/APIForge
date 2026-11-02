@@ -183,3 +183,18 @@ Use the file CLI or `compileFile` library for source projects with imports,
 following the [module guide](modules.md). The browser compiler shares this
 single-source limitation. A malformed import can fail parsing before the
 HTTP surface reaches its unsupported-import check.
+
+## Separate compiler refusals from server parsing errors
+
+| Status | Current contract |
+| --- | --- |
+| 400 | Input source/target refusal, lexer/parser diagnostics, unsupported HTTP imports |
+| 422 | Semantic refusal or recognized PostgreSQL codegen admission `GEN001` |
+| 500 | Unexpected compiler exception or existing global JSON-parser error handling |
+| 200 | All phases succeeded, including warning-only success |
+
+Malformed JSON reports `INP002` through the dev server's preserved global
+500 handler; do not assume every JSON syntax error uses 400. The compiler
+uses the server's `express.json({limit: '1mb'})` middleware. Transport limits
+are separate from the saved-project API's larger dedicated parser. An input
+body rejected by middleware never enters the six-phase pipeline.
