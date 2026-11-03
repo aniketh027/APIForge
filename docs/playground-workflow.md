@@ -113,3 +113,16 @@ If ZIP assembly fails in the browser, the current fallback downloads a
 plain text file with each path and content separated. Inspect generated
 dependencies and the generated README before installing or starting the
 project. Downloading does not execute any generated JavaScript.
+
+## Keep compiler, Live API, and Persistent API actions separate
+
+Compile produces artifacts in memory. The playground's Live API is a
+separate disposable local runtime that requires explicit server enablement,
+dedicated credentials, and an explicit Start action. The Persistent API
+uses a selected saved project and its acknowledged revision, with a separate
+server enablement and configuration.
+
+Compiling alone does not initialize saved-project storage, create a
+database, start a generated server, or migrate existing data. Use the
+[Live API guide](live-api-runner.md) or
+[Persistent API guide](persistent-runtime.md) for those workflows.
