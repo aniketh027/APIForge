@@ -46,3 +46,14 @@ phases are marked complete. On a compiler response, the UI uses the returned
 A network failure is shown as compiler unavailable. It is not a lexer,
 parser, semantic, IR, optimizer, or code-generation diagnostic. Check that
 the local dev server is running and retry after restoring connectivity.
+
+## Interpret a partial pipeline
+
+The compiler stops after a failed phase. Earlier results can remain visible;
+the failed phase is marked failed and later phases are skipped. A skipped
+phase was not evaluated, so it is not a second compiler error.
+
+Output panes that depend on phases that did not complete show an unavailable
+state instead of presenting stale results as current. Input refusal can
+also occur before the public six-phase pipeline; read the diagnostic's
+phase together with the individual status markers.
