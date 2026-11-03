@@ -35,3 +35,14 @@ Target selection changes generated artifacts; it does not provision a
 database, import SQL, or switch a running generated project. G26 schema
 migrations remain MySQL-only. Read the
 [PostgreSQL target guide](postgres-target.md) before using its output.
+
+## Read compile progress
+
+While a request is pending, the Compile button shows a busy state and
+the phase pipeline reports that compilation is running. On success all six
+phases are marked complete. On a compiler response, the UI uses the returned
+`phaseStates`: `succeeded`, `failed`, and `skipped` have distinct displays.
+
+A network failure is shown as compiler unavailable. It is not a lexer,
+parser, semantic, IR, optimizer, or code-generation diagnostic. Check that
+the local dev server is running and retry after restoring connectivity.
