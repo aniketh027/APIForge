@@ -57,3 +57,15 @@ Output panes that depend on phases that did not complete show an unavailable
 state instead of presenting stale results as current. Input refusal can
 also occur before the public six-phase pipeline; read the diagnostic's
 phase together with the individual status markers.
+
+## Use error cards to return to the source
+
+Compiler error cards show the public diagnostic code and message, available
+source location, and a formatted excerpt when captured source context exists.
+Located lines are highlighted in the editor. Some internal or input errors
+have no source location, so the UI cannot highlight a line for them.
+
+Compiler positions are 1-based UTF-16 coordinates and range ends are
+exclusive. If you map a diagnostic into an external editor, preserve those
+conventions; supplementary Unicode characters can occupy two UTF-16 code
+units. See [structured diagnostics](structured-diagnostics.md).
