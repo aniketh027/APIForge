@@ -24,3 +24,14 @@ The playground sends the source as entered. It does not wrap text in braces,
 rewrite field declarations, or make JSON escaping part of DSL string syntax.
 For grammar, literal rules, and working source examples, use the
 [language guide](APIForge-Language-Guide.md).
+
+## Choose MySQL or PostgreSQL before compiling
+
+The target buttons begin with MySQL selected. PostgreSQL must be selected
+explicitly. Changing the target invalidates the displayed compilation and
+asks for a fresh Compile so the outputs match the selected target.
+
+Target selection changes generated artifacts; it does not provision a
+database, import SQL, or switch a running generated project. G26 schema
+migrations remain MySQL-only. Read the
+[PostgreSQL target guide](postgres-target.md) before using its output.
