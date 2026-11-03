@@ -80,3 +80,14 @@ Warnings are structured diagnostics, not compiler failure. A warning-only
 program can complete all six phases and produce downloadable artifacts.
 Use the fatal diagnostic panel and phase state to identify failure; do not
 infer failure from the warning count.
+
+## Navigate the output panes
+
+The tabs show tokens, AST, schema diagram, symbol table, IR, optimized IR,
+generated SQL, endpoint summary, generated API files, and Swagger content.
+Clicking a phase indicator selects its corresponding pane. Error and success
+states are announced by the existing status regions.
+
+These panes are views of one successful response's in-memory results.
+They do not mean that files were written into the checkout's `output/`
+directory. The ordinary file CLI is the disk-generation workflow.
