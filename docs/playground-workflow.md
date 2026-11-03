@@ -102,3 +102,14 @@ the newly edited source.
 Compile again to refresh the panes and summary. A failed compilation does
 not expose the successful-project download action. Partial tokens, AST, or
 symbol information may still be available for diagnosing the failure.
+
+## Download the successful generated project
+
+After a successful compile, choose **Download generated project**. The
+browser packages the `generatedFiles` returned for that compilation into
+`apiforge-project.zip`; it does not rerun generation on download.
+
+If ZIP assembly fails in the browser, the current fallback downloads a
+plain text file with each path and content separated. Inspect generated
+dependencies and the generated README before installing or starting the
+project. Downloading does not execute any generated JavaScript.
