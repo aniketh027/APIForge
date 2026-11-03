@@ -91,3 +91,14 @@ states are announced by the existing status regions.
 These panes are views of one successful response's in-memory results.
 They do not mean that files were written into the checkout's `output/`
 directory. The ordinary file CLI is the disk-generation workflow.
+
+## Recompile after changing source
+
+Editing source clears the current compilation summary, phase states, output
+panes, error highlights, and download availability. Changing the target
+does the same. This prevents a previous response from appearing to describe
+the newly edited source.
+
+Compile again to refresh the panes and summary. A failed compilation does
+not expose the successful-project download action. Partial tokens, AST, or
+symbol information may still be available for diagnosing the failure.
