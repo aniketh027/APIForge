@@ -69,3 +69,14 @@ Compiler positions are 1-based UTF-16 coordinates and range ends are
 exclusive. If you map a diagnostic into an external editor, preserve those
 conventions; supplementary Unicode characters can occupy two UTF-16 code
 units. See [structured diagnostics](structured-diagnostics.md).
+
+## Read warnings in a successful summary
+
+The success summary reports entity, field, relationship, generated endpoint,
+file, target, and optimization counts. When warnings exist, it shows their
+count and warning cards with code, message, excerpt, and optional hint.
+
+Warnings are structured diagnostics, not compiler failure. A warning-only
+program can complete all six phases and produce downloadable artifacts.
+Use the fatal diagnostic panel and phase state to identify failure; do not
+infer failure from the warning count.
