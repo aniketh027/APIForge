@@ -126,3 +126,19 @@ Compiling alone does not initialize saved-project storage, create a
 database, start a generated server, or migrate existing data. Use the
 [Live API guide](live-api-runner.md) or
 [Persistent API guide](persistent-runtime.md) for those workflows.
+
+## Quick troubleshooting map
+
+| What you see | What to inspect next |
+| --- | --- |
+| Compiler unavailable | Confirm the development server URL and process |
+| Parser error | Read its code and source excerpt; check the nearest token boundary |
+| Semantic failure | Review all reported diagnostics; later phases were skipped |
+| Warning with success | Read its hint; generation can still complete |
+| Outputs cleared after edit | Compile the currently visible source and selected target |
+| Download hidden | Resolve the compile failure or connection issue first |
+| Target label differs from expected | Select the intended target and compile again |
+
+When asking for help, include the diagnostic code, selected target, and a
+small source example that reproduces the state. Avoid treating skipped
+phases as independent errors.
