@@ -25,6 +25,16 @@ rewrite field declarations, or make JSON escaping part of DSL string syntax.
 For grammar, literal rules, and working source examples, use the
 [language guide](APIForge-Language-Guide.md).
 
+To try the workflow with a single entity, paste this complete program:
+
+```text
+ENTITY Student
+id INT PRIMARY KEY
+name STRING REQUIRED
+```
+
+After compiling, look for `/students` in the endpoint pane.
+
 ## Choose MySQL or PostgreSQL before compiling
 
 The target buttons begin with MySQL selected. PostgreSQL must be selected
