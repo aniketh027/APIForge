@@ -92,6 +92,10 @@ These panes are views of one successful response's in-memory results.
 They do not mean that files were written into the checkout's `output/`
 directory. The ordinary file CLI is the disk-generation workflow.
 
+### Read the schema diagram
+
+The diagram shows declared entities, fields, and relationships. Arrows point to the target entity. Inspect generated SQL for the physical tables and foreign keys for your selected database.
+
 ## Recompile after changing source
 
 Editing source clears the current compilation summary, phase states, output
