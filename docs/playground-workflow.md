@@ -96,6 +96,10 @@ directory. The ordinary file CLI is the disk-generation workflow.
 
 The diagram shows declared entities, fields, and relationships. Arrows point to the target entity. Inspect generated SQL for the physical tables and foreign keys for your selected database.
 
+### Check the endpoint list against Swagger
+
+The endpoint pane reads method and path pairs from the generated `swagger.json`. If the endpoint count says **Unavailable**, inspect the Swagger pane for the generated specification.
+
 ## Recompile after changing source
 
 Editing source clears the current compilation summary, phase states, output
