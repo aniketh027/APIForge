@@ -326,6 +326,10 @@ A root or path failure is resolved before whole-program semantic analysis.
 Fix that reported boundary first rather than interpreting skipped phases
 as additional source-language failures.
 
+### Check non-file targets
+
+For INP007, verify that the final import target is a regular file. A directory with an .apiforge suffix cannot serve as a module.
+
 ## Equivalence and deferred scope
 
 G28 preserves approved-main no-import behavior against commit
