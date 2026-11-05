@@ -334,6 +334,10 @@ For INP007, verify that the final import target is a regular file. A directory w
 
 INP008 covers filesystem read and link failures. INP009 identifies a dependency cycle between modules. Follow the reported diagnostic when investigating the import graph.
 
+### Stabilize files after INP012
+
+INP012 reports an observed source change or replacement during capture. Let the writer finish before compiling again. The module cache lasts for one compilation invocation.
+
 ## Equivalence and deferred scope
 
 G28 preserves approved-main no-import behavior against commit
