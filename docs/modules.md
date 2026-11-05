@@ -342,6 +342,10 @@ INP012 reports an observed source change or replacement during capture. Let the 
 
 Verify that --root names an accessible directory. Relative root arguments resolve against the invocation working directory. The entry must lie within the canonical root.
 
+### Investigate INP014
+
+Check usable physical file identities and hard-link aliases with different import bases. Matching filenames or source bytes cannot substitute for the adapter's physical identity contract.
+
 ## Equivalence and deferred scope
 
 G28 preserves approved-main no-import behavior against commit
