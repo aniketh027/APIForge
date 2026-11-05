@@ -338,6 +338,10 @@ INP008 covers filesystem read and link failures. INP009 identifies a dependency 
 
 INP012 reports an observed source change or replacement during capture. Let the writer finish before compiling again. The module cache lasts for one compilation invocation.
 
+### Check explicit roots after INP013
+
+Verify that --root names an accessible directory. Relative root arguments resolve against the invocation working directory. The entry must lie within the canonical root.
+
 ## Equivalence and deferred scope
 
 G28 preserves approved-main no-import behavior against commit
