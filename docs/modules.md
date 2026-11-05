@@ -346,6 +346,10 @@ Verify that --root names an accessible directory. Relative root arguments resolv
 
 Check usable physical file identities and hard-link aliases with different import bases. Matching filenames or source bytes cannot substitute for the adapter's physical identity contract.
 
+### Trace a shared dependency
+
+When main imports A then B and each imports Shared, emission is Shared, A, B, main. Shared is emitted once. Effective declaration order is observable, so retain intentional import ordering.
+
 ## Equivalence and deferred scope
 
 G28 preserves approved-main no-import behavior against commit
