@@ -114,6 +114,10 @@ The diagram shows declared entities, fields, and relationships. Arrows point to 
 
 The endpoint pane reads method and path pairs from the generated `swagger.json`. If the endpoint count says **Unavailable**, inspect the Swagger pane for the generated specification.
 
+The endpoint total counts each documented HTTP method and path pair separately.
+For example, GET and POST on `/students` contribute two entries even though they
+share a path. Consult the Swagger pane when comparing the total with the list.
+
 ## Recompile after changing source
 
 Editing source clears the current compilation summary, phase states, output
