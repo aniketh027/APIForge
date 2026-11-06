@@ -91,6 +91,10 @@ program can complete all six phases and produce downloadable artifacts.
 Use the fatal diagnostic panel and phase state to identify failure; do not
 infer failure from the warning count.
 
+The field count sums declared AST fields. An implicit generated key can therefore
+appear in generated SQL without increasing that count. Use the SQL pane to
+inspect the selected target's physical columns.
+
 ## Navigate the output panes
 
 The tabs show tokens, AST, schema diagram, symbol table, IR, optimized IR,
