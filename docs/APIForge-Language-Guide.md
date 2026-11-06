@@ -15,7 +15,8 @@ the default. See [PostgreSQL target details](postgres-target.md) and
 and source IR are unchanged. `node index.js source.apiforge --target postgres`
 or HTTP `{source, target: "postgres"}` selects PostgreSQL 18. Only exact
 `mysql`/`postgres` values are accepted; invalid targets use INP003.
-The browser and G26 migrations remain MySQL-only defaults.
+The browser starts with MySQL selected and offers an explicit PostgreSQL target button.
+G26 snapshots and migrations remain MySQL-only.
 
 PostgreSQL quotes original column spelling exactly (63 UTF-8 bytes), uses C
 collation for STRING/ENUM, accepts trailing-space ENUM labels with named
