@@ -127,6 +127,13 @@ run from the APIForge directory reads sources under `project/` and writes
 the generated backend to APIForge's `output/`. The file-aware library
 instead returns its generated array without publishing it.
 
+### Quote paths containing spaces
+
+Pass a quoted entry and root as separate shell arguments. For example, from the
+APIForge directory, use `node index.js "my project/main.apiforge" --root "my project"`.
+Inside the DSL, an import such as `IMPORT "./models/student record.apiforge"`
+already uses a quoted literal and resolves relative to its importing file.
+
 ## Identity, aliases and stable reads
 
 The adapter uses `fs.realpathSync.native(..., { encoding: 'utf8' })` without
