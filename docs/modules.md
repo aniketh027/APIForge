@@ -267,6 +267,13 @@ source/frame context. Failures throw with file-aware `diagnostic`/`diagnostics`
 and, after a unit exists, non-enumerable `compilationUnit`. Pure Lexer, Parser,
 SemanticAnalyzer, IRGenerator, Optimizer and Codegen APIs never resolve imports.
 
+### Choose resolveFile or compileFile
+
+Use `resolveFile` to inspect the merged declarations and captured source context.
+A resolved unit can still contain duplicate entity names that semantic analysis
+will refuse. Use `compileFile` when the caller needs semantic admission and the
+generated artifact array for the entire program.
+
 ### Count resource allowances per physical module
 
 For a project containing the entry and one shared dependency, `maxModules: 2`
