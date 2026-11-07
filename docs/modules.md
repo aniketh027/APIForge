@@ -267,6 +267,13 @@ source/frame context. Failures throw with file-aware `diagnostic`/`diagnostics`
 and, after a unit exists, non-enumerable `compilationUnit`. Pure Lexer, Parser,
 SemanticAnalyzer, IRGenerator, Optimizer and Codegen APIs never resolve imports.
 
+### Count resource allowances per physical module
+
+For a project containing the entry and one shared dependency, `maxModules: 2`
+allows both files even when several import edges reference that dependency.
+`maxSourceBytes` counts the captured bytes of those two unique files. A crossed
+explicit budget produces INP011, while an invalid budget value raises TypeError.
+
 ### Handle file-aware compilation errors
 
 For an existing project, this CommonJS example runs from the APIForge
