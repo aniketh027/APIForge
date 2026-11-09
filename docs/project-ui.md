@@ -72,6 +72,13 @@ The workspace then retains that UUID and acknowledged revision for later
 saves. Renaming that workspace changes the existing project's label rather
 than creating another identity. New remains an in-memory draft until Save.
 
+### Recompile after opening a saved project
+
+Open restores the selected project's saved target along with its source. Check
+the target buttons before choosing Compile, especially when switching between
+MySQL and PostgreSQL projects. The next compilation uses that restored editor
+state and produces a fresh set of artifacts.
+
 ## Local state and asynchronous behavior
 
 The module keeps the backend UUID, acknowledged revision and last acknowledged
