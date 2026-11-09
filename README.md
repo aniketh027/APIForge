@@ -18,6 +18,8 @@
 - [Disposable Live API runner](docs/live-api-runner.md)
 - [Persistent API configuration and recovery](docs/persistent-runtime.md)
 
+- [Offline MySQL migration workflow](docs/schema-migrations.md)
+
 ## 📌 What is APIForge?
 
 APIForge is a **custom 6-phase compiler** that takes a simple Domain-Specific
