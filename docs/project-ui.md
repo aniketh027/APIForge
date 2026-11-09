@@ -53,6 +53,13 @@ New, Open, Save, Compile and missing-store errors never initialize storage.
 An established missing store requires manual resolution; initialization cannot
 be used to adopt or repair it.
 
+### Check whether a save is needed
+
+After an acknowledged Save, choosing Save again with the same name, source, and
+target reports **Already saved**. Editing any of those values makes the draft
+eligible for another explicit Save. The workbench compares the current draft
+with its last acknowledged snapshot.
+
 ## Names and project identity
 
 A project name is a preserved label, not a unique lookup key. Two saved
