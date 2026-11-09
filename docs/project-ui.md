@@ -30,6 +30,12 @@ Opening a workspace invalidates an existing Live session through the established
 source/target safety behavior. It never starts a generated server; the existing
 Live 15-minute disposal and explicit start/stop behavior are unchanged.
 
+### Save a work-in-progress draft
+
+A draft containing only `ENTITY Student` can be saved so you can finish its fields
+later. Complete the declaration and choose Compile when ready to inspect generated
+output. The saved revision records the exact source at the time Save succeeds.
+
 ## Enablement and explicit initialization
 
 Saved projects use the unchanged [protected M2B HTTP API](project-http-api.md).
