@@ -22,6 +22,8 @@
 
 - [Compiler diagnostic reference](docs/structured-diagnostics.md)
 
+- [Saved-project HTTP reference](docs/project-http-api.md)
+
 ## 📌 What is APIForge?
 
 APIForge is a **custom 6-phase compiler** that takes a simple Domain-Specific
