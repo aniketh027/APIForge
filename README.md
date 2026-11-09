@@ -20,6 +20,8 @@
 
 - [Offline MySQL migration workflow](docs/schema-migrations.md)
 
+- [Compiler diagnostic reference](docs/structured-diagnostics.md)
+
 ## 📌 What is APIForge?
 
 APIForge is a **custom 6-phase compiler** that takes a simple Domain-Specific
