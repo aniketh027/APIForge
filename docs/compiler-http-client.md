@@ -215,3 +215,7 @@ can leave all six public phases skipped. An import refusal can retain
 successful lexer/parser states while its diagnostic phase is `input`.
 Warnings already emitted by successful earlier phases may survive a later
 failure; their presence does not imply that generation completed.
+
+## Related guide
+
+Use the [generated API request walkthrough](generated-api-usage.md) once you have started the generated backend and want to send resource requests.
