@@ -255,3 +255,7 @@ Linux/macOS, unsupported volumes and sudden power loss require separate evidence
 EXTRA synchronization and process-crash recovery do not establish electrical
 power-loss durability. No migrations, repair, backup policy or new platform
 bootstrap are introduced in M2A.
+
+## Related guide
+
+For the browser workflow for saving and reopening revisions, see the [saved-project workspace](project-ui.md#workflow).
