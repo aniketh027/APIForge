@@ -225,3 +225,7 @@ Ordinary `Codegen.generate`, `index.js`, HTTP compilation, playground and ZIP ge
 Run `npm run test:migrations` for offline validation and the independent approved-main compatibility oracle. Run `npm run test:migrations-mysql` separately with guarded `APIFORGE_TEST_DB_*` configuration for the native MySQL oracle; it verifies the certified profile and removes every disposable database. Native tests may resolve MySQL metadata presentation ambiguity using isolated typed temporary copies and numeric ENUM ordinals. Those test-only probes are not production drift/introspection APIs.
 
 See [verification evidence](schema-migrations-verification.md). G27 can reuse validated snapshots, intents, safety facts, graph and closure evidence through explicit APIs. Live APPLY, an applied-head table, drift discovery, recovery orchestration, backfills, DOWN SQL, renames, cardinality conversion, PostgreSQL, HTTP/browser migration surfaces and profile switching require separate design and authorization.
+
+## Related guide
+
+For root selection and nested file imports used by file-based migration inputs, see [filesystem imports and modules](modules.md#paths-and-root-confinement).
