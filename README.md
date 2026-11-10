@@ -17,11 +17,8 @@
 - [Saved-project workflow](docs/project-ui.md)
 - [Disposable Live API runner](docs/live-api-runner.md)
 - [Persistent API configuration and recovery](docs/persistent-runtime.md)
-
 - [Offline MySQL migration workflow](docs/schema-migrations.md)
-
 - [Compiler diagnostic reference](docs/structured-diagnostics.md)
-
 - [Saved-project HTTP reference](docs/project-http-api.md)
 
 ## 📌 What is APIForge?
