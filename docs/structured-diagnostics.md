@@ -350,3 +350,7 @@ invented source location.
 | input | INP014 | IMPORT_IDENTITY_AMBIGUOUS |
 | codegen | GEN001 | POSTGRES_ADMISSION_FAILURE |
 | internal | INT001 | FAILURE |
+
+## Related guide
+
+For a client example that retains diagnostic response bodies on HTTP errors, see the [compiler HTTP client guide](compiler-http-client.md#retain-non-success-response-bodies-with-fetch).
