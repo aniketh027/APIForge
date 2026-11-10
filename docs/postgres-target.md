@@ -150,3 +150,7 @@ Deferred: PostgreSQL migrations/snapshots/history, alternate schemas/search path
 Run `npm run test:g27` for exact compatibility/selection/target policy and `npm run test:postgres-native` for gates B/C/D. Native tests use all four `APIFORGE_TEST_PG_HOST/PORT/USER/PASSWORD` variables when present, or create a uniquely owned loopback-only official PostgreSQL 18 Docker container. They create only owned disposable databases, pass credentials in memory/child environments, and clean servers, pools, ports, databases, projects and owned containers.
 
 Native test credentials must permit administrator fixture setup, including creating/dropping guarded databases and owned LOGIN roles. Runtime/backend gates connect generated code as separate restricted application roles; administrator connections handle catalog, DDL and native error fixtures. Owned roles are dropped and their absence asserted in final cleanup. The native command also replays the reviewed-tip privilege failure and VARCHAR boundary observations through the pinned compiler loader.
+
+## Related guide
+
+For the browser sequence for selecting PostgreSQL and compiling again, see the [playground target selector](playground-workflow.md#choose-mysql-or-postgresql-before-compiling).
