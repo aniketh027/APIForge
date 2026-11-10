@@ -231,3 +231,7 @@ successful direct-model call does not establish that the equivalent HTTP
 request is accepted. Database constraints remain authoritative for stored
 values. For complete role and relationship policy, consult the
 [Effective Schema Plan](effective-schema-plan.md).
+
+## Related guide
+
+For downloading generated files from the browser before starting the backend, see the [playground workflow](playground-workflow.md#download-the-successful-generated-project).
