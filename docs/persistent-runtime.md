@@ -393,3 +393,7 @@ same-authority namespace races remain unverified. The original default-store-
 probing Windows Bootstrap suite remains NOT RUN under strict nonaccess;
 fixture-only Bootstrap evidence is separate. Consult the external HANDOFF and
 logs for exact current regression results and review/publication blockers.
+
+## Related guide
+
+For choosing and saving the source revision used by Persistent API, see the [saved-project workspace workflow](project-ui.md#workflow).
