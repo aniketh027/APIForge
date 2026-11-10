@@ -44,3 +44,7 @@ For confirmed-owned cleanup failures, retry Stop while retaining the token, or a
 Run `npm run test:live-api-runner` for offline equivalence, lifecycle, security and transport checks; run `npm run test:frontend-live-api` for browser tests. Run `npm run test:live-api-runner-native` for the real Professor Demo User CRUD lifecycle on **both** targets. The native test may map existing `APIFORGE_TEST_DB_*` MySQL configuration or `APIFORGE_TEST_PG_*` PostgreSQL configuration into an isolated test manager, or use the existing disposable PostgreSQL Docker helper. Production does not use these fallbacks. Missing native infrastructure exits nonzero and reports **NATIVE BLOCKED**; both complete lifecycles are required for **NATIVE COMPLETE**.
 
 Limitations: local opt-in only, no production hosting, authentication, filesystem imports, remote proxy, streaming, uploads, browser-selected credentials or databases, or multi-session support. Hard termination/power loss cannot run JavaScript cleanup or preserve in-memory ownership/uncertainty state. Operators may need to assess retained databases/directories and remove resources only after independently verifying ownership. This feature does not change generated templates, compiler semantics, ordinary output publication, or the compiler API contract.
+
+## Related guide
+
+For request bodies and response shapes shared with standalone generated projects, see the [generated API request walkthrough](generated-api-usage.md).
