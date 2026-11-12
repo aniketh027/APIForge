@@ -166,3 +166,6 @@ logical names. Delegating compatibility wrappers and target presentation remain
 allowed. Exact ordered generated file arrays are compared against the complete
 compiler dependency closure at `d91859e30a5ed0f91be9826a3d8d3a5c5b7261ce`;
 no output or line-ending normalization is permitted.
+
+For HTTP request examples using the generated create, update, and read roles,
+see the [generated API walkthrough](generated-api-usage.md).
