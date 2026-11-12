@@ -394,3 +394,6 @@ Native generated MySQL/PostgreSQL execution, second-user access, Windows 10,
 non-Windows storage, unsupported filesystems, installer policy and power-loss
 durability require separate evidence. Process shutdown/crash tests do not prove
 electrical power-loss durability.
+
+For filesystem ownership and storage-admission details behind store refusals,
+consult the [Windows storage bootstrap contract](windows-storage-bootstrap.md).
