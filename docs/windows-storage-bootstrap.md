@@ -280,3 +280,6 @@ private creation and reopen implementation, no-follow/identity handling,
 concurrency/crash tests and native execution. Windows success supplies no POSIX
 security certification. SQLite schema/project operations, HTTP/UI, credentials,
 generated targets and persistent Live API are outside this milestone.
+
+The [SQLite Project Store](sqlite-project-store.md) documents the implemented
+consumer's database initialization, reopen checks, and revision operations.
