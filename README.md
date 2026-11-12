@@ -22,6 +22,7 @@
 - [Saved-project HTTP reference](docs/project-http-api.md)
 - [SQLite saved-project storage](docs/sqlite-project-store.md)
 - [Windows storage bootstrap](docs/windows-storage-bootstrap.md)
+- [Effective schema and model policy](docs/effective-schema-plan.md)
 
 ## 📌 What is APIForge?
 
