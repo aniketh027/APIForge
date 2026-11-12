@@ -21,6 +21,7 @@
 - [Compiler diagnostic reference](docs/structured-diagnostics.md)
 - [Saved-project HTTP reference](docs/project-http-api.md)
 - [SQLite saved-project storage](docs/sqlite-project-store.md)
+- [Windows storage bootstrap](docs/windows-storage-bootstrap.md)
 
 ## 📌 What is APIForge?
 
