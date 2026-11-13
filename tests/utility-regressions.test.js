@@ -21,3 +21,10 @@ test('diagnostic lookup rejects Object prototype names', () => {
     }
     assert.equal(createDiagnostic('semantic', 'MISSING_ENTITY_DECLARATION', 'bad').code, 'SEM001');
 });
+
+test('edit distance stays symmetric for strongly unequal input lengths', () => {
+    const long = 'a'.repeat(100000);
+    assert.equal(levenshtein('a', long), 99999);
+    assert.equal(levenshtein(long, 'a'), 99999);
+    assert.equal(levenshtein('kitten', 'sitting'), 3);
+});

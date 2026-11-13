@@ -37,6 +37,7 @@ function levenshtein(a, b) {
     a = String(a);
     b = String(b);
 
+    if (b.length > a.length) [a, b] = [b, a];
     const m = a.length;
     const n = b.length;
 
