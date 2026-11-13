@@ -913,10 +913,12 @@ function showCopyFeedback(button, state) {
 }
 
 async function copyGeneratedCode(button) {
+    if (button.disabled) return;
     const copyScope = button.closest('[data-copy-scope]');
     const source = copyScope && copyScope.querySelector('[data-copy-source]');
     if (!source) return;
 
+    button.disabled = true;
     try {
         if (!navigator.clipboard || typeof navigator.clipboard.writeText !== 'function') {
             throw new Error('Clipboard API unavailable');
@@ -925,6 +927,8 @@ async function copyGeneratedCode(button) {
         showCopyFeedback(button, 'copied');
     } catch (error) {
         showCopyFeedback(button, 'failed');
+    } finally {
+        button.disabled = false;
     }
 }
 

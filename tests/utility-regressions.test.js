@@ -62,3 +62,15 @@ test('Swagger pane ignores suffix lookalikes', () => {
     assert.ok(html.includes('3.0.0'));
     assert.ok(!html.includes('wrong'));
 });
+
+test('pending clipboard write blocks duplicate writes and reenables the button', async () => {
+    let resolve, calls = 0;
+    const app = browser({navigator: {clipboard: {writeText() {calls++; return new Promise(r => { resolve = r; });}}}});
+    const button = {disabled:false, closest: () => ({querySelector: () => ({textContent:'exact'})}),
+        dataset:{}, classList:{add(){},remove(){}}, setAttribute(){}};
+    const first = app.copyGeneratedCode(button);
+    await app.copyGeneratedCode(button);
+    assert.equal(calls, 1);
+    resolve(); await first;
+    assert.equal(button.disabled, false);
+});
