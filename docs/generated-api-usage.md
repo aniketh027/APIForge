@@ -104,6 +104,12 @@ OR, nested relationship, or special SQL NULL syntax is provided. A STRING
 filter value `null` is literal text. Declared write bounds/defaults are not
 reapplied as filter rules; a filter is not a write operation.
 
+### Encode text before building a query
+
+For a name containing an ampersand, encode the value as `name=Mira%20%26%20Rao`.
+The decoded filter is `Mira & Rao`. Use your client's query encoder when building
+URLs so punctuation in a field value stays within that parameter.
+
 ## Sort independently of pagination
 
 ```text
