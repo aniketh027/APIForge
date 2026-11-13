@@ -77,6 +77,12 @@ refused as immutable, even if it equals the current key. `{}` performs an
 existing-record lookup instead of clearing fields; an absent record is 404.
 Use explicit `null` only for a field whose contract permits null.
 
+### Choose the intended partial update
+
+For the example's optional `score` field, `{"score":null}` explicitly stores null,
+while `{"name":"Mira Rao"}` updates the name and retains the stored score. The
+required `name` field must receive a valid string whenever it is supplied.
+
 ## Delete an item deliberately
 
 ```text
