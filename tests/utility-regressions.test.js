@@ -74,3 +74,12 @@ test('pending clipboard write blocks duplicate writes and reenables the button',
     resolve(); await first;
     assert.equal(button.disabled, false);
 });
+
+test('Unicode ZIP names carry UTF8 flags in local and central headers', async () => {
+    const bytes = new Uint8Array(await browser().createZip([{path:'é.txt',content:'hello'}]).arrayBuffer());
+    const view = new DataView(bytes.buffer);
+    assert.equal(view.getUint16(6,true), 0x0800);
+    const end = bytes.length - 22, central = view.getUint32(end+16,true);
+    assert.equal(view.getUint16(central+8,true), 0x0800);
+    assert.equal(new TextDecoder().decode(bytes.slice(30,36)), 'é.txt');
+});

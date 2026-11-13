@@ -1264,7 +1264,7 @@ function createZip(files) {
         const lhView = new DataView(lh.buffer);
         lhView.setUint32(0, 0x04034b50, true);
         lhView.setUint16(4, 20, true);
-        lhView.setUint16(6, 0, true);
+        lhView.setUint16(6, 0x0800, true);
         lhView.setUint16(8, 0, true);
         lhView.setUint16(10, 0, true);
         lhView.setUint16(12, 0, true);
@@ -1283,7 +1283,7 @@ function createZip(files) {
         cdView.setUint32(0, 0x02014b50, true);
         cdView.setUint16(4, 20, true);
         cdView.setUint16(6, 20, true);
-        cdView.setUint16(8, 0, true);
+        cdView.setUint16(8, 0x0800, true);
         cdView.setUint16(10, 0, true);
         cdView.setUint16(12, 0, true);
         cdView.setUint14 ? null : null;
