@@ -83,3 +83,10 @@ test('Unicode ZIP names carry UTF8 flags in local and central headers', async ()
     assert.equal(view.getUint16(central+8,true), 0x0800);
     assert.equal(new TextDecoder().decode(bytes.slice(30,36)), 'é.txt');
 });
+
+test('ZIP timestamps use a valid matching DOS calendar date', async () => {
+    const bytes = new Uint8Array(await browser().createZip([{path:'file.txt',content:'hello'}]).arrayBuffer());
+    const view = new DataView(bytes.buffer), central = view.getUint32(bytes.length-6,true);
+    assert.equal(view.getUint16(12,true), 0x0021);
+    assert.equal(view.getUint16(central+14,true), 0x0021);
+});

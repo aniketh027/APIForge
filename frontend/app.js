@@ -1267,7 +1267,7 @@ function createZip(files) {
         lhView.setUint16(6, 0x0800, true);
         lhView.setUint16(8, 0, true);
         lhView.setUint16(10, 0, true);
-        lhView.setUint16(12, 0, true);
+        lhView.setUint16(12, 0x0021, true); // 1980-01-01, earliest DOS date
         lhView.setUint32(14, crc, true);
         lhView.setUint32(18, size, true);
         lhView.setUint32(22, size, true);
@@ -1286,7 +1286,7 @@ function createZip(files) {
         cdView.setUint16(8, 0x0800, true);
         cdView.setUint16(10, 0, true);
         cdView.setUint16(12, 0, true);
-        cdView.setUint14 ? null : null;
+        cdView.setUint16(14, 0x0021, true); // Match the local header date
         cdView.setUint32(16, crc, true);
         cdView.setUint32(20, size, true);
         cdView.setUint32(24, size, true);
