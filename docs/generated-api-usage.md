@@ -42,6 +42,12 @@ Omitting `id` requests integer identity generation. Omitted ordinary defaults
 can be stored without appearing in the create response, because create echoes
 supplied fields plus resolved identity rather than reloading the row.
 
+### Keep the acknowledged identifier
+
+A response such as `{"success":true,"data":{"name":"Mira","id":42}}` supplies
+`42` for subsequent `/students/42` requests. Read the identifier from the actual
+response when writing a client, including when the database already contains rows.
+
 ## Read the stored row
 
 Replace `<student-id>` with the key acknowledged by the create response:
