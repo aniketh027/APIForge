@@ -177,7 +177,7 @@ async function main() {
             assert.equal(await page.locator('#output-endpoints .endpoint-row').count(), 17);
             await page.locator('#tab-live-api').click();
             assert.equal(await page.locator('#live-start').isEnabled(), true);
-            // Compare actual downloaded ZIP bytes to the frozen G28 implementation.
+            // Preserve the G28 file bytes while checking the corrected ZIP metadata.
             const historical = execFileSync('git', ['show', '112a464ee4615c3956c686bfff59c9aa5d9f8497:frontend/app.js'], { encoding: 'utf8' });
             const context = vm.createContext({ Blob, TextEncoder, Uint8Array, DataView });
             vm.runInContext(historical.slice(historical.indexOf('function createZip('), historical.indexOf('function downloadProject(')), context);
@@ -187,7 +187,24 @@ async function main() {
             const download = await pendingDownload;
             const chunks = []; for await (const chunk of await download.createReadStream()) chunks.push(chunk);
             assert.equal(await download.failure(), null);
-            assert.deepEqual(Buffer.concat(chunks), expected, target + ' exact frozen ZIP bytes');
+            const actual = Buffer.concat(chunks);
+            const normalized = Buffer.from(actual);
+            const directory = actual.readUInt32LE(actual.length - 6);
+            let cursor = directory;
+            for (let index = 0; index < data.generatedFiles.length; index++) {
+                const local = actual.readUInt32LE(cursor + 42);
+                assert.equal(actual.readUInt16LE(local + 6), 0x0800, 'local UTF8 flag');
+                assert.equal(actual.readUInt16LE(cursor + 8), 0x0800, 'central UTF8 flag');
+                assert.equal(actual.readUInt16LE(local + 12), 0x0021, 'local DOS date');
+                assert.equal(actual.readUInt16LE(cursor + 14), 0x0021, 'central DOS date');
+                // The historical archive used zero for these four metadata fields.
+                for (const offset of [local + 6, cursor + 8, local + 12, cursor + 14]) {
+                    normalized.writeUInt16LE(0, offset);
+                }
+                cursor += 46 + actual.readUInt16LE(cursor + 28)
+                    + actual.readUInt16LE(cursor + 30) + actual.readUInt16LE(cursor + 32);
+            }
+            assert.deepEqual(normalized, expected, target + ' frozen ZIP payload and structure');
             await editor.fill(LIBRARY_SOURCE);
             await assertInvalidated('Source changed');
             const library = await compileSource(target);
@@ -195,7 +212,7 @@ async function main() {
             assert.equal(library.ast.relations.length, 1);
             assert.equal(await page.locator('#output-diagram .schema-entity').count(), 2);
             assert.equal(await page.locator('#output-endpoints .endpoint-row').count(), 11);
-            console.log('PASS: ' + target + ' generic Professor and Library domains, inspectors, Live readiness, download and frozen ZIP bytes');
+            console.log('PASS: ' + target + ' generic Professor and Library domains, inspectors, Live readiness, download and corrected ZIP metadata with frozen payload bytes');
         }
 
         // Programmatic Tab insertion must invalidate just like ordinary typing.
