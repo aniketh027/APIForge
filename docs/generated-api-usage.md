@@ -207,6 +207,12 @@ if no association was found. It does not delete the Course entity. Synthetic
 FK fields are not ordinary declared HTTP write/filter fields. Recompilation
 alone does not migrate an already populated database; plan schema changes separately.
 
+### Check JSON types when a write returns 400
+
+For the example Student source, `{"name":"Mira","active":"false"}` supplies a
+string for the BOOLEAN field. Use `{"name":"Mira","active":false}` to supply
+the JSON boolean. Inspect the response's error text for the reported field.
+
 ## Interpret generated API errors
 
 Generated handler errors use `{ "success": false, "error": "..." }`.
