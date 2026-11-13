@@ -165,8 +165,8 @@ function formatCodeFrame(source, line, column, length = 1) {
 function formatUserFacingError(err) {
     if (!err) return '';
     if (typeof err === 'string') return err;
-    if (err.userMessage) return err.userMessage;
-    let msg = err.message || String(err);
+    if (err.userMessage) return String(err.userMessage);
+    let msg = String(err.message || err);
     msg = msg.replace(/^Syntax Error at line \d+, column \d+:\s*/i, '');
     msg = msg.replace(/^Semantic Error:\s*/i, '');
     return msg;

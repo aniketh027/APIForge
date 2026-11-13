@@ -34,3 +34,9 @@ test('source excerpts return no frame for missing locations', () => {
     assert.deepEqual(sourceFrame('source', null), []);
     assert.equal(sourceFrame('source', {line: 1, column: 1})[0].pointer, '^');
 });
+
+test('user error formatting consistently returns text', () => {
+    assert.equal(formatUserFacingError({message: 42}), '42');
+    assert.equal(formatUserFacingError({userMessage: 17}), '17');
+    assert.equal(formatUserFacingError(new Error('Semantic Error: invalid')), 'invalid');
+});
