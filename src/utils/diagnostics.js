@@ -63,7 +63,8 @@ const WARNING_CODES = Object.freeze({
 function createDiagnostic(phase, symbol, message, location = {}, hint, { severity = 'error' } = {}) {
     if (severity !== 'error' && severity !== 'warning') throw new Error(`Unsupported diagnostic severity: ${severity}`);
     const registry = severity === 'warning' ? WARNING_CODES : CODES;
-    const code = registry[phase]?.[symbol] ||
+    const entries = Object.hasOwn(registry, phase) ? registry[phase] : null;
+    const code = (entries && Object.hasOwn(entries, symbol) ? entries[symbol] : null) ||
         (severity === 'error' && symbol === 'FAILURE' ? CODES.internal.FAILURE : null);
     if (!code) throw new Error(`Unregistered diagnostic: ${phase}.${symbol}`);
     const diagnostic = { phase, code, severity, message, symbol,
