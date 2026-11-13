@@ -1043,7 +1043,7 @@ function renderEndpoints(files) {
 // ═════════════════════════════════════════════════════════════
 
 function renderSwagger(files) {
-    const swaggerFile = files.find(f => f.path.endsWith('swagger.json'));
+    const swaggerFile = files.find(f => f.path === 'swagger.json');
     if (!swaggerFile) return '<p class="output-placeholder">No Swagger spec generated.</p>';
 
     let content = swaggerFile.content;

@@ -56,3 +56,9 @@ test('SQL pane selects schema even when another SQL file appears first', () => {
     assert.ok(html.includes('database/schema.sql'));
     assert.ok(!html.includes('wrong'));
 });
+
+test('Swagger pane ignores suffix lookalikes', () => {
+    const html = browser().renderSwagger([{path:'old-swagger.json',content:'wrong'}, {path:'swagger.json',content:'{"openapi":"3.0.0"}'}]);
+    assert.ok(html.includes('3.0.0'));
+    assert.ok(!html.includes('wrong'));
+});
