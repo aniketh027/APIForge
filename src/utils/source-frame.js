@@ -1,7 +1,7 @@
 (function (root) {
     // Columns count UTF-16 code units, as in the lexer. End positions are exclusive.
     function sourceFrame(source, location) {
-        if (typeof source !== 'string' || !Number.isInteger(location.line) || location.line < 1) return [];
+        if (typeof source !== 'string' || !location || !Number.isInteger(location.line) || location.line < 1) return [];
         const lines = source.replace(/^\uFEFF/, '').split('\n').map(line => line.replace(/\r$/, ''));
         if (location.line > lines.length) return [];
         const hasColumn = Number.isInteger(location.column) && location.column > 0;

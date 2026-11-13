@@ -28,3 +28,9 @@ test('edit distance stays symmetric for strongly unequal input lengths', () => {
     assert.equal(levenshtein(long, 'a'), 99999);
     assert.equal(levenshtein('kitten', 'sitting'), 3);
 });
+
+test('source excerpts return no frame for missing locations', () => {
+    assert.deepEqual(sourceFrame('source', undefined), []);
+    assert.deepEqual(sourceFrame('source', null), []);
+    assert.equal(sourceFrame('source', {line: 1, column: 1})[0].pointer, '^');
+});
