@@ -956,21 +956,19 @@ function highlightSQL(sql) {
     ];
     const types = ['INT', 'VARCHAR', 'CHAR', 'FLOAT', 'BOOLEAN', 'ENUM', 'TEXT', 'DATE', 'TIMESTAMP', 'DATETIME'];
 
-    let result = escapeHtml(sql);
-
-    result = result.replace(/(--.*)/g, '<span class="sql-comment">$1</span>');
-
-    keywords.forEach(kw => {
-        const re = new RegExp('\\b(' + kw + ')\\b', 'g');
-        result = result.replace(re, '<span class="sql-keyword">$1</span>');
-    });
-
-    types.forEach(t => {
-        const re = new RegExp('\\b(' + t + '(?:\\(\\d+\\))?)\\b', 'g');
-        result = result.replace(re, '<span class="sql-type">$1</span>');
-    });
-
-    return result;
+    // Tokenize original text once so keywords cannot rewrite strings or markup.
+    const tokens = /(--[^\n]*|\/\*[\s\S]*?\*\/|'(?:''|\\[\s\S]|[^'\\])*'|"(?:""|[^"])*"|`(?:``|[^`])*`|\b[A-Z_][A-Z_0-9]*\b)/g;
+    let result = '', offset = 0;
+    for (const match of sql.matchAll(tokens)) {
+        result += escapeHtml(sql.slice(offset, match.index));
+        const token = match[0];
+        const style = token.startsWith('--') || token.startsWith('/*') ? 'sql-comment'
+            : keywords.includes(token) ? 'sql-keyword' : types.includes(token) ? 'sql-type' : null;
+        const escaped = escapeHtml(token);
+        result += style ? `<span class="${style}">${escaped}</span>` : escaped;
+        offset = match.index + token.length;
+    }
+    return result + escapeHtml(sql.slice(offset));
 }
 
 // ═════════════════════════════════════════════════════════════

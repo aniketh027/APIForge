@@ -40,3 +40,13 @@ test('user error formatting consistently returns text', () => {
     assert.equal(formatUserFacingError({userMessage: 17}), '17');
     assert.equal(formatUserFacingError(new Error('Semantic Error: invalid')), 'invalid');
 });
+
+test('SQL highlighting preserves literals, quoted identifiers and comments', () => {
+    const app = browser();
+    const sql = "SELECT 'DEFAULT -- literal', `TABLE`, \"CREATE\"; -- INT CREATE\n/* TABLE */";
+    const html = app.highlightSQL(sql);
+    assert.ok(html.includes("'DEFAULT -- literal'"));
+    assert.ok(html.includes('`TABLE`'));
+    assert.ok(html.includes('<span class="sql-comment">-- INT CREATE</span>'));
+    assert.ok(html.includes('<span class="sql-keyword">SELECT</span>'));
+});
