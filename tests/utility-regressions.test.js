@@ -50,3 +50,9 @@ test('SQL highlighting preserves literals, quoted identifiers and comments', () 
     assert.ok(html.includes('<span class="sql-comment">-- INT CREATE</span>'));
     assert.ok(html.includes('<span class="sql-keyword">SELECT</span>'));
 });
+
+test('SQL pane selects schema even when another SQL file appears first', () => {
+    const html = browser().renderSQL([{path:'notes.sql',content:'wrong'}, {path:'database/schema.sql',content:'CREATE TABLE Item'}]);
+    assert.ok(html.includes('database/schema.sql'));
+    assert.ok(!html.includes('wrong'));
+});

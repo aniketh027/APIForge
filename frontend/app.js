@@ -929,7 +929,7 @@ async function copyGeneratedCode(button) {
 }
 
 function renderSQL(files) {
-    const sqlFile = files.find(f => f.path.endsWith('.sql'));
+    const sqlFile = files.find(f => f.path === 'database/schema.sql');
     if (!sqlFile) return '<p class="output-placeholder">No SQL generated.</p>';
 
     const highlighted = highlightSQL(sqlFile.content);
