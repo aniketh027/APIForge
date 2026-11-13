@@ -133,6 +133,12 @@ zero total pages. A page beyond the last has an empty data array. Data and
 count use separate SQL reads, so concurrent changes can affect agreement.
 Without either control, results are unbounded and no count query runs.
 
+### Example page metadata
+
+For 23 matching rows requested with `page=2&limit=10`, the pagination headers
+report total count 23, page 2, limit 10, and total pages 3. With stable data, that
+page contains ten records and page 3 contains the remaining three.
+
 ## Encode typed filter values
 
 | Filter in this example | Accepted spelling | Refused spelling |
