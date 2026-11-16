@@ -1234,6 +1234,7 @@ async function compile() {
 // ═════════════════════════════════════════════════════════════
 
 function createZip(files) {
+    if (files.length >= 0xFFFF) throw new RangeError('ZIP64 entry counts are unsupported.');
     const crcTable = [];
     for (let n = 0; n < 256; n++) {
         let c = n;

@@ -100,3 +100,10 @@ test('copy failure replaces a previous success checkmark', () => {
     assert.notEqual(button.innerHTML, success);
     assert.ok(button.innerHTML.includes('<rect'));
 });
+
+test('ZIP refuses the reserved ZIP64 entry count before encoding files', () => {
+    const app = browser();
+    assert.throws(() => app.createZip(new Array(65535)), /ZIP64 entry counts/);
+    assert.throws(() => app.createZip(new Array(65536)), /ZIP64 entry counts/);
+    assert.ok(app.createZip([]).size > 0);
+});
