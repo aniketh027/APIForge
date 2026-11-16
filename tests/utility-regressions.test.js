@@ -114,3 +114,16 @@ test('ZIP filename limits count UTF8 bytes and preserve the boundary', async () 
     const bytes = new Uint8Array(await app.createZip([{path:'a'.repeat(65535),content:''}]).arrayBuffer());
     assert.equal(new DataView(bytes.buffer).getUint16(26,true), 65535);
 });
+
+test('reused edit distance rows agree with an independent full matrix', () => {
+    function distance(a,b) {
+        const matrix = Array.from({length:a.length+1}, (_,i) => [i]);
+        matrix[0] = Array.from({length:b.length+1}, (_,i) => i);
+        for(let i=1;i<=a.length;i++) for(let j=1;j<=b.length;j++) {
+            matrix[i][j] = Math.min(matrix[i-1][j]+1,matrix[i][j-1]+1,matrix[i-1][j-1]+Number(a[i-1]!==b[j-1]));
+        }
+        return matrix[a.length][b.length];
+    }
+    const words = ['', 'a', 'ab', 'ba', 'aaa', 'STRING', 'STRIMG', 'kitten', 'sitting', 'é'];
+    for(const a of words) for(const b of words) assert.equal(levenshtein(a,b), distance(a,b));
+});

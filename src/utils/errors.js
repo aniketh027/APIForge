@@ -48,8 +48,8 @@ function levenshtein(a, b) {
     let prev = new Array(n + 1);
     for (let j = 0; j <= n; j++) prev[j] = j;
 
+    let curr = new Array(n + 1);
     for (let i = 1; i <= m; i++) {
-        const curr = new Array(n + 1);
         curr[0] = i;
         for (let j = 1; j <= n; j++) {
             const cost = a[i - 1] === b[j - 1] ? 0 : 1;
@@ -59,7 +59,7 @@ function levenshtein(a, b) {
                 prev[j - 1] + cost // substitution
             );
         }
-        prev = curr;
+        [prev, curr] = [curr, prev];
     }
 
     return prev[n];
