@@ -23,7 +23,10 @@
     }
     function formatDiagnostic(source, diagnostic) {
         const output = [`${diagnostic.code}: ${diagnostic.message}`];
-        if (diagnostic.line) output.push(`  --> line ${diagnostic.line}${diagnostic.column ? `, column ${diagnostic.column}` : ''}`);
+        if (Number.isInteger(diagnostic.line) && diagnostic.line > 0) {
+            const hasColumn = Number.isInteger(diagnostic.column) && diagnostic.column > 0;
+            output.push(`  --> line ${diagnostic.line}${hasColumn ? `, column ${diagnostic.column}` : ''}`);
+        }
         for (const frame of sourceFrame(source, diagnostic)) {
             output.push(`${frame.line} | ${frame.text}`);
             if (frame.pointer) output.push(`${' '.repeat(String(frame.line).length)} | ${frame.pointer}`);

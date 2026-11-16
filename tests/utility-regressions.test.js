@@ -141,3 +141,11 @@ test('suggestions retain ordering and threshold behavior with length pruning', (
     assert.equal(suggestClosest('ab',['ac','ad'],1), 'ac');
     assert.equal(suggestClosest('ab',['a'.repeat(1000000)],2), null);
 });
+
+test('formatted locations use the same positive integer contract as excerpts', () => {
+    const {formatDiagnostic} = require('../src/utils/source-frame');
+    const diagnostic = {code:'INT001',message:'test',line:-1,column:3};
+    assert.equal(formatDiagnostic('abc',diagnostic), 'INT001: test');
+    assert.ok(!formatDiagnostic('abc',{...diagnostic,line:1,column:-2}).includes('column'));
+    assert.ok(formatDiagnostic('abc',{...diagnostic,line:1,column:2}).includes('line 1, column 2'));
+});
