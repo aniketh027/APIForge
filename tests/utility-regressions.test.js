@@ -90,3 +90,13 @@ test('ZIP timestamps use a valid matching DOS calendar date', async () => {
     assert.equal(view.getUint16(12,true), 0x0021);
     assert.equal(view.getUint16(central+14,true), 0x0021);
 });
+
+test('copy failure replaces a previous success checkmark', () => {
+    const app = browser();
+    const button = {dataset:{}, classList:{add(){},remove(){}}, setAttribute(){}};
+    app.showCopyFeedback(button, 'copied');
+    const success = button.innerHTML;
+    app.showCopyFeedback(button, 'failed');
+    assert.notEqual(button.innerHTML, success);
+    assert.ok(button.innerHTML.includes('<rect'));
+});

@@ -907,6 +907,7 @@ function showCopyFeedback(button, state) {
         button.classList.remove('copied');
         button.setAttribute('aria-label', `Copy failed for ${label}`);
         button.setAttribute('title', 'Copy failed');
+        button.innerHTML = COPY_ICON_SVG;
     }
 
     copyResetTimers.set(button, setTimeout(() => resetCopyControl(button), 1300));
