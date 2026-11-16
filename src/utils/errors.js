@@ -89,6 +89,8 @@ function suggestClosest(word, candidates, maxDistance = 2) {
     let bestDist = Infinity;
 
     for (const candidate of candidates) {
+        if (typeof word === 'string' && typeof candidate === 'string' &&
+            Math.abs(word.length - candidate.length) > maxDistance) continue;
         const dist = levenshtein(word, candidate);
         if (dist < bestDist) {
             bestDist = dist;

@@ -127,3 +127,17 @@ test('reused edit distance rows agree with an independent full matrix', () => {
     const words = ['', 'a', 'ab', 'ba', 'aaa', 'STRING', 'STRIMG', 'kitten', 'sitting', 'é'];
     for(const a of words) for(const b of words) assert.equal(levenshtein(a,b), distance(a,b));
 });
+
+test('suggestions retain ordering and threshold behavior with length pruning', () => {
+    const {suggestClosest} = require('../src/utils/errors');
+    for(const word of ['STRIMG','INT','a'.repeat(200)]) {
+        const candidates = ['STRING','INT','FLOAT','a'.repeat(200)];
+        for(const threshold of [0,1,2,Infinity]) {
+            const ranked = candidates.map((candidate,index) => ({candidate,index,distance:levenshtein(word,candidate)}))
+                .sort((a,b) => a.distance-b.distance || a.index-b.index);
+            assert.equal(suggestClosest(word,candidates,threshold), ranked[0].distance<=threshold?ranked[0].candidate:null);
+        }
+    }
+    assert.equal(suggestClosest('ab',['ac','ad'],1), 'ac');
+    assert.equal(suggestClosest('ab',['a'.repeat(1000000)],2), null);
+});
