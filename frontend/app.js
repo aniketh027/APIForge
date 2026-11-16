@@ -1258,6 +1258,7 @@ function createZip(files) {
 
     for (const f of files) {
         const nameBytes = enc.encode(f.path.replace(/^\//, ''));
+        if (nameBytes.length > 0xFFFF) throw new RangeError('ZIP filename exceeds 65535 UTF-8 bytes.');
         const dataBytes = enc.encode(f.content);
         const crc = crc32(dataBytes);
         const size = dataBytes.length;

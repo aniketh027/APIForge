@@ -107,3 +107,10 @@ test('ZIP refuses the reserved ZIP64 entry count before encoding files', () => {
     assert.throws(() => app.createZip(new Array(65536)), /ZIP64 entry counts/);
     assert.ok(app.createZip([]).size > 0);
 });
+
+test('ZIP filename limits count UTF8 bytes and preserve the boundary', async () => {
+    const app = browser();
+    assert.throws(() => app.createZip([{path:'é'.repeat(32768), content:''}]), /filename exceeds/);
+    const bytes = new Uint8Array(await app.createZip([{path:'a'.repeat(65535),content:''}]).arrayBuffer());
+    assert.equal(new DataView(bytes.buffer).getUint16(26,true), 65535);
+});
