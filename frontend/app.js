@@ -527,6 +527,12 @@ function hideSummary() {
 // ENHANCED ERROR DISPLAY & HIGHLIGHTING (TASK 1 & TASK 2)
 // ═════════════════════════════════════════════════════════════
 
+function compilerErrors(data) {
+    if (data.diagnostics?.length) return data.diagnostics.map(diagnostic => ({ diagnostic }));
+    if (data.errors?.length) return data.errors;
+    return [{ message: 'Unknown compilation error.' }];
+}
+
 function showError(phase, errors) {
     errorPanel.classList.add('visible');
     const phaseHeader = `${formatPhaseName(phase || 'compiler')} error`;
@@ -1192,7 +1198,7 @@ async function compile() {
         } else {
             // ── Error occurred ──
             hideSummary();
-            showError(data.phase || 'unknown', data.diagnostics?.map(diagnostic => ({ diagnostic })) || data.errors || [{ message: 'Unknown compilation error.' }]);
+            showError(data.phase || 'unknown', compilerErrors(data));
             resetOutputPanes(
                 `Unavailable after ${formatPhaseName(data.phase || 'compiler')} failure`,
                 'This output was not produced because compilation stopped earlier.'

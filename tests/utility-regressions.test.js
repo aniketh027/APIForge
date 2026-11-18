@@ -180,3 +180,12 @@ test('download URLs remain valid until the browser can start the download', () =
     release();
     assert.deepEqual(events[1], ['revoke', 'blob:project']);
 });
+
+test('an empty diagnostics array still displays legacy or fallback compiler errors', () => {
+    const app = browser();
+    const errors = [{ message: 'Legacy compiler error' }];
+    assert.equal(app.compilerErrors({ diagnostics: [], errors }), errors);
+    assert.equal(app.compilerErrors({ diagnostics: [], errors: [] })[0].message, 'Unknown compilation error.');
+    const diagnostic = { message: 'Structured error' };
+    assert.equal(app.compilerErrors({ diagnostics: [diagnostic], errors })[0].diagnostic, diagnostic);
+});
