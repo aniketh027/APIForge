@@ -165,3 +165,18 @@ test('API preview shows its empty state when SQL and OpenAPI own every file', ()
     ]);
     assert.match(html, /No API files generated/);
 });
+
+test('download URLs remain valid until the browser can start the download', () => {
+    const events = [];
+    let release;
+    const link = { click() { events.push(['click', this.href, this.download]); } };
+    const app = browser({
+        document: { getElementById: () => null, querySelectorAll: () => [], addEventListener() {}, createElement: () => link },
+        URL: { createObjectURL: () => 'blob:project', revokeObjectURL: url => events.push(['revoke', url]) },
+        setTimeout: callback => { release = callback; }
+    });
+    app.downloadBlob(new Blob(['example']), 'project.zip');
+    assert.deepEqual(events, [['click', 'blob:project', 'project.zip']]);
+    release();
+    assert.deepEqual(events[1], ['revoke', 'blob:project']);
+});

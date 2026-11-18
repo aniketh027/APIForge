@@ -1328,17 +1328,24 @@ function createZip(files) {
     return new Blob(parts, { type: 'application/zip' });
 }
 
+function downloadBlob(blob, filename) {
+    const url = URL.createObjectURL(blob);
+    try {
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = filename;
+        link.click();
+    } finally {
+        // Let the browser consume the URL before releasing it.
+        setTimeout(() => URL.revokeObjectURL(url), 0);
+    }
+}
+
 function downloadProject() {
     if (!lastCompileResult || !lastCompileResult.generatedFiles) return;
 
     try {
-        const zipBlob = createZip(lastCompileResult.generatedFiles);
-        const url = URL.createObjectURL(zipBlob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = 'apiforge-project.zip';
-        a.click();
-        URL.revokeObjectURL(url);
+        downloadBlob(createZip(lastCompileResult.generatedFiles), 'apiforge-project.zip');
     } catch (e) {
         let content = '';
         lastCompileResult.generatedFiles.forEach(file => {
@@ -1350,12 +1357,7 @@ function downloadProject() {
         });
 
         const blob = new Blob([content], { type: 'text/plain' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = 'apiforge-generated-project.txt';
-        a.click();
-        URL.revokeObjectURL(url);
+        downloadBlob(blob, 'apiforge-generated-project.txt');
     }
 }
 
