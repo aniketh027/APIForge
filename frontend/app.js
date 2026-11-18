@@ -981,14 +981,14 @@ function highlightSQL(sql) {
 // ═════════════════════════════════════════════════════════════
 
 function renderAPIFiles(files) {
-    if (!files || files.length === 0) {
-        return '<p class="output-placeholder">No API files generated.</p>';
-    }
-
-    const apiFiles = files.filter(f =>
+    const apiFiles = (files || []).filter(f =>
         !f.path.endsWith('.sql') &&
         !f.path.endsWith('swagger.json')
     );
+
+    if (apiFiles.length === 0) {
+        return '<p class="output-placeholder">No API files generated.</p>';
+    }
 
     return apiFiles.map((file, i) => {
         return `<div class="api-file">

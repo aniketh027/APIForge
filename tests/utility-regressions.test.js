@@ -157,3 +157,11 @@ test('SQL preview highlights the types emitted by PostgreSQL schema generation',
     }
     assert.ok(html.endsWith('&quot;UUID&quot;'));
 });
+
+test('API preview shows its empty state when SQL and OpenAPI own every file', () => {
+    const html = browser().renderAPIFiles([
+        { path: 'database/schema.sql', content: 'CREATE TABLE example (id INT);' },
+        { path: 'swagger.json', content: '{}' }
+    ]);
+    assert.match(html, /No API files generated/);
+});
