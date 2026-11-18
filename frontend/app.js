@@ -110,16 +110,9 @@ function invalidateLive(message = '') {
 function captureLiveCompilation(data, source, target) {
     lastCompiledSource = source; lastCompiledTarget = target;
     liveSelectedEndpoint = 0;
-    liveOperations = [];
-    try {
-        const spec = JSON.parse(data.generatedFiles.find(file => file.path === 'swagger.json').content);
-        for (const [path, item] of Object.entries(spec.paths || {})) {
-            for (const method of ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD', 'TRACE']) {
-                const operation = item?.[method.toLowerCase()];
-                if (operation && typeof operation === 'object' && !Array.isArray(operation)) liveOperations.push({ method, path, operation });
-            }
-        }
-    } catch { liveMessage = 'Generated OpenAPI is unavailable.'; }
+    const { status, endpoints } = getGeneratedEndpointInfo(data.generatedFiles);
+    liveOperations = endpoints;
+    liveMessage = status === 'available' ? '' : 'Generated OpenAPI is unavailable.';
     renderLiveUI();
 }
 
@@ -489,7 +482,7 @@ function getGeneratedEndpointInfo(files) {
         if (!path.startsWith('/') || !isObject(item)) return;
         methods.forEach(method => {
             if (Object.prototype.hasOwnProperty.call(item, method) && isObject(item[method])) {
-                endpoints.push({ method: method.toUpperCase(), path });
+                endpoints.push({ method: method.toUpperCase(), path, operation: item[method] });
             }
         });
     });

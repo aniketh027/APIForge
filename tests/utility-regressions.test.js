@@ -217,3 +217,13 @@ test('an unavailable output tab keeps the currently selected output visible', ()
     });
     app.switchTab('missing');
 });
+
+test('the Live API builder uses the same OpenAPI operations as the Endpoints pane', () => {
+    const app = browser();
+    const generatedFiles = [{ path: 'swagger.json', content: JSON.stringify({ paths: {
+        invalid: { get: {} }, '/items': { parameters: [], post: { requestBody: {} }, get: [] }
+    } }) }];
+    app.captureLiveCompilation({ generatedFiles }, '', 'mysql');
+    assert.equal(vm.runInContext('liveOperations.map(entry => entry.method + " " + entry.path).join(",")', app), 'POST /items');
+    assert.equal(vm.runInContext('Boolean(liveOperations[0].operation.requestBody)', app), true);
+});
