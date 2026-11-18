@@ -306,6 +306,10 @@ function clearErrorHighlights() {
 // ═════════════════════════════════════════════════════════════
 
 function switchTab(tabId) {
+    const tabBtn = document.getElementById('tab-' + tabId);
+    const pane = document.getElementById('output-' + tabId);
+    if (!tabBtn || !pane) return;
+
     // Deactivate all tabs and panes
     document.querySelectorAll('.tab-btn').forEach(btn => {
         btn.classList.remove('active');
@@ -317,18 +321,11 @@ function switchTab(tabId) {
         pane.hidden = true;
     });
 
-    // Activate selected
-    const tabBtn = document.getElementById('tab-' + tabId);
-    const pane = document.getElementById('output-' + tabId);
-    if (tabBtn) {
-        tabBtn.classList.add('active');
-        tabBtn.setAttribute('aria-selected', 'true');
-        tabBtn.setAttribute('tabindex', '0');
-    }
-    if (pane) {
-        pane.classList.add('active');
-        pane.hidden = false;
-    }
+    tabBtn.classList.add('active');
+    tabBtn.setAttribute('aria-selected', 'true');
+    tabBtn.setAttribute('tabindex', '0');
+    pane.classList.add('active');
+    pane.hidden = false;
 }
 
 // ═════════════════════════════════════════════════════════════

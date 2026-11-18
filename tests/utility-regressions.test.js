@@ -206,3 +206,14 @@ test('the editor indents on plain Tab and lets Shift+Tab navigate away', () => {
     assert.equal(editor.value, 'a    c');
     assert.equal(editor.selectionStart, 5);
 });
+
+test('an unavailable output tab keeps the currently selected output visible', () => {
+    const app = browser({
+        document: {
+            getElementById: () => null,
+            querySelectorAll: selector => selector === '.target-option' ? [] : assert.fail('Existing tabs should stay active'),
+            addEventListener() {}
+        }
+    });
+    app.switchTab('missing');
+});
