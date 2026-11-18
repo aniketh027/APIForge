@@ -959,7 +959,7 @@ function highlightSQL(sql) {
         'FOREIGN', 'REFERENCES', 'CHECK', 'CASCADE', 'ON', 'AND',
         'ALTER', 'ADD', 'COLUMN', 'CONSTRAINT'
     ];
-    const types = ['INT', 'VARCHAR', 'CHAR', 'FLOAT', 'BOOLEAN', 'ENUM', 'TEXT', 'DATE', 'TIMESTAMP', 'DATETIME'];
+    const types = ['INT', 'INTEGER', 'VARCHAR', 'CHAR', 'FLOAT', 'REAL', 'BOOLEAN', 'ENUM', 'TEXT', 'DATE', 'TIMESTAMP', 'TIMESTAMPTZ', 'DATETIME', 'UUID'];
 
     // Tokenize original text once so keywords cannot rewrite strings or markup.
     const tokens = /(--[^\n]*|\/\*[\s\S]*?\*\/|'(?:''|\\[\s\S]|[^'\\])*'|"(?:""|[^"])*"|`(?:``|[^`])*`|\b[A-Z_][A-Z_0-9]*\b)/g;

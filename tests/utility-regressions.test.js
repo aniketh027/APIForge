@@ -149,3 +149,11 @@ test('formatted locations use the same positive integer contract as excerpts', (
     assert.ok(!formatDiagnostic('abc',{...diagnostic,line:1,column:-2}).includes('column'));
     assert.ok(formatDiagnostic('abc',{...diagnostic,line:1,column:2}).includes('line 1, column 2'));
 });
+
+test('SQL preview highlights the types emitted by PostgreSQL schema generation', () => {
+    const html = browser().highlightSQL('INTEGER REAL TIMESTAMPTZ(0) UUID "UUID"');
+    for (const type of ['INTEGER', 'REAL', 'TIMESTAMPTZ', 'UUID']) {
+        assert.ok(html.includes('<span class="sql-type">' + type + '</span>'));
+    }
+    assert.ok(html.endsWith('&quot;UUID&quot;'));
+});
