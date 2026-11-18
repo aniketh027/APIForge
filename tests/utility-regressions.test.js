@@ -227,3 +227,20 @@ test('the Live API builder uses the same OpenAPI operations as the Endpoints pan
     assert.equal(vm.runInContext('liveOperations.map(entry => entry.method + " " + entry.path).join(",")', app), 'POST /items');
     assert.equal(vm.runInContext('Boolean(liveOperations[0].operation.requestBody)', app), true);
 });
+
+test('editor errors use valid integer coordinates and render legacy numeric messages', () => {
+    const editor = { value: 'abc' };
+    const errorPanel = { classList: { add() {} } };
+    const app = browser({
+        document: {
+            getElementById: id => ({ 'dsl-editor': editor, 'error-panel': errorPanel, 'line-numbers': {} })[id],
+            querySelectorAll: () => [], addEventListener() {}
+        },
+        APIForgeSourceFrame: { sourceFrame }
+    });
+    app.showError('parser', [{ diagnostic: { phase: 'parser', line: -1, column: 4, message: 'Invalid' } }, { message: 42 }]);
+    assert.doesNotMatch(errorPanel.innerHTML, /Line -1/);
+    assert.match(errorPanel.innerHTML, />42</);
+    app.showError('parser', [{ message: 'Syntax Error at line 1, column 2: Unexpected token' }]);
+    assert.match(errorPanel.innerHTML, /Line 1, Column 2/);
+});

@@ -532,18 +532,18 @@ function showError(phase, errors) {
 
     const formattedErrors = (errors || []).map(err => {
         const diagnostic = err.diagnostic || err;
-        let line = diagnostic.line || null;
-        let column = diagnostic.column || null;
-        let message = err.diagnostic ? diagnostic.message : err.userMessage || err.message || String(err);
+        let line = Number.isInteger(diagnostic.line) && diagnostic.line > 0 ? diagnostic.line : null;
+        let column = Number.isInteger(diagnostic.column) && diagnostic.column > 0 ? diagnostic.column : null;
+        const message = String(err.diagnostic ? diagnostic.message : err.userMessage || err.message || err);
 
         // Extract line/column from message if not directly set
         if (!err.diagnostic && !line) {
             const m = message.match(/line\s+(\d+)/i);
-            if (m) line = parseInt(m[1], 10);
+            if (m && Number(m[1]) > 0) line = Number(m[1]);
         }
         if (!err.diagnostic && !column) {
             const m = message.match(/column\s+(\d+)/i);
-            if (m) column = parseInt(m[1], 10);
+            if (m && Number(m[1]) > 0) column = Number(m[1]);
         }
 
         if (line) {
