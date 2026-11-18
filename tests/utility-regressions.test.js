@@ -244,3 +244,14 @@ test('editor errors use valid integer coordinates and render legacy numeric mess
     app.showError('parser', [{ message: 'Syntax Error at line 1, column 2: Unexpected token' }]);
     assert.match(errorPanel.innerHTML, /Line 1, Column 2/);
 });
+
+test('compiler responses preserve HTTP diagnostics and reject invalid response shapes', async () => {
+    const app = browser();
+    for (const data of [null, {}, { success: 'false' }, { success: true }]) {
+        await assert.rejects(app.readCompilerResponse({ ok: false, json: async () => data }), /Invalid compiler response/);
+    }
+    const failure = { success: false, diagnostics: [] };
+    assert.equal(await app.readCompilerResponse({ ok: false, json: async () => failure }), failure);
+    const success = { success: true };
+    assert.equal(await app.readCompilerResponse({ ok: true, json: async () => success }), success);
+});

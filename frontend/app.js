@@ -1122,6 +1122,14 @@ function clearAll() {
 // COMPILE (TASK 1, 2, 3, 5, 6)
 // ═════════════════════════════════════════════════════════════
 
+async function readCompilerResponse(response) {
+    const data = await response.json();
+    if (typeof data?.success !== 'boolean' || (data.success && !response.ok)) {
+        throw new Error('Invalid compiler response.');
+    }
+    return data;
+}
+
 async function compile() {
     if (isCompiling) return;
     invalidateLive();
@@ -1155,7 +1163,7 @@ async function compile() {
             body: JSON.stringify({ source, target })
         });
 
-        const data = await response.json();
+        const data = await readCompilerResponse(response);
         // Reject obsolete results even when source/target changed away and back.
         if (revision !== targetRevision || source !== editor.value || target !== selectedTarget) return;
         setCompilerAvailability(true);
