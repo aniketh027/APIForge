@@ -189,3 +189,20 @@ test('an empty diagnostics array still displays legacy or fallback compiler erro
     const diagnostic = { message: 'Structured error' };
     assert.equal(app.compilerErrors({ diagnostics: [diagnostic], errors })[0].diagnostic, diagnostic);
 });
+
+test('the editor indents on plain Tab and lets Shift+Tab navigate away', () => {
+    const editor = { value: 'abc', selectionStart: 1, selectionEnd: 2, dispatchEvent() {} };
+    const app = browser({
+        document: { getElementById: id => id === 'dsl-editor' ? editor : null, querySelectorAll: () => [], addEventListener() {} },
+        Event
+    });
+    for (const modifier of ['shiftKey', 'ctrlKey', 'metaKey', 'altKey']) {
+        app.indentEditor({ key: 'Tab', [modifier]: true, preventDefault: () => assert.fail('Modifier intercepted') });
+        assert.equal(editor.value, 'abc');
+    }
+    let prevented = false;
+    app.indentEditor({ key: 'Tab', preventDefault: () => { prevented = true; } });
+    assert.equal(prevented, true);
+    assert.equal(editor.value, 'a    c');
+    assert.equal(editor.selectionStart, 5);
+});

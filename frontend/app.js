@@ -1371,6 +1371,16 @@ function downloadProject() {
 // EVENT LISTENERS
 // ═════════════════════════════════════════════════════════════
 
+function indentEditor(event) {
+    if (event.key !== 'Tab' || event.shiftKey || event.ctrlKey || event.metaKey || event.altKey) return;
+    event.preventDefault();
+    const start = editor.selectionStart;
+    const end = editor.selectionEnd;
+    editor.value = editor.value.substring(0, start) + '    ' + editor.value.substring(end);
+    editor.selectionStart = editor.selectionEnd = start + 4;
+    editor.dispatchEvent(new Event('input'));
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     // Editor event listeners
     editor.addEventListener('input', sourceChanged);
@@ -1423,17 +1433,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // Clickable status bar phases
     setupPhaseClickHandlers();
 
-    // Tab key inserts spaces
-    editor.addEventListener('keydown', (e) => {
-        if (e.key === 'Tab') {
-            e.preventDefault();
-            const start = editor.selectionStart;
-            const end = editor.selectionEnd;
-            editor.value = editor.value.substring(0, start) + '    ' + editor.value.substring(end);
-            editor.selectionStart = editor.selectionEnd = start + 4;
-            editor.dispatchEvent(new Event('input'));
-        }
-    });
+    // Tab indents. Shift+Tab keeps the browser's backward focus navigation.
+    editor.addEventListener('keydown', indentEditor);
 
     // Ctrl+Enter / Cmd+Enter to compile
     editor.addEventListener('keydown', (e) => {
