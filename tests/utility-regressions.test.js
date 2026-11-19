@@ -266,3 +266,9 @@ test('invalid Live API response bodies use a stable error and typed failures kee
     response = { ok: false, json: async () => ({ success: false, code: 'LIVE_DISABLED', error: 'Disabled.' }) };
     await assert.rejects(app.liveCall('start', {}), { message: 'Disabled.', code: 'LIVE_DISABLED' });
 });
+
+test('compiler failures can display a top-level error without diagnostic arrays', () => {
+    const app = browser();
+    assert.equal(app.compilerErrors({ diagnostics: 'bad', errors: 'bad', error: 'Compiler busy.' })[0].message, 'Compiler busy.');
+    assert.equal(app.compilerErrors({ error: '   ' })[0].message, 'Unknown compilation error.');
+});

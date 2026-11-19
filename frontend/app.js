@@ -528,9 +528,12 @@ function hideSummary() {
 // ═════════════════════════════════════════════════════════════
 
 function compilerErrors(data) {
-    if (data.diagnostics?.length) return data.diagnostics.map(diagnostic => ({ diagnostic }));
-    if (data.errors?.length) return data.errors;
-    return [{ message: 'Unknown compilation error.' }];
+    if (Array.isArray(data.diagnostics) && data.diagnostics.length) {
+        return data.diagnostics.map(diagnostic => ({ diagnostic }));
+    }
+    if (Array.isArray(data.errors) && data.errors.length) return data.errors;
+    const message = typeof data.error === 'string' && data.error.trim() ? data.error : 'Unknown compilation error.';
+    return [{ message }];
 }
 
 function showError(phase, errors) {
