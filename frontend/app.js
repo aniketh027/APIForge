@@ -270,7 +270,7 @@ function setCompilerAvailability(isAvailable) {
 // LINE NUMBERS & EDITOR HIGHLIGHTS (TASK 1 & TASK 6)
 // ═════════════════════════════════════════════════════════════
 
-function updateLineNumbers() {
+function updateEditorDecorations() {
     const lines = editor.value.split('\n');
     lineNumbers.innerHTML = lines.map((_, i) => {
         const lineNum = i + 1;
@@ -278,16 +278,13 @@ function updateLineNumbers() {
         const cls = isError ? 'line-error' : '';
         return `<div class="${cls}" data-line="${lineNum}">${lineNum}</div>`;
     }).join('');
-}
-
-function updateEditorHighlights() {
-    if (!editorHighlights) return;
-    const lines = editor.value.split('\n');
-    editorHighlights.innerHTML = lines.map((_, i) => {
-        const lineNum = i + 1;
-        const isError = errorLines.has(lineNum);
-        return `<div class="${isError ? 'highlight-error' : ''}"></div>`;
-    }).join('');
+    if (editorHighlights) {
+        editorHighlights.innerHTML = lines.map((_, i) => {
+            const isError = errorLines.has(i + 1);
+            return `<div class="${isError ? 'highlight-error' : ''}"></div>`;
+        }).join('');
+    }
+    syncScroll();
 }
 
 function syncScroll() {
@@ -300,8 +297,7 @@ function syncScroll() {
 
 function clearErrorHighlights() {
     errorLines.clear();
-    updateLineNumbers();
-    updateEditorHighlights();
+    updateEditorDecorations();
 }
 
 // ═════════════════════════════════════════════════════════════
@@ -600,8 +596,7 @@ function showError(phase, errors) {
     errorPanel.innerHTML = formattedErrors;
 
     // Apply visual highlights to editor and line numbers
-    updateLineNumbers();
-    updateEditorHighlights();
+    updateEditorDecorations();
 }
 
 function hideError() {
@@ -1471,7 +1466,4 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     APIForgePersistent.start(projectWorkspace);
 
-    // Initial rendering
-    updateLineNumbers();
-    updateEditorHighlights();
 });

@@ -272,3 +272,17 @@ test('compiler failures can display a top-level error without diagnostic arrays'
     assert.equal(app.compilerErrors({ diagnostics: 'bad', errors: 'bad', error: 'Compiler busy.' })[0].message, 'Compiler busy.');
     assert.equal(app.compilerErrors({ error: '   ' })[0].message, 'Unknown compilation error.');
 });
+
+test('refreshing the editor line numbers and highlights restores the editor scroll position', () => {
+    const editor = { value: 'ENTITY Task\nid INT\n', scrollTop: 24, scrollLeft: 18 };
+    const gutter = { set innerHTML(value) { this.markup = value; this.scrollTop = 0; } };
+    const backdrop = { scrollTop: 0, scrollLeft: 0 };
+    const highlights = { set innerHTML(value) { this.markup = value; backdrop.scrollTop = 0; } };
+    const nodes = { 'dsl-editor': editor, 'line-numbers': gutter, 'editor-backdrop': backdrop, 'editor-highlights': highlights };
+    const app = browser({
+        document: { getElementById: id => nodes[id], querySelectorAll: () => [], addEventListener() {} }
+    });
+    app.updateEditorDecorations();
+    assert.match(gutter.markup, /data-line="3"/);
+    assert.deepEqual([gutter.scrollTop, backdrop.scrollTop, backdrop.scrollLeft], [24, 24, 18]);
+});
