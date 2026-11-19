@@ -14,6 +14,7 @@ async function main() {
         browser = await chromium.launch({ headless: true, ...(process.env.APIFORGE_BROWSER_EXECUTABLE ? { executablePath: process.env.APIFORGE_BROWSER_EXECUTABLE } : {}) });
         const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
         const errors = [], calls = []; page.on('pageerror', error => errors.push(error.message));
+        let holdRequest = false, releaseRequest;
         let startError, requestError, responseStatus = 200, responseBody = { data: [{ name: 'Demo User' }] }, holdStart, releaseStart, sequence = 0;
         await page.route('**/api/live/*', async route => {
             const action = route.request().url().split('/').at(-1);
@@ -26,6 +27,10 @@ async function main() {
                 return route.fulfill({ json: { success: true, sessionId: String(++sequence).padStart(64, '0'), target: body.target, expiresAt: new Date(Date.now() + 900000).toISOString() } });
             }
             if (action === 'request') {
+                if (holdRequest) {
+                    await new Promise(resolve => { releaseRequest = resolve; });
+                    holdRequest = false;
+                }
                 if (requestError) return route.fulfill({ status: 409, json: { success: false, code: requestError, error: requestError === 'LIVE_SESSION_INVALID' ? 'Live session stopped or expired. Start again.' : 'The generated API request failed.' } });
                 return route.fulfill({ json: { success: true, status: responseStatus, headers: { 'content-type': 'application/json',
                     'x-total-count': '1', 'x-page': '1', 'x-limit': '20', 'x-total-pages': '1' }, body: responseBody, durationMs: 12 } });
@@ -87,6 +92,16 @@ async function main() {
         assert.match(await pane.locator('#live-response').textContent(), /HTTP 404 Not Found/);
         responseStatus = 400; responseBody = { error: 'Rejected value' }; await send(); assert.match(await pane.locator('#live-response').textContent(), /HTTP 400 Bad Request/);
         for (const header of ['x-total-count: 1', 'x-page: 1', 'x-limit: 20', 'x-total-pages: 1']) assert((await pane.locator('.live-response-headers').textContent()).includes(header));
+        holdRequest = true;
+        await pane.locator('#live-send').click();
+        await until(() => releaseRequest);
+        assert.equal(await pane.locator('#live-endpoint').isDisabled(), true);
+        releaseRequest();
+        await until(async () => !await pane.locator('#live-endpoint').isDisabled());
+        await choose('GET', '/users');
+        assert.equal(await pane.locator('#live-response').textContent(), '');
+        await choose('GET', '/users/{id}');
+        await page.getByLabel('Path parameter: id', { exact: true }).fill('a&b');
         responseBody = '<img src=x onerror="window.liveInjected=true"><script>window.liveInjected=true</script>'; responseStatus = 200; await send();
         assert.equal(await pane.locator('#live-response img, #live-response script').count(), 0); assert.equal(await page.evaluate(() => window.liveInjected), undefined);
         const beforeUrl = liveCount('request'); await pane.locator('#live-query').fill('https://evil.example'); await pane.locator('#live-send').click(); assert.equal(liveCount('request'), beforeUrl);

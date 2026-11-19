@@ -144,7 +144,11 @@ function renderLiveUI() {
     if (running) {
         pane.querySelector('#live-stop').addEventListener('click', () => invalidateLive());
         pane.querySelector('#live-endpoint').addEventListener('change', event => {
-            liveSelectedEndpoint = Number(event.target.value); renderLiveParameters();
+            liveSelectedEndpoint = Number(event.target.value);
+            renderLiveParameters();
+            document.getElementById('live-response').replaceChildren();
+            document.getElementById('live-message').textContent = '';
+            document.getElementById('live-status').textContent = 'Running';
         });
         pane.querySelector('#live-send').addEventListener('click', sendLive);
         renderLiveParameters();
@@ -196,7 +200,10 @@ async function sendLive() {
         try { body = JSON.parse(document.getElementById('live-body').value); }
         catch { message.textContent = 'Enter valid JSON before sending.'; return; }
     }
-    const send = document.getElementById('live-send'); send.disabled = true;
+    const send = document.getElementById('live-send');
+    const endpoint = document.getElementById('live-endpoint');
+    send.disabled = true;
+    endpoint.disabled = true;
     document.getElementById('live-status').textContent = 'Sending…'; message.textContent = '';
     try {
         const data = await liveCall('request', { sessionId, method: entry.method, path, ...(body !== undefined ? { body } : {}) });
@@ -218,6 +225,7 @@ async function sendLive() {
     } finally {
         if (revision === liveRevision && liveSessionId === sessionId) {
             send.disabled = false;
+            endpoint.disabled = false;
             if (!message.textContent) document.getElementById('live-status').textContent = 'Running';
         }
     }
