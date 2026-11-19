@@ -950,7 +950,7 @@ function renderSQL(files) {
                 ${renderCopyControl(sqlFile.path)}
             </span>
         </div>
-        <pre data-copy-source>${highlighted}</pre>
+        <pre data-copy-source>\n${highlighted}</pre>
     </div>`;
 }
 
@@ -1005,7 +1005,7 @@ function renderAPIFiles(files) {
                     <span class="code-file-meta">Generated file</span>
                     ${renderCopyControl(file.path)}
                 </div>
-                <pre${/\.md$/i.test(file.path) ? ' class="api-file-markdown"' : ''} data-copy-source>${escapeHtml(file.content)}</pre>
+                <pre${/\.md$/i.test(file.path) ? ' class="api-file-markdown"' : ''} data-copy-source>\n${escapeHtml(file.content)}</pre>
             </div>
         </div>`;
     }).join('');
@@ -1074,7 +1074,7 @@ function renderSwagger(files) {
                 ${renderCopyControl('swagger.json')}
             </span>
         </div>
-        <pre data-copy-source>${escapeHtml(content)}</pre>
+        <pre data-copy-source>\n${escapeHtml(content)}</pre>
     </div>`;
 }
 

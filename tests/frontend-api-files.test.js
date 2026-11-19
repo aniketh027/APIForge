@@ -149,6 +149,23 @@ async function main() {
             }
             console.log(`PASS: ${viewport.width}px API file layout, Markdown/code, exact copy, collapse, SQL and OpenAPI`);
         }
+        const previewContents = await page.evaluate(() => {
+            const files = [
+                { path: 'example.js', content: '\n\n// Keep both leading blank lines' },
+                { path: 'database/schema.sql', content: '\nCREATE TABLE sample (id INT);' },
+                { path: 'swagger.json', content: '\nInvalid JSON kept as text' }
+            ];
+            return [renderAPIFiles(files), renderSQL(files), renderSwagger(files)].map(markup => {
+                const container = document.createElement('div');
+                container.innerHTML = markup;
+                return container.querySelector('[data-copy-source]').textContent;
+            });
+        });
+        assert.deepEqual(previewContents, [
+            '\n\n// Keep both leading blank lines',
+            '\nCREATE TABLE sample (id INT);',
+            '\nInvalid JSON kept as text'
+        ]);
         assert.deepEqual(errors, [], 'Frontend has no console or runtime errors');
         console.log('PASS: frontend has no console or runtime errors');
     } finally {
