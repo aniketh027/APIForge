@@ -86,9 +86,11 @@ async function liveCall(action, body, keepalive = false) {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body), keepalive
     });
-    const data = await response.json();
-    if (!response.ok || !data.success) {
-        const error = new Error(data.error || 'Live API request failed.'); error.code = data.code; throw error;
+    const data = await response.json().catch(() => null);
+    if (!response.ok || data?.success !== true) {
+        const error = new Error(typeof data?.error === 'string' && data.error ? data.error : 'Live API request failed.');
+        error.code = data?.code;
+        throw error;
     }
     return data;
 }

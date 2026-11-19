@@ -255,3 +255,14 @@ test('compiler responses preserve HTTP diagnostics and reject invalid response s
     const success = { success: true };
     assert.equal(await app.readCompilerResponse({ ok: true, json: async () => success }), success);
 });
+
+test('invalid Live API response bodies use a stable error and typed failures keep their code', async () => {
+    let response;
+    const app = browser({ fetch: async () => response });
+    for (const json of [async () => null, async () => ({ success: 'true' }), async () => { throw new SyntaxError(); }]) {
+        response = { ok: true, json };
+        await assert.rejects(app.liveCall('start', {}), { message: 'Live API request failed.' });
+    }
+    response = { ok: false, json: async () => ({ success: false, code: 'LIVE_DISABLED', error: 'Disabled.' }) };
+    await assert.rejects(app.liveCall('start', {}), { message: 'Disabled.', code: 'LIVE_DISABLED' });
+});
