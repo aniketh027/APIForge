@@ -825,7 +825,7 @@ function renderIR(ir, label) {
             html += `<div class="ir-instruction">${num}<div class="ir-content"><span class="ir-op">CREATE_ENTITY</span> <span class="ir-entity">${escapeHtml(inst.entity)}</span></div></div>`;
         } else if (inst.op === 'ADD_FIELD') {
             const cStr = inst.constraints && inst.constraints.length > 0
-                ? ` <span class="ir-constraint">[${inst.constraints.join(', ')}]</span>`
+                ? ` <span class="ir-constraint">[${escapeHtml(inst.constraints.join(', '))}]</span>`
                 : '';
             let vStr = '';
             if (Array.isArray(inst.validations) && inst.validations.length > 0) {

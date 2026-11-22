@@ -290,3 +290,13 @@ test('refreshing the editor line numbers and highlights restores the editor scro
     assert.match(gutter.markup, /data-line="3"/);
     assert.deepEqual([gutter.scrollTop, backdrop.scrollTop, backdrop.scrollLeft], [24, 24, 18]);
 });
+
+
+test('IR constraints are escaped before entering the compiler preview', () => {
+    const html = browser().renderIR({ instructions: [{
+        op: 'ADD_FIELD', entity: 'User', field: 'name', dataType: 'STRING',
+        constraints: ['REQUIRED', '<img src=x onerror=alert(1)>']
+    }] }, 'IR');
+    assert.match(html, /REQUIRED, &lt;img src=x onerror=alert\(1\)&gt;/);
+    assert.doesNotMatch(html, /<img/);
+});
