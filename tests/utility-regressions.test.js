@@ -252,7 +252,11 @@ test('compiler responses preserve HTTP diagnostics and reject invalid response s
     }
     const failure = { success: false, diagnostics: [] };
     assert.equal(await app.readCompilerResponse({ ok: false, json: async () => failure }), failure);
-    const success = { success: true };
+    await assert.rejects(
+        app.readCompilerResponse({ ok: true, json: async () => ({ success: true }) }),
+        /Invalid compiler response/
+    );
+    const success = { success: true, generatedFiles: [] };
     assert.equal(await app.readCompilerResponse({ ok: true, json: async () => success }), success);
 });
 

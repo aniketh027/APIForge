@@ -1132,7 +1132,8 @@ function clearAll() {
 
 async function readCompilerResponse(response) {
     const data = await response.json();
-    if (typeof data?.success !== 'boolean' || (data.success && !response.ok)) {
+    if (typeof data?.success !== 'boolean'
+        || (data.success && (!response.ok || !Array.isArray(data.generatedFiles)))) {
         throw new Error('Invalid compiler response.');
     }
     return data;
