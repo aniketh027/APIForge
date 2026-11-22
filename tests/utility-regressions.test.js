@@ -256,6 +256,12 @@ test('compiler responses preserve HTTP diagnostics and reject invalid response s
         app.readCompilerResponse({ ok: true, json: async () => ({ success: true }) }),
         /Invalid compiler response/
     );
+    for (const generatedFiles of [[null], [{ path: 'schema.sql' }], [{ path: 42, content: '' }]]) {
+        await assert.rejects(
+            app.readCompilerResponse({ ok: true, json: async () => ({ success: true, generatedFiles }) }),
+            /Invalid compiler response/
+        );
+    }
     const success = { success: true, generatedFiles: [] };
     assert.equal(await app.readCompilerResponse({ ok: true, json: async () => success }), success);
 });
