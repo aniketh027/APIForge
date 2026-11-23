@@ -664,7 +664,7 @@ function renderAST(ast) {
             const isLastField = fIdx === entity.fields.length - 1;
             const fPrefix = isLastField ? '└── ' : '├── ';
             const constraints = field.constraints && field.constraints.length > 0
-                ? ` <span class="ast-constraint">[${field.constraints.join(', ')}]</span>`
+                ? ` <span class="ast-constraint">[${escapeHtml(field.constraints.join(', '))}]</span>`
                 : '';
             let valStr = '';
             if (Array.isArray(field.validations) && field.validations.length > 0) {

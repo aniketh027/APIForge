@@ -318,3 +318,10 @@ test('API files keeps files whose names resemble the dedicated previews', () => 
     assert.match(html, /docs\/draft-swagger\.json/);
     assert.doesNotMatch(html, /canonical schema|canonical spec/);
 });
+
+test('AST previews preserve angle brackets and ampersands in constraint text', () => {
+    const ast = { entities: [{ name: 'Example', line: 1, fields: [{
+        name: 'value', dataType: 'STRING', constraints: ['A < B & C']
+    }] }] };
+    assert.match(browser().renderAST(ast), /A &lt; B &amp; C/);
+});
