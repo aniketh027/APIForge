@@ -306,3 +306,15 @@ test('IR constraints are escaped before entering the compiler preview', () => {
     assert.match(html, /REQUIRED, &lt;img src=x onerror=alert\(1\)&gt;/);
     assert.doesNotMatch(html, /<img/);
 });
+
+test('API files keeps files whose names resemble the dedicated previews', () => {
+    const html = browser().renderAPIFiles([
+        { path: 'database/schema.sql', content: 'canonical schema' },
+        { path: 'swagger.json', content: 'canonical spec' },
+        { path: 'database/setup.sql', content: 'setup script' },
+        { path: 'docs/draft-swagger.json', content: 'draft spec' }
+    ]);
+    assert.match(html, /database\/setup\.sql/);
+    assert.match(html, /docs\/draft-swagger\.json/);
+    assert.doesNotMatch(html, /canonical schema|canonical spec/);
+});

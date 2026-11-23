@@ -986,8 +986,7 @@ function highlightSQL(sql) {
 
 function renderAPIFiles(files) {
     const apiFiles = (files || []).filter(f =>
-        !f.path.endsWith('.sql') &&
-        !f.path.endsWith('swagger.json')
+        f.path !== 'database/schema.sql' && f.path !== 'swagger.json'
     );
 
     if (apiFiles.length === 0) {
