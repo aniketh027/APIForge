@@ -1224,6 +1224,9 @@ async function compile() {
             if (data.ir) {
                 document.getElementById('output-ir').innerHTML = renderIR(data.ir, 'IR');
             }
+            if (data.optimizedIR) {
+                document.getElementById('output-optimized-ir').innerHTML = renderOptimizedIR(data);
+            }
         }
     } catch (err) {
         if (revision !== targetRevision || source !== editor.value || target !== selectedTarget) return;

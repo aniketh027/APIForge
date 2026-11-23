@@ -23,9 +23,9 @@ async function main() {
         let expectingCompilerFailure = false;
         page.on('pageerror', error => errors.push(error.message));
         page.on('console', message => {
-            // The real API returns HTTP 400 for the intentional invalid DSL below.
+            // The test intentionally exercises compiler failures.
             if (expectingCompilerFailure && message.location().url.endsWith('/api/compile')
-                && message.text() === 'Failed to load resource: the server responded with a status of 400 (Bad Request)') return;
+                && /status of (400|422)\b/.test(message.text())) return;
             if (message.type() === 'error') errors.push(message.text());
         });
         page.on('request', request => {
@@ -133,6 +133,36 @@ async function main() {
         await assertSelected('postgres');
         assert.notEqual(await editor.inputValue(), source);
         await compileAndCheck('postgres');
+
+        // Retain real compiler artifacts while simulating a failure in the final phase.
+        await page.route('**/api/compile', async route => {
+            const response = await route.fetch();
+            const data = await response.json();
+            assert.equal(data.success, true);
+            await route.fulfill({ status: 422, json: {
+                success: false, phase: 'codegen',
+                phases: { ...data.phases, codegen: false },
+                phaseStates: { ...data.phaseStates, codegen: 'failed' },
+                tokens: data.tokens, ast: data.ast, symbolTable: data.symbolTable,
+                ir: data.ir, optimizedIR: data.optimizedIR, optimizations: data.optimizations,
+                errors: [{ message: 'Generated artifacts could not be produced.' }]
+            } });
+        }, { times: 1 });
+        expectingCompilerFailure = true;
+        const rejected = page.waitForResponse(response => response.url().endsWith('/api/compile'));
+        await page.locator('#compile-btn').click();
+        const rejectedResponse = await rejected;
+        assert.equal(rejectedResponse.status(), 422);
+        const rejectedData = await rejectedResponse.json();
+        assert.equal(rejectedData.phase, 'codegen');
+        assert.ok(rejectedData.optimizedIR.instructions.length);
+        await page.locator('#output-optimized-ir .ir-instruction').first().waitFor({ state: 'attached' });
+        assert.equal(await page.locator('#output-optimized-ir .ir-instruction').count(), rejectedData.optimizedIR.instructions.length);
+        assert.match(await page.locator('#error-panel').textContent(), /Generated artifacts could not be produced/);
+        assert.match(await page.locator('#output-sql').textContent(), /Unavailable after CodeGen failure/);
+        assert.equal(await page.locator('#download-btn').isVisible(), false);
+        expectingCompilerFailure = false;
+
         await page.locator('#clear-btn').click();
         await assertSelected('postgres');
         assert.equal(await editor.inputValue(), '');
