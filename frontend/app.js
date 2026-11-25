@@ -698,7 +698,9 @@ function renderAST(ast) {
 
 function displayDataType(field) {
     return field.dataType === 'ENUM'
-        ? `ENUM(${field.enumValues.map(value => JSON.stringify(value)).join(', ')})`
+        ? (Array.isArray(field.enumValues)
+            ? `ENUM(${field.enumValues.map(value => JSON.stringify(value)).join(', ')})`
+            : 'ENUM')
         : field.dataType;
 }
 
