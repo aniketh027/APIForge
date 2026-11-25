@@ -158,6 +158,7 @@ async function main() {
         assert.ok(rejectedData.optimizedIR.instructions.length);
         await page.locator('#output-optimized-ir .ir-instruction').first().waitFor({ state: 'attached' });
         assert.equal(await page.locator('#output-optimized-ir .ir-instruction').count(), rejectedData.optimizedIR.instructions.length);
+        assert.equal(await page.locator('#output-diagram .schema-entity').count(), rejectedData.ast.entities.length);
         assert.match(await page.locator('#error-panel').textContent(), /Generated artifacts could not be produced/);
         assert.match(await page.locator('#output-sql').textContent(), /Unavailable after CodeGen failure/);
         assert.equal(await page.locator('#download-btn').isVisible(), false);

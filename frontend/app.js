@@ -1218,6 +1218,12 @@ async function compile() {
             }
             if (data.ast) {
                 document.getElementById('output-ast').innerHTML = renderAST(data.ast);
+                const semanticSucceeded = data.phaseStates
+                    ? data.phaseStates.semantic === 'succeeded'
+                    : data.phases?.semantic === true;
+                if (semanticSucceeded) {
+                    document.getElementById('output-diagram').innerHTML = renderSchemaDiagram(data.ast);
+                }
             }
             if (data.symbolTable) {
                 document.getElementById('output-symboltable').innerHTML = renderSymbolTable(data.symbolTable);
