@@ -331,3 +331,17 @@ test('a partial enum field keeps its type when member metadata is unavailable', 
     assert.equal(app.displayDataType({ dataType: 'ENUM' }), 'ENUM');
     assert.equal(app.displayDataType({ dataType: 'ENUM', enumValues: ['Pending', 'Done'] }), 'ENUM("Pending", "Done")');
 });
+
+test('responses without phase metadata clear the running pipeline message', () => {
+    const pipeline = { textContent: 'Compilation running' };
+    const app = browser({
+        document: {
+            getElementById: id => id === 'pipeline-state' ? pipeline : null,
+            querySelectorAll: () => [], addEventListener() {}
+        }
+    });
+    app.applyPhaseStatuses(undefined, false, 'input');
+    assert.equal(pipeline.textContent, 'Input failed');
+    app.applyPhaseStatuses(undefined, true);
+    assert.equal(pipeline.textContent, 'All phases completed');
+});

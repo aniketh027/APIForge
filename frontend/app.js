@@ -357,7 +357,11 @@ function applyPhaseStatuses(phases, isSuccess, failingPhase, phaseStates) {
         if (pipelineState) pipelineState.textContent = isSuccess ? 'All phases completed' : `${formatPhaseName(failingPhase || 'compiler')} failed`;
         return;
     }
-    if (!phases) return;
+    if (!phases && !isSuccess) {
+        PHASE_ORDER.forEach(phase => setPhaseStatus(phase, 'skipped'));
+        if (pipelineState) pipelineState.textContent = `${formatPhaseName(failingPhase || 'compiler')} failed`;
+        return;
+    }
 
     if (isSuccess) {
         PHASE_ORDER.forEach(phase => setPhaseStatus(phase, 'success'));
