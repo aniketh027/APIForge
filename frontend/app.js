@@ -994,12 +994,13 @@ function renderAPIFiles(files) {
     }
 
     return apiFiles.map((file, i) => {
+        const contentId = `api-file-content-${i}`;
         return `<div class="api-file">
-            <button class="api-file-header" type="button" aria-expanded="${i === 0 ? 'true' : 'false'}">
+            <button class="api-file-header" type="button" aria-controls="${contentId}" aria-expanded="${i === 0 ? 'true' : 'false'}">
                 <span>${escapeHtml(file.path)}</span>
-                <span class="toggle-icon">${i === 0 ? '▾' : '▸'}</span>
+                <span class="toggle-icon" aria-hidden="true">${i === 0 ? '▾' : '▸'}</span>
             </button>
-            <div class="api-file-content${i === 0 ? ' expanded' : ''}" data-copy-scope>
+            <div id="${contentId}" class="api-file-content${i === 0 ? ' expanded' : ''}" data-copy-scope>
                 <div class="api-file-toolbar">
                     <span class="code-file-meta">Generated file</span>
                     ${renderCopyControl(file.path)}

@@ -70,6 +70,9 @@ async function main() {
                 const card = cards.nth(i);
                 const header = card.locator('.api-file-header');
                 const content = card.locator('.api-file-content');
+                assert.equal(await header.getAttribute('aria-controls'), await content.getAttribute('id'));
+                assert.ok(await content.getAttribute('id'));
+                assert.equal(await header.locator('.toggle-icon').getAttribute('aria-hidden'), 'true');
                 if (i > 0) {
                     assert.equal(await header.getAttribute('aria-expanded'), 'false');
                     await header.click();
