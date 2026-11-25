@@ -1391,7 +1391,7 @@ function downloadProject() {
 // ═════════════════════════════════════════════════════════════
 
 function indentEditor(event) {
-    if (event.key !== 'Tab' || event.shiftKey || event.ctrlKey || event.metaKey || event.altKey) return;
+    if (event.isComposing || event.key !== 'Tab' || event.shiftKey || event.ctrlKey || event.metaKey || event.altKey) return;
     event.preventDefault();
     const start = editor.selectionStart;
     const end = editor.selectionEnd;
@@ -1457,7 +1457,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Ctrl+Enter / Cmd+Enter to compile
     editor.addEventListener('keydown', (e) => {
-        if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        if (!e.isComposing && (e.ctrlKey || e.metaKey) && e.key === 'Enter') {
             e.preventDefault();
             compile();
         }

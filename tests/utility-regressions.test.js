@@ -196,7 +196,7 @@ test('the editor indents on plain Tab and lets Shift+Tab navigate away', () => {
         document: { getElementById: id => id === 'dsl-editor' ? editor : null, querySelectorAll: () => [], addEventListener() {} },
         Event
     });
-    for (const modifier of ['shiftKey', 'ctrlKey', 'metaKey', 'altKey']) {
+    for (const modifier of ['shiftKey', 'ctrlKey', 'metaKey', 'altKey', 'isComposing']) {
         app.indentEditor({ key: 'Tab', [modifier]: true, preventDefault: () => assert.fail('Modifier intercepted') });
         assert.equal(editor.value, 'abc');
     }
