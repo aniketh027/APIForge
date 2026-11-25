@@ -184,7 +184,7 @@ test('download URLs remain valid until the browser can start the download', () =
 test('an empty diagnostics array still displays legacy or fallback compiler errors', () => {
     const app = browser();
     const errors = [{ message: 'Legacy compiler error' }];
-    assert.equal(app.compilerErrors({ diagnostics: [], errors }), errors);
+    assert.equal(app.compilerErrors({ diagnostics: [], errors })[0], errors[0]);
     assert.equal(app.compilerErrors({ diagnostics: [], errors: [] })[0].message, 'Unknown compilation error.');
     const diagnostic = { message: 'Structured error' };
     assert.equal(app.compilerErrors({ diagnostics: [diagnostic], errors })[0].diagnostic, diagnostic);
@@ -281,6 +281,8 @@ test('compiler failures can display a top-level error without diagnostic arrays'
     const app = browser();
     assert.equal(app.compilerErrors({ diagnostics: 'bad', errors: 'bad', error: 'Compiler busy.' })[0].message, 'Compiler busy.');
     assert.equal(app.compilerErrors({ error: '   ' })[0].message, 'Unknown compilation error.');
+    assert.equal(app.compilerErrors({ diagnostics: [null, {}], errors: [null], error: 'Try again.' })[0].message, 'Try again.');
+    assert.equal(app.compilerErrors({ diagnostics: [null, { message: 'Valid diagnostic' }] }).length, 1);
 });
 
 test('refreshing the editor line numbers and highlights restores the editor scroll position', () => {

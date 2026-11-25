@@ -528,10 +528,14 @@ function hideSummary() {
 // ═════════════════════════════════════════════════════════════
 
 function compilerErrors(data) {
-    if (Array.isArray(data.diagnostics) && data.diagnostics.length) {
-        return data.diagnostics.map(diagnostic => ({ diagnostic }));
+    if (Array.isArray(data.diagnostics)) {
+        const diagnostics = data.diagnostics.filter(diagnostic => typeof diagnostic?.message === 'string');
+        if (diagnostics.length) return diagnostics.map(diagnostic => ({ diagnostic }));
     }
-    if (Array.isArray(data.errors) && data.errors.length) return data.errors;
+    if (Array.isArray(data.errors)) {
+        const errors = data.errors.filter(error => error != null);
+        if (errors.length) return errors;
+    }
     const message = typeof data.error === 'string' && data.error.trim() ? data.error : 'Unknown compilation error.';
     return [{ message }];
 }
