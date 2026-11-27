@@ -331,6 +331,10 @@ test('AST previews preserve angle brackets and ampersands in constraint text', (
 test('a partial enum field keeps its type when member metadata is unavailable', () => {
     const app = browser();
     assert.equal(app.displayDataType({ dataType: 'ENUM' }), 'ENUM');
+    assert.equal(app.displayDataType({ dataType: 'ENUM', enumValues: ['Pending', null] }), 'ENUM("Pending")');
+    assert.equal(app.displayDataType({}), 'Unknown type');
+    const diagram = app.renderSchemaDiagram({ entities: [{ name: 'Item', fields: [{ name: 'state', dataType: 'ENUM' }] }] });
+    assert.match(diagram, /class="schema-field-type">ENUM</);
     assert.equal(app.displayDataType({ dataType: 'ENUM', enumValues: ['Pending', 'Done'] }), 'ENUM("Pending", "Done")');
 });
 

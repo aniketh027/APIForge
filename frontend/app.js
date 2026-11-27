@@ -706,11 +706,12 @@ function renderAST(ast) {
 // ═════════════════════════════════════════════════════════════
 
 function displayDataType(field) {
-    return field.dataType === 'ENUM'
-        ? (Array.isArray(field.enumValues)
-            ? `ENUM(${field.enumValues.map(value => JSON.stringify(value)).join(', ')})`
-            : 'ENUM')
-        : field.dataType;
+    if (typeof field.dataType !== 'string') return 'Unknown type';
+    if (field.dataType !== 'ENUM') return field.dataType;
+
+    const members = Array.isArray(field.enumValues)
+        ? field.enumValues.filter(value => typeof value === 'string') : [];
+    return members.length ? `ENUM(${members.map(value => JSON.stringify(value)).join(', ')})` : 'ENUM';
 }
 
 // Logical model only: declaration order and relationships come directly from AST.
@@ -740,9 +741,7 @@ function renderSchemaDiagram(ast) {
         return `<article class="schema-entity" aria-labelledby="schema-entity-${index}">
             <h3 id="schema-entity-${index}" class="schema-entity-name">${escapeHtml(entity.name)}</h3>
             <ul class="schema-fields" aria-label="Declared fields of ${escapeHtml(entity.name)}">${fields.map(field => {
-                // Keep displayDataType's ENUM formatting while tolerating incomplete input.
-                const type = typeof field.dataType === 'string' ? displayDataType({ ...field,
-                    enumValues: Array.isArray(field.enumValues) ? field.enumValues.filter(value => typeof value === 'string') : [] }) : 'Unknown type';
+                const type = displayDataType(field);
                 const constraints = Array.isArray(field.constraints) ? field.constraints : [];
                 return `<li class="schema-field"><span class="schema-field-name">${escapeHtml(field.name)}</span>
                     <span class="schema-field-type">${escapeHtml(type)}</span>
