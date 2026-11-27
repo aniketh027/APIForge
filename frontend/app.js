@@ -858,11 +858,13 @@ function renderIR(ir, label) {
 }
 
 function renderOptimizedIR(data) {
+    if (!Array.isArray(data.optimizedIR?.instructions)) return renderIR(null, 'Optimized IR');
+
     let html = '';
 
     if (data.optimizations && data.optimizations.length > 0) {
-        const origCount = data.ir ? data.ir.instructions.length : '?';
-        const optCount = data.optimizedIR ? data.optimizedIR.instructions.length : '?';
+        const origCount = Array.isArray(data.ir?.instructions) ? data.ir.instructions.length : '?';
+        const optCount = data.optimizedIR.instructions.length;
         html += `<div class="ir-summary">✓ ${data.optimizations.length} optimization(s) applied — instructions: ${origCount} → ${optCount}</div>`;
         data.optimizations.forEach(opt => {
             html += `<div class="ir-summary">${escapeHtml(opt.pass)}: ${escapeHtml(opt.description)}</div>`;

@@ -357,3 +357,10 @@ test('token previews omit invalid source coordinates and unknown token styles', 
     assert.match(html, /class="table-location">—</);
     assert.match(html, /class="">constructor</);
 });
+
+test('the optimizer preview reports missing output without claiming that optimization succeeded', () => {
+    const app = browser();
+    assert.match(app.renderOptimizedIR({ optimizations: [{ pass: 'Example' }] }), /No Optimized IR to display/);
+    assert.doesNotMatch(app.renderOptimizedIR({}), /already optimal|applied/);
+    assert.match(app.renderOptimizedIR({ optimizedIR: { instructions: [] } }), /No optimizations required/);
+});
