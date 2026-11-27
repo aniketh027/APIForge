@@ -632,12 +632,13 @@ function renderTokens(tokens) {
     };
 
     const rows = tokens.map((t, i) => {
-        const cls = typeClass[t.type] || '';
+        const cls = Object.hasOwn(typeClass, t.type) ? typeClass[t.type] : '';
+        const hasLocation = Number.isInteger(t.line) && t.line > 0 && Number.isInteger(t.column) && t.column > 0;
         return `<tr>
             <td class="table-index">${String(i + 1).padStart(2, '0')}</td>
             <td class="${cls}">${escapeHtml(t.type)}</td>
             <td>${escapeHtml(t.value)}</td>
-            <td class="table-location">${t.line}:${t.column}</td>
+            <td class="table-location">${hasLocation ? `${t.line}:${t.column}` : '—'}</td>
         </tr>`;
     }).join('');
 

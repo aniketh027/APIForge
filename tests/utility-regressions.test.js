@@ -347,3 +347,13 @@ test('responses without phase metadata clear the running pipeline message', () =
     app.applyPhaseStatuses(undefined, true);
     assert.equal(pipeline.textContent, 'All phases completed');
 });
+
+test('token previews omit invalid source coordinates and unknown token styles', () => {
+    const html = browser().renderTokens([
+        { type: 'IDENTIFIER', value: 'Task', line: 1, column: 8 },
+        { type: 'constructor', value: 'Missing position', line: -1, column: 0 }
+    ]);
+    assert.match(html, /class="table-location">1:8</);
+    assert.match(html, /class="table-location">—</);
+    assert.match(html, /class="">constructor</);
+});
